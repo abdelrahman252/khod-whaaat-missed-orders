@@ -322,7 +322,17 @@ ipcMain.handle("run-bot", async (_, { dateFrom, dateTo }) => {
     const logs = []; let resolved = false;
     const safeResolve = (v) => { if (!resolved) { resolved = true; resolve(v); } };
     child.stdout.on("data", (d) => { const m = d.toString().trim(); if (m) { logs.push(m); mainWindow.webContents.send("bot-log", m); } });
-    child.stderr.on("data", (d) => { const m = d.toString().trim(); if (m) mainWindow.webContents.send("bot-log", "ERR: " + m); });
+    child.stderr.on("data", (d) => {
+      const m = d.toString().trim();
+      if (!m) return;
+      if (m.includes("CHROME_NOT_FOUND")) {
+        mainWindow.webContents.send("bot-log", "❌ Google Chrome غير مثبت على جهازك.");
+        mainWindow.webContents.send("bot-log", "👉 حمّل Chrome من: https://www.google.com/chrome");
+        mainWindow.webContents.send("bot-log", "✅ بعد التثبيت افتح البرنامج من جديد.");
+      } else {
+        mainWindow.webContents.send("bot-log", "ERR: " + m);
+      }
+    });
     child.on("message", (msg) => {
       if (msg.type === "result")         safeResolve({ success: true, data: msg.data });
       if (msg.type === "error")          safeResolve({ success: false, error: msg.error });
