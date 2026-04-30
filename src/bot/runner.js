@@ -19,18 +19,21 @@ const config = JSON.parse(process.env.BOT_CONFIG || "{}");
 const log = (msg) => process.stdout.write(msg + "\n");
 
 // ════════════════════════════════════════
-// FIND REAL CHROME (no Chromium download needed)
+// FIND REAL CHROME — with one-time auto-install if missing
 // ════════════════════════════════════════
-function findChrome() {
+
+// Flag: only attempt install ONCE per bot run — no infinite loops
+let chromeInstallAttempted = false;
+
+function scanChromePaths() {
   const { execSync } = require("child_process");
   if (process.platform === "win32") {
     const paths = [
       "C:\\Program Files\\Google\\Chrome\\Application\\chrome.exe",
       "C:\\Program Files (x86)\\Google\\Chrome\\Application\\chrome.exe",
-      process.env.LOCALAPPDATA + "\\Google\\Chrome\\Application\\chrome.exe",
+      (process.env.LOCALAPPDATA || "") + "\\Google\\Chrome\\Application\\chrome.exe",
     ];
     for (const p of paths) if (fs.existsSync(p)) return p;
-    // Try registry
     try {
       const reg = execSync(
         'reg query "HKLM\\SOFTWARE\\Microsoft\\Windows\\CurrentVersion\\App Paths\\chrome.exe" /ve',
@@ -45,12 +48,95 @@ function findChrome() {
       "/Applications/Chromium.app/Contents/MacOS/Chromium",
     ];
     for (const p of paths) if (fs.existsSync(p)) return p;
-  } else {
-    const paths = ["/usr/bin/google-chrome", "/usr/bin/chromium-browser", "/usr/bin/chromium"];
-    for (const p of paths) if (fs.existsSync(p)) return p;
   }
+  return null;
+}
+
+async function installChromeWindows() {
+  const https = require("https");
+  const { execSync } = require("child_process");
+  const tmpInstaller = path.join(os.tmpdir(), "ChromeSetup.exe");
+
+  log("⬇️  Downloading Chrome installer...");
+  await new Promise((resolve, reject) => {
+    const file = fs.createWriteStream(tmpInstaller);
+    https.get(
+      "https://dl.google.com/chrome/install/ChromeStandaloneSetup64.exe",
+      (res) => {
+        // Follow redirects
+        if (res.statusCode === 302 || res.statusCode === 301) {
+          https.get(res.headers.location, (res2) => {
+            res2.pipe(file);
+            file.on("finish", () => { file.close(); resolve(); });
+          }).on("error", reject);
+        } else {
+          res.pipe(file);
+          file.on("finish", () => { file.close(); resolve(); });
+        }
+      }
+    ).on("error", (e) => { reject(e); });
+  });
+
+  log("🔧 Installing Chrome silently — this may take 1-2 minutes...");
+  try {
+    execSync(`"${tmpInstaller}" /silent /install`, {
+      stdio: "inherit",
+      timeout: 300000, // 5 min max
+    });
+  } catch (e) {
+    // Exit code 0 or non-zero both happen with Chrome silent install — ignore
+  }
+
+  // Clean up installer
+  try { fs.unlinkSync(tmpInstaller); } catch {}
+  log("✅ Chrome installation complete.");
+}
+
+async function findChrome() {
+  // ── Step 1: Check if Chrome already exists ──
+  const found = scanChromePaths();
+  if (found) return found;
+
+  // ── Step 2: Not found — try installing ONCE (Windows only) ──
+  if (chromeInstallAttempted) {
+    // Flag already set — we already tried, don't try again
+    throw new Error(
+      "❌ Chrome installation was attempted but Chrome still not found.\n" +
+      "Please install Chrome manually from https://www.google.com/chrome and restart the app."
+    );
+  }
+
+  if (process.platform !== "win32") {
+    // Mac: can't auto-install, just tell them clearly
+    throw new Error(
+      "❌ Google Chrome not found.\n" +
+      "Please install Chrome from https://www.google.com/chrome and restart the app."
+    );
+  }
+
+  // Set flag BEFORE attempting — so if anything crashes mid-install, we never retry
+  chromeInstallAttempted = true;
+  log("⚠️  Chrome not found — attempting automatic installation...");
+
+  try {
+    await installChromeWindows();
+  } catch (e) {
+    throw new Error(
+      `❌ Failed to auto-install Chrome: ${e.message}\n` +
+      "Please install Chrome manually from https://www.google.com/chrome and restart the app."
+    );
+  }
+
+  // ── Step 3: Scan again after install ──
+  const foundAfterInstall = scanChromePaths();
+  if (foundAfterInstall) {
+    log(`✅ Chrome found after install: ${foundAfterInstall}`);
+    return foundAfterInstall;
+  }
+
   throw new Error(
-    "Google Chrome not found. Please install Chrome from https://www.google.com/chrome and restart the app."
+    "❌ Chrome was installed but still cannot be found.\n" +
+    "Please restart the app and try again."
   );
 }
 
@@ -1233,7 +1319,7 @@ async function verifyFinalTotal(page, targetSubtotal, orderNum) {
     log(`📁 Using existing profile: ${profilePath}`);
   }
 
-  const chromePath = findChrome();
+  const chromePath = await findChrome();
   log(`🌐 Using Chrome: ${chromePath}`);
 
   const context = await chromium.launchPersistentContext(profilePath, {
