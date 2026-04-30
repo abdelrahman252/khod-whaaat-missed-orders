@@ -1,0 +1,133 @@
+<!doctype html>
+<html lang="en" dir="ltr">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Khod whaat  Bot</title>
+    <link rel="stylesheet" href="styles/main.css" />
+    <style>
+      #preloader {
+        position: fixed;
+        inset: 0;
+        background: #0b0f1a;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        z-index: 99999;
+      }
+
+      /* CENTER */
+      .preloader-center {
+        position: relative;
+        width: 140px;
+        height: 140px;
+      }
+
+      /* RING */
+      .ring {
+        position: absolute;
+        inset: 0;
+        border-radius: 50%;
+        border: 2px solid transparent;
+        border-top: 2px solid #ff2d7a;
+        border-right: 2px solid #7b5cf0;
+        border-bottom: 2px solid #00d4ff;
+        animation: spin 1.2s linear infinite;
+      }
+
+      /* GLOW ORB */
+      .glow {
+        position: absolute;
+        inset: 20%;
+        border-radius: 50%;
+        background: radial-gradient(circle, #7b5cf0, transparent);
+        filter: blur(20px);
+        opacity: 0.7;
+        animation: pulse 2s ease-in-out infinite;
+      }
+
+      /* LOGO */
+      .logo {
+        position: absolute;
+        inset: 0;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        font-weight: 800;
+        color: white;
+        font-size: 18px;
+        letter-spacing: 2px;
+      }
+
+      /* ANIMATIONS */
+      @keyframes spin {
+        to {
+          transform: rotate(360deg);
+        }
+      }
+
+      @keyframes pulse {
+        0%,
+        100% {
+          transform: scale(0.9);
+          opacity: 0.5;
+        }
+        50% {
+          transform: scale(1.2);
+          opacity: 1;
+        }
+      }
+    </style>
+  </head>
+  <body>
+    <div id="preloader">
+      <div class="preloader-center">
+        <div class="ring"></div>
+        <div class="glow"></div>
+
+        <div class="logo">MO</div>
+      </div>
+    </div>
+    <!-- Title bar -->
+    <div class="titlebar">
+      <div class="titlebar-left">
+        <span class="app-icon">⚡</span>
+        <span class="app-name">Khod whaat  Bot</span>
+      </div>
+      <div class="titlebar-controls">
+        <button class="tb-btn" id="btn-minimize">&#8212;</button>
+        <button class="tb-btn" id="btn-maximize">&#9633;</button>
+        <button class="tb-btn tb-close" id="btn-close">&#10005;</button>
+      </div>
+    </div>
+
+    <!-- Pages -->
+    <div id="app">
+      <div id="page-license" class="page"></div>
+      <div id="page-setup" class="page"></div>
+      <div id="page-welcome" class="page"></div>
+      <div id="page-run" class="page"></div>
+      <div id="page-results" class="page"></div>
+    </div>
+
+    <script src="pages/license.js"></script>
+    <script src="pages/setup.js"></script>
+    <script src="pages/welcome.js"></script>
+    <script src="pages/run.js"></script>
+    <script src="pages/results.js"></script>
+    <script src="app.js"></script>
+    <script>
+      window.addEventListener("load", () => {
+        const preloader = document.getElementById("preloader");
+
+        // small delay so it actually feels like a splash
+        setTimeout(() => {
+          preloader.style.opacity = "0";
+          preloader.style.transition = "0.4s ease";
+
+          setTimeout(() => preloader.remove(), 400);
+        }, 1200); // <-- control duration here
+      });
+    </script>
+  </body>
+</html>
