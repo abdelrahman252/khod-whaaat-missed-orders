@@ -64,9 +64,7 @@
       "shortcutName": "Khod Order Bot"
     },
     "dmg": {
-      "title": "Khod Order Bot",
-      "background": null,
-      "window": { "width": 540, "height": 380 }
+      "title": "Khod Order Bot"
     },
     "publish": {
       "provider": "github",
