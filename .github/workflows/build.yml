@@ -31,6 +31,11 @@ jobs:
         run: npm run dist:mac
         env:
           PLAYWRIGHT_SKIP_BROWSER_DOWNLOAD: 1
+          CSC_IDENTITY_AUTO_DISCOVERY: false
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          EP_DRAFT: false
+          EP_PRE_RELEASE: false
+          ELECTRON_BUILDER_PUBLISH: never
 
       - name: Upload DMG to Release
         uses: softprops/action-gh-release@v2
@@ -59,6 +64,8 @@ jobs:
         run: npm run dist:win
         env:
           PLAYWRIGHT_SKIP_BROWSER_DOWNLOAD: 1
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          ELECTRON_BUILDER_PUBLISH: never
 
       - name: Upload EXE to Release
         uses: softprops/action-gh-release@v2
