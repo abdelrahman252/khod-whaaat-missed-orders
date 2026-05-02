@@ -43,10 +43,12 @@ jobs:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           ELECTRON_BUILDER_PUBLISH: never
 
-      - name: Upload DMG to Release
+      - name: Upload Mac artifacts to Release
         uses: softprops/action-gh-release@v2
         with:
-          files: dist/*.dmg
+          files: |
+            dist/*.dmg
+            dist/*.zip
 
   build-win:
     name: Build Windows EXE
