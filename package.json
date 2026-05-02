@@ -37,14 +37,8 @@
       "category": "public.app-category.productivity",
       "icon": "assets/icon.icns",
       "target": [
-        {
-          "target": "dmg",
-          "arch": ["x64", "arm64"]
-        },
-        {
-          "target": "zip",
-          "arch": ["x64", "arm64"]
-        }
+        { "target": "dmg" },
+        { "target": "zip" }
       ],
       "hardenedRuntime": true,
       "gatekeeperAssess": false,
@@ -100,10 +94,6 @@
           "path": "/Applications"
         }
       ]
-    },
-    "publish": {
-      "provider": "github",
-      "releaseType": "release"
     },
     "extraResources": [
       {
