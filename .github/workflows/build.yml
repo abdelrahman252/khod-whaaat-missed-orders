@@ -27,14 +27,20 @@ jobs:
         env:
           PLAYWRIGHT_SKIP_BROWSER_DOWNLOAD: 1
 
-      - name: Build DMG
-        run: npm run dist:mac
+      - name: Build DMG (x64)
+        run: npx electron-builder --mac --x64
         env:
           PLAYWRIGHT_SKIP_BROWSER_DOWNLOAD: 1
           CSC_IDENTITY_AUTO_DISCOVERY: false
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          EP_DRAFT: false
-          EP_PRE_RELEASE: false
+          ELECTRON_BUILDER_PUBLISH: never
+
+      - name: Build DMG (arm64)
+        run: npx electron-builder --mac --arm64
+        env:
+          PLAYWRIGHT_SKIP_BROWSER_DOWNLOAD: 1
+          CSC_IDENTITY_AUTO_DISCOVERY: false
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           ELECTRON_BUILDER_PUBLISH: never
 
       - name: Upload DMG to Release
