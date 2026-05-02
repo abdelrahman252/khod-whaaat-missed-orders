@@ -328,7 +328,7 @@ ipcMain.handle("save-credentials", async (_, creds) => {
 
 ipcMain.handle("get-settings", () => ({
   theme: store.get("theme", "dark"),
-  lang:  store.get("lang",  "en"),
+  lang:  store.get("lang",  "ar"),
 }));
 ipcMain.handle("save-settings", (_, { theme, lang }) => {
   if (theme !== undefined) store.set("theme", theme);

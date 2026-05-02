@@ -3,7 +3,7 @@
 let sessionDate = null;
 
 // ── Global state ──
-window._kbotLang  = "en";
+window._kbotLang  = "ar";
 window._kbotTheme = "dark";
 window._kbotUser  = { customerName: null, daysLeft: null };
 
@@ -72,6 +72,7 @@ const _STRINGS = {
     "run.confirm_title":  "Action Required — Review & Confirm Orders",
     "run.confirm_msg":    "Review in the browser window, then click <strong>تأكيد كل الطلبات</strong>. Bot is waiting (up to 10 min).",
     "run.restart_title":  "Khod Export Failed — Restarting Automatically",
+    "run.restart_wait":   "Please wait — retrying in",
     "run.ratelimit_title":"Rate Limit — Cooldown in Progress",
     "run.creating":       "📤 Creating Orders in Easy-Orders",
     "run.live_log":       "Live Log",
@@ -172,6 +173,7 @@ const _STRINGS = {
     "run.confirm_title":  "إجراء مطلوب — راجع الطلبات وأكدها",
     "run.confirm_msg":    "راجع في نافذة المتصفح ثم انقر <strong>تأكيد كل الطلبات</strong>. البوت ينتظر (حتى 10 دقائق).",
     "run.restart_title":  "فشل تصدير Khod — إعادة المحاولة تلقائياً",
+    "run.restart_wait":   "انتظر — إعادة المحاولة خلال",
     "run.ratelimit_title":"حد المعدل — انتظار...",
     "run.creating":       "📤 إنشاء الطلبات في Easy-Orders",
     "run.live_log":       "السجل المباشر",
@@ -294,10 +296,10 @@ async function init() {
   try {
     const settings = await window.api.getSettings();
     applyTheme(settings.theme || "dark");
-    applyLang(settings.lang  || "en");
+    applyLang(settings.lang  || "ar");
   } catch(e) {
     applyTheme("dark");
-    applyLang("en");
+    applyLang("ar");
   }
 
   document.getElementById("toggle-theme").addEventListener("change", async (e) => {
@@ -411,11 +413,45 @@ function reRenderCurrentPage() {
     goToWelcome();
   } else if (id === "page-setup") {
     renderSetup(() => goToWelcome());
-  } else if (id === "page-run" && sessionDate) {
-    renderRun(sessionDate.dateFrom, sessionDate.dateTo, (resultData) => {
-      goToResults(resultData, sessionDate.dateFrom, sessionDate.dateTo);
-    }, () => { goToWelcome(); });
+  } else if (id === "page-run") {
+    // Do NOT re-render the run page while the bot is active —
+    // tearing down the DOM mid-run destroys all IPC listeners and crashes the UI.
+    // Instead, just update the translatable text elements in place.
+    updateRunPageTranslations();
   }
+  // page-results: no re-render needed; results are static data
+}
+
+// ── Lightweight translation update for the run page (no DOM teardown) ──
+function updateRunPageTranslations() {
+  const t = window._t;
+
+  // 1. Flip document direction & lang
+  document.documentElement.setAttribute("dir",  window._kbotLang === "ar" ? "rtl" : "ltr");
+  document.documentElement.setAttribute("lang", window._kbotLang);
+
+  // 2. All elements with data-i18n — plain string keys only
+  document.querySelectorAll("[data-i18n]").forEach((el) => {
+    const key = el.getAttribute("data-i18n");
+    const val = t(key);
+    if (typeof val === "string") el.textContent = val;
+  });
+
+  // 3. Phase labels that are still in "waiting" state — update their text
+  //    (active/done phases get their text set dynamically by setPhaseActive/updatePhases,
+  //     so we only touch ones still showing the generic waiting string)
+  for (let i = 0; i < 5; i++) {
+    const lbl = document.getElementById(`phase-label-${i}`);
+    if (!lbl) continue;
+    // Only update if this phase hasn't started yet (dot has no active/done class)
+    const dot = document.getElementById(`dot-${i}`);
+    if (dot && !dot.classList.contains("active") && !dot.classList.contains("done")) {
+      lbl.textContent = t("run.waiting");
+    }
+  }
+
+  // 4. Refresh top bar text
+  updateTopBarText();
 }
 
 // Start

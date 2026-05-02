@@ -37,6 +37,35 @@ window.renderWelcome = function (onContinue, onNewDate) {
           </button>
         </div>
 
+        <!-- Date picker card — shown when "New Date / Range" is clicked -->
+        <div class="card" id="date-picker-card" style="display:none; margin-bottom:16px">
+          <div style="font-size:12px;font-weight:700;color:var(--accent);text-transform:uppercase;letter-spacing:.08em;margin-bottom:16px">${t("welcome.select_date")}</div>
+
+          <div class="date-options">
+            <div class="date-option selected" data-mode="today">
+              <div class="opt-icon">📅</div>
+              <div class="opt-label">${t("welcome.today")}</div>
+              <div class="opt-desc">${todayDisplay}</div>
+            </div>
+            <div class="date-option" data-mode="single">
+              <div class="opt-icon">🗓️</div>
+              <div class="opt-label">${t("welcome.single_day")}</div>
+              <div class="opt-desc">${t("welcome.pick_one")}</div>
+            </div>
+            <div class="date-option" data-mode="range">
+              <div class="opt-icon">📆</div>
+              <div class="opt-label">${t("welcome.date_range")}</div>
+              <div class="opt-desc">${t("welcome.from_to")}</div>
+            </div>
+          </div>
+
+          <div id="date-inputs-container" style="display:none"></div>
+
+          <button class="btn btn-primary full-width mt-12" id="btn-launch" disabled>
+            ${t("welcome.launch_btn")}
+          </button>
+        </div>
+
         <!-- Launch minimized toggle -->
         <div class="card" style="margin-bottom:16px" id="launchmin-card">
           <div style="display:flex;align-items:center;justify-content:space-between">
@@ -90,35 +119,6 @@ window.renderWelcome = function (onContinue, onNewDate) {
             </div>
           </div>
           <div id="autorun-next" class="text-sm text-muted" style="margin-top:8px;display:none"></div>
-        </div>
-
-        <!-- Date picker card -->
-        <div class="card" id="date-picker-card" style="display:none; margin-bottom:16px">
-          <div style="font-size:12px;font-weight:700;color:var(--accent);text-transform:uppercase;letter-spacing:.08em;margin-bottom:16px">${t("welcome.select_date")}</div>
-
-          <div class="date-options">
-            <div class="date-option selected" data-mode="today">
-              <div class="opt-icon">📅</div>
-              <div class="opt-label">${t("welcome.today")}</div>
-              <div class="opt-desc">${todayDisplay}</div>
-            </div>
-            <div class="date-option" data-mode="single">
-              <div class="opt-icon">🗓️</div>
-              <div class="opt-label">${t("welcome.single_day")}</div>
-              <div class="opt-desc">${t("welcome.pick_one")}</div>
-            </div>
-            <div class="date-option" data-mode="range">
-              <div class="opt-icon">📆</div>
-              <div class="opt-label">${t("welcome.date_range")}</div>
-              <div class="opt-desc">${t("welcome.from_to")}</div>
-            </div>
-          </div>
-
-          <div id="date-inputs-container" style="display:none"></div>
-
-          <button class="btn btn-primary full-width mt-12" id="btn-launch" disabled>
-            ${t("welcome.launch_btn")}
-          </button>
         </div>
 
         <!-- Danger zone -->

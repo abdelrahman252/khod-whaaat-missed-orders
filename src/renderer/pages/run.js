@@ -78,13 +78,13 @@ window.renderRun = function (dateFrom, dateTo, onComplete, onHome) {
       <!-- Header -->
       <div style="display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:8px">
         <div>
-          <div class="page-title" style="font-size:20px">${t("run.title")}</div>
+          <div class="page-title" style="font-size:20px" data-i18n="run.title">${t("run.title")}</div>
           <div class="text-muted text-sm">📅 ${dateDisplay}</div>
         </div>
         <div style="display:flex;align-items:center;gap:8px">
           <div class="badge badge-accent" id="run-status-badge">${t("run.starting")}</div>
-          <button class="btn btn-danger" id="btn-stop" style="font-size:12px;padding:6px 14px">${t("run.stop")}</button>
-          <button class="btn btn-ghost" id="btn-home-run" style="font-size:12px;padding:6px 14px">${t("run.home")}</button>
+          <button class="btn btn-danger" id="btn-stop" style="font-size:12px;padding:6px 14px" data-i18n="run.stop">${t("run.stop")}</button>
+          <button class="btn btn-ghost" id="btn-home-run" style="font-size:12px;padding:6px 14px;opacity:0.35;cursor:not-allowed" data-i18n="run.home" disabled>${t("run.home")}</button>
         </div>
       </div>
 
@@ -92,8 +92,8 @@ window.renderRun = function (dateFrom, dateTo, onComplete, onHome) {
       <div id="global-cooldown-bar" style="display:none;background:rgba(124,106,247,0.1);border:1px solid #7c6af7;border-radius:var(--radius);padding:10px 16px;align-items:center;gap:12px">
         <span style="font-size:16px">⏳</span>
         <div style="flex:1">
-          <div style="font-size:12px;font-weight:700;color:#a89cf7">${t("run.cooldown_label")}</div>
-          <div style="font-size:11px;color:var(--text2)">${t("run.cooldown_next")} <strong id="cooldown-timer" style="color:#a89cf7">6:00</strong></div>
+          <div style="font-size:12px;font-weight:700;color:#a89cf7" data-i18n="run.cooldown_label">${t("run.cooldown_label")}</div>
+          <div style="font-size:11px;color:var(--text2)"><span data-i18n="run.cooldown_next">${t("run.cooldown_next")}</span> <strong id="cooldown-timer" style="color:#a89cf7">6:00</strong></div>
         </div>
         <div style="width:120px;height:6px;background:var(--border);border-radius:3px;overflow:hidden">
           <div id="cooldown-bar-fill" style="height:100%;background:#7c6af7;width:100%;transition:width 1s linear"></div>
@@ -106,8 +106,8 @@ window.renderRun = function (dateFrom, dateTo, onComplete, onHome) {
           <div class="status-row" id="phase-${i}" style="${i === 4 ? 'grid-column:1/-1' : ''}">
             <div class="status-dot" id="dot-${i}"></div>
             <div>
-              <div style="font-size:13px;font-weight:600">${name}</div>
-              <div class="text-sm text-muted" id="phase-label-${i}">${t("run.waiting")}</div>
+              <div style="font-size:13px;font-weight:600" data-i18n="run.phase${i}">${name}</div>
+              <div class="text-sm text-muted" id="phase-label-${i}" data-i18n-waiting="true">${t("run.waiting")}</div>
             </div>
           </div>
         `).join("")}
@@ -117,8 +117,8 @@ window.renderRun = function (dateFrom, dateTo, onComplete, onHome) {
       <div class="notice-box warn" id="notice-2fa" style="display:none">
         <span class="notice-icon">🔐</span>
         <div class="notice-text">
-          <strong>${t("run.2fa_title")}</strong>
-          ${t("run.2fa_msg")}
+          <strong data-i18n="run.2fa_title">${t("run.2fa_title")}</strong>
+          <span data-i18n="run.2fa_msg">${t("run.2fa_msg")}</span>
         </div>
       </div>
 
@@ -126,8 +126,8 @@ window.renderRun = function (dateFrom, dateTo, onComplete, onHome) {
       <div class="notice-box warn" id="notice-confirm" style="display:none;border-color:var(--warning);background:rgba(255,201,77,0.12)">
         <span class="notice-icon">👀</span>
         <div class="notice-text">
-          <strong>${t("run.confirm_title")}</strong>
-          ${t("run.confirm_msg")}
+          <strong data-i18n="run.confirm_title">${t("run.confirm_title")}</strong>
+          <span data-i18n="run.confirm_msg">${t("run.confirm_msg")}</span>
         </div>
       </div>
 
@@ -135,11 +135,11 @@ window.renderRun = function (dateFrom, dateTo, onComplete, onHome) {
       <div class="notice-box warn" id="notice-khod-restart" style="display:none;border-color:#ff6b35;background:rgba(255,107,53,0.1)">
         <span class="notice-icon">🔄</span>
         <div class="notice-text" style="flex:1">
-          <strong>${t("run.restart_title")}</strong>
+          <strong data-i18n="run.restart_title">${t("run.restart_title")}</strong>
           <div id="khod-restart-reason" style="font-size:11px;color:var(--text2);margin-top:3px"></div>
           <div style="display:flex;align-items:center;gap:10px;margin-top:8px">
             <div style="font-size:13px;color:#ff6b35;font-weight:700">
-              Please wait — retrying in <span id="khod-restart-timer" style="font-family:monospace">6:00</span>
+              <span data-i18n="run.restart_wait">${t("run.restart_wait")}</span> <span id="khod-restart-timer" style="font-family:monospace">6:00</span>
             </div>
             <div style="flex:1;height:4px;background:var(--border);border-radius:2px;overflow:hidden">
               <div id="khod-restart-bar" style="height:100%;background:#ff6b35;width:100%;transition:width 1s linear;border-radius:2px"></div>
@@ -153,15 +153,15 @@ window.renderRun = function (dateFrom, dateTo, onComplete, onHome) {
       <div class="notice-box warn" id="notice-cooldown" style="display:none;border-color:#7c6af7;background:rgba(124,106,247,0.1)">
         <span class="notice-icon">⏸️</span>
         <div class="notice-text">
-          <strong>${t("run.ratelimit_title")}</strong>
-          <span id="cooldown-msg">Easy-Orders allows 1 export per 5 minutes. Waiting...</span>
+          <strong data-i18n="run.ratelimit_title">${t("run.ratelimit_title")}</strong>
+          <span id="cooldown-msg"></span>
         </div>
       </div>
 
       <!-- Upload progress panel -->
       <div id="upload-progress-panel" style="display:none;background:var(--bg2);border:1px solid var(--accent);border-radius:var(--radius);padding:14px">
         <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:10px">
-          <div style="font-size:12px;font-weight:700;color:var(--accent);text-transform:uppercase;letter-spacing:.06em">
+          <div style="font-size:12px;font-weight:700;color:var(--accent);text-transform:uppercase;letter-spacing:.06em" data-i18n="run.creating">
             ${t("run.creating")}
           </div>
           <div id="upload-counter" style="font-size:12px;color:var(--text2)">0 / 0</div>
@@ -170,7 +170,7 @@ window.renderRun = function (dateFrom, dateTo, onComplete, onHome) {
           <div id="upload-progress-bar" style="height:100%;background:var(--accent);width:0%;transition:width 0.4s ease;border-radius:4px"></div>
         </div>
         <div style="display:flex;justify-content:space-between;font-size:11px">
-          <div id="upload-last-order" style="color:var(--text2)">${t("run.progress_start")}</div>
+          <div id="upload-last-order" style="color:var(--text2)" data-i18n="run.progress_start">${t("run.progress_start")}</div>
           <div style="display:flex;gap:12px">
             <span style="color:var(--success)">✅ <span id="upload-success-count">0</span></span>
             <span style="color:var(--danger)">❌ <span id="upload-fail-count">0</span></span>
@@ -183,7 +183,7 @@ window.renderRun = function (dateFrom, dateTo, onComplete, onHome) {
 
       <!-- Log terminal -->
       <div style="flex:1;display:flex;flex-direction:column;min-height:0">
-        <div style="font-size:11px;font-weight:700;color:var(--text2);text-transform:uppercase;letter-spacing:.06em;margin-bottom:6px">${t("run.live_log")}</div>
+        <div style="font-size:11px;font-weight:700;color:var(--text2);text-transform:uppercase;letter-spacing:.06em;margin-bottom:6px" data-i18n="run.live_log">${t("run.live_log")}</div>
         <div class="log-terminal" id="log-output" style="flex:1;height:auto"></div>
       </div>
 
@@ -232,6 +232,8 @@ window.renderRun = function (dateFrom, dateTo, onComplete, onHome) {
     badge.style.color = "var(--danger)";
     botDone = true;
     document.getElementById("btn-stop").style.display = "none";
+    const homeBtn = document.getElementById("btn-home-run");
+    if (homeBtn) { homeBtn.disabled = false; homeBtn.style.opacity = "1"; homeBtn.style.cursor = "pointer"; }
     startGlobalCooldown();
     showCooldownBar();
   });
@@ -492,6 +494,8 @@ window.renderRun = function (dateFrom, dateTo, onComplete, onHome) {
     showCooldownBar();
 
     document.getElementById("btn-stop").style.display = "none";
+    const homeBtn = document.getElementById("btn-home-run");
+    if (homeBtn) { homeBtn.disabled = false; homeBtn.style.opacity = "1"; homeBtn.style.cursor = "pointer"; }
 
     for (let i = 0; i < 5; i++) {
       const dot = document.getElementById(`dot-${i}`);
