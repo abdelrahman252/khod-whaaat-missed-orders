@@ -380,7 +380,11 @@ ipcMain.handle("run-bot", async (_, { dateFrom, dateTo }) => {
     launchMinimized: store.get("launchMinimized", false),
   };
   return new Promise((resolve) => {
-    const child = fork(botPath, [], { env: { ...process.env, BOT_CONFIG: JSON.stringify(creds) }, silent: true });
+    const child = fork(botPath, [], {
+      env: { ...process.env, BOT_CONFIG: JSON.stringify(creds) },
+      silent: true,
+      execArgv: ["--max-old-space-size=512"],
+    });
     currentBotChild = child;
     const logs = []; let resolved = false;
     const safeResolve = (v) => { if (!resolved) { resolved = true; resolve(v); } };

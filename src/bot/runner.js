@@ -1373,11 +1373,36 @@ async function verifyFinalTotal(page, targetSubtotal, orderNum) {
   const context = await chromium.launchPersistentContext(profilePath, {
     executablePath: chromePath,
     headless: false,
-    args: ["--start-maximized"],
+    // ── Fast-launch flags ──────────────────────────────────────────────────
+    // Drop --start-maximized (forces a full window-paint cycle before ready).
+    // Instead we size the viewport directly and let Chrome open at default size.
+    args: [
+      "--no-first-run",              // skip first-run wizard / welcome screen
+      "--no-default-browser-check",  // skip "make Chrome your default?" dialog
+      "--disable-background-networking", // no sync/update pings on startup
+      "--disable-client-side-phishing-detection",
+      "--disable-default-apps",      // don't load bundled web apps
+      "--disable-extensions-except=", // no extensions unless explicitly listed
+      "--disable-hang-monitor",
+      "--disable-popup-blocking",
+      "--disable-prompt-on-repost",
+      "--disable-sync",              // no Google account sync on open
+      "--disable-translate",
+      "--metrics-recording-only",    // skip UMA uploads that block startup
+      "--no-service-autorun",
+      "--password-store=basic",
+      "--use-mock-keychain",
+      "--window-size=1760,1080",     // set size at launch, avoid post-resize round-trip
+    ],
+    // Tell Playwright not to wait for a "ready" navigation — Chrome opens faster
+    // and the bot's own waitForSelector calls act as the real readiness gate.
+    waitForInitialPage: false,
   });
 
   const page = context.pages()[0] || (await context.newPage());
-  await page.setViewportSize({ width: 1760, height: 1080 });
+  // Viewport is already set via --window-size above; skip the extra round-trip.
+  // Only set it here as a safety fallback in case the flag was ignored.
+  page.setViewportSize({ width: 1760, height: 1080 }).catch(() => {});
 
   // Minimize the Chrome window via CDP if launchMinimized is set
   if (config.launchMinimized) {
