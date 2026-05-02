@@ -253,7 +253,6 @@ window.renderWelcome = function (onContinue, onNewDate) {
   // ── Auto-run toggle ──
   let autoRunEnabled = false;
   let autoRunIntervalMins = 30;
-  let countdownSecs = 30 * 60;
   let countdownInterval = null;
 
   function updateAutoRunUI(remainingMs) {
@@ -285,23 +284,43 @@ window.renderWelcome = function (onContinue, onNewDate) {
     });
   }
 
+  // Wall-clock time (ms) at which the countdown display was last synced from main
+  let _countdownSyncedAt  = 0;
+  let _countdownSyncedMs  = 0; // remainingMs at that sync point
+
   function startCountdown(remainingMs) {
     stopCountdown();
-    // Sync from main-process timer when available, so re-opening the window
-    // shows the actual time left instead of resetting to the full interval.
-    countdownSecs = (remainingMs !== undefined)
-      ? Math.ceil(remainingMs / 1000)
-      : autoRunIntervalMins * 60;
+    _countdownSyncedAt = Date.now();
+    _countdownSyncedMs = (remainingMs !== undefined)
+      ? Math.max(0, remainingMs)
+      : autoRunIntervalMins * 60 * 1000;
+
     const next = document.getElementById("autorun-next");
-    const tick = () => {
+
+    // Re-sync from main process every 5 s to correct any drift
+    let syncTick = 0;
+    const tick = async () => {
       if (!next) return;
-      const m = Math.floor(countdownSecs / 60);
-      const s = countdownSecs % 60;
+      syncTick++;
+      if (syncTick % 5 === 0) {
+        // Refresh from main process
+        try {
+          const prog = await window.api.getAutoRunProgress();
+          if (prog) {
+            _countdownSyncedAt = Date.now();
+            _countdownSyncedMs = prog.remainingMs;
+          }
+        } catch {}
+      }
+      // Compute display value from synced anchor + elapsed wall clock
+      const displayMs = Math.max(0, _countdownSyncedMs - (Date.now() - _countdownSyncedAt));
+      const totalSecs = Math.ceil(displayMs / 1000);
+      const m = Math.floor(totalSecs / 60);
+      const s = totalSecs % 60;
       const fn = t("welcome.next_run");
       next.textContent = typeof fn === "function"
-        ? fn(m, String(s).padStart(2,"0"))
-        : `⏳ Next auto-run in ${m}:${String(s).padStart(2,"0")}`;
-      if (countdownSecs > 0) countdownSecs--;
+        ? fn(m, String(s).padStart(2, "0"))
+        : `⏳ Next auto-run in ${m}:${String(s).padStart(2, "0")}`;
     };
     tick();
     countdownInterval = setInterval(tick, 1000);
@@ -333,7 +352,6 @@ window.renderWelcome = function (onContinue, onNewDate) {
 
   window.api.removeAllListeners("auto-run-tick");
   window.api.onAutoRunTick(({ dateFrom, dateTo }) => {
-    countdownSecs = autoRunIntervalMins * 60;
     onContinue({ dateFrom, dateTo });
   });
 

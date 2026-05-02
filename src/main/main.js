@@ -40,9 +40,21 @@ function supabaseRequest(method, endpoint, body) {
 }
 
 function getIconPath() {
-  const base = app.isPackaged
-    ? path.join(process.resourcesPath, "assets")
-    : path.join(__dirname, "..", "..", "assets");
+  // In dev: __dirname is src/main/, assets are two levels up
+  // In packaged build with asar:true + asarUnpack:["assets/**/*"]:
+  //   assets land at  <resources>/app.asar.unpacked/assets/
+  //   NOT at          <resources>/assets/   (that was wrong before)
+  // We try the unpacked path first, then fall back to a sibling path for
+  // non-asar or differently-configured builds.
+  let base;
+  if (app.isPackaged) {
+    const unpacked = path.join(process.resourcesPath, "app.asar.unpacked", "assets");
+    const direct   = path.join(process.resourcesPath, "assets");
+    const fs       = require("fs");
+    base = fs.existsSync(unpacked) ? unpacked : direct;
+  } else {
+    base = path.join(__dirname, "..", "..", "assets");
+  }
   if (process.platform === "win32") return path.join(base, "icon.ico");
   if (process.platform === "darwin") return path.join(base, "icon.icns");
   return path.join(base, "icon.png");
@@ -99,11 +111,16 @@ async function isLicenseValid() {
 // ════════════════════════════════════════
 function createTray() {
   const iconPath = getIconPath();
+  console.log("[tray] icon path:", iconPath, "| exists:", require("fs").existsSync(iconPath));
   let icon;
   try {
     icon = nativeImage.createFromPath(iconPath);
+    if (icon.isEmpty()) console.warn("[tray] nativeImage loaded empty — check path and file validity");
     if (process.platform === "win32" && !icon.isEmpty()) icon = icon.resize({ width: 16, height: 16 });
-  } catch { icon = nativeImage.createEmpty(); }
+  } catch (e) {
+    console.error("[tray] failed to load icon:", e.message);
+    icon = nativeImage.createEmpty();
+  }
   tray = new Tray(icon);
   tray.setToolTip("Khod Order Bot");
   updateTrayMenu();
@@ -153,10 +170,6 @@ function createWindow() {
   });
 }
 
-app.whenReady().then(() => { createWindow(); createTray(); autoRunEnabled = store.get("autoRun", false); if (autoRunEnabled) scheduleAutoRun(); });
-app.on("before-quit", () => { app.isQuitting = true; });
-app.on("window-all-closed", () => {});
-
 // ════════════════════════════════════════
 // AUTO-RUN
 // ════════════════════════════════════════
@@ -165,28 +178,56 @@ function autoRunIntervalLabel() {
   const m = store.get("autoRunInterval", 30);
   return m < 60 ? m + " min" : (m / 60) + " hr";
 }
-let autoRunStartedAt = 0; // epoch ms when current interval began
+
+// Declared BEFORE app.whenReady so it is always defined when scheduleAutoRun() is called.
+let autoRunStartedAt = 0;
 
 function scheduleAutoRun() {
   clearAutoRun();
   autoRunStartedAt = Date.now();
   const intervalMs = store.get("autoRunInterval", 30) * 60 * 1000;
-  autoRunTimer = setInterval(async () => {
-    if (botRunning) return;
-    if (!(await isLicenseValid())) { mainWindow.webContents.send("license-expired"); return; }
-    autoRunStartedAt = Date.now(); // reset for next cycle
-    mainWindow.webContents.send("auto-run-tick", { dateFrom: todayStr(), dateTo: todayStr() });
-  }, intervalMs);
+
+  // Recursive setTimeout: each tick recalculates remaining time from wall clock.
+  // Unlike setInterval this doesn't drift, and survives sleep/wake correctly.
+  function scheduleTick() {
+    const remaining = Math.max(0, intervalMs - (Date.now() - autoRunStartedAt));
+    autoRunTimer = setTimeout(async () => {
+      if (botRunning) {
+        // Bot still running — check again in 10 s without resetting the cycle
+        autoRunTimer = setTimeout(scheduleTick, 10000);
+        return;
+      }
+      if (!(await isLicenseValid())) {
+        mainWindow.webContents.send("license-expired");
+        autoRunStartedAt = Date.now();
+        scheduleTick();
+        return;
+      }
+      autoRunStartedAt = Date.now();
+      mainWindow.webContents.send("auto-run-tick", { dateFrom: todayStr(), dateTo: todayStr() });
+      scheduleTick();
+    }, remaining);
+  }
+
+  scheduleTick();
   updateTrayMenu();
 }
+
 function getAutoRunProgress() {
   if (!autoRunEnabled || !autoRunTimer) return null;
   const intervalMs = store.get("autoRunInterval", 30) * 60 * 1000;
-  const elapsed    = Date.now() - autoRunStartedAt;
-  const remaining  = Math.max(0, intervalMs - elapsed);
+  const remaining  = Math.max(0, intervalMs - (Date.now() - autoRunStartedAt));
   return { remainingMs: remaining, intervalMs };
 }
-function clearAutoRun() { if (autoRunTimer) { clearInterval(autoRunTimer); autoRunTimer = null; } updateTrayMenu(); }
+
+function clearAutoRun() {
+  if (autoRunTimer) { clearTimeout(autoRunTimer); autoRunTimer = null; }
+  updateTrayMenu();
+}
+
+app.whenReady().then(() => { createWindow(); createTray(); autoRunEnabled = store.get("autoRun", false); if (autoRunEnabled) scheduleAutoRun(); });
+app.on("before-quit", () => { app.isQuitting = true; });
+app.on("window-all-closed", () => {});
 
 // ════════════════════════════════════════
 // IPC — Window
