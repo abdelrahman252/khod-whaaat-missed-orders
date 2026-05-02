@@ -41,7 +41,7 @@ function supabaseRequest(method, endpoint, body) {
 
 function getIconPath() {
   const base = app.isPackaged
-    ? path.join(process.resourcesPath, "app", "assets")
+    ? path.join(process.resourcesPath, "assets")
     : path.join(__dirname, "..", "..", "assets");
   if (process.platform === "win32") return path.join(base, "icon.ico");
   if (process.platform === "darwin") return path.join(base, "icon.icns");
@@ -165,14 +165,26 @@ function autoRunIntervalLabel() {
   const m = store.get("autoRunInterval", 30);
   return m < 60 ? m + " min" : (m / 60) + " hr";
 }
+let autoRunStartedAt = 0; // epoch ms when current interval began
+
 function scheduleAutoRun() {
   clearAutoRun();
+  autoRunStartedAt = Date.now();
+  const intervalMs = store.get("autoRunInterval", 30) * 60 * 1000;
   autoRunTimer = setInterval(async () => {
     if (botRunning) return;
     if (!(await isLicenseValid())) { mainWindow.webContents.send("license-expired"); return; }
+    autoRunStartedAt = Date.now(); // reset for next cycle
     mainWindow.webContents.send("auto-run-tick", { dateFrom: todayStr(), dateTo: todayStr() });
-  }, store.get("autoRunInterval", 30) * 60 * 1000);
+  }, intervalMs);
   updateTrayMenu();
+}
+function getAutoRunProgress() {
+  if (!autoRunEnabled || !autoRunTimer) return null;
+  const intervalMs = store.get("autoRunInterval", 30) * 60 * 1000;
+  const elapsed    = Date.now() - autoRunStartedAt;
+  const remaining  = Math.max(0, intervalMs - elapsed);
+  return { remainingMs: remaining, intervalMs };
 }
 function clearAutoRun() { if (autoRunTimer) { clearInterval(autoRunTimer); autoRunTimer = null; } updateTrayMenu(); }
 
@@ -295,6 +307,7 @@ ipcMain.handle("save-settings", (_, { theme, lang }) => {
 ipcMain.handle("open-folder", (_, p) => { shell.openPath(p); return true; });
 ipcMain.handle("set-auto-run", (_, v) => { autoRunEnabled = v; store.set("autoRun", v); if (v) scheduleAutoRun(); else clearAutoRun(); return true; });
 ipcMain.handle("set-auto-run-interval", (_, m) => { store.set("autoRunInterval", m); if (autoRunEnabled) scheduleAutoRun(); return true; });
+ipcMain.handle("get-auto-run-progress", () => getAutoRunProgress());
 ipcMain.handle("set-launch-minimized", (_, v) => { store.set("launchMinimized", v); return true; });
 
 let currentBotChild = null;

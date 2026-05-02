@@ -9,6 +9,8 @@ window.renderResults = function (data, dateFrom, dateTo, onRunAgain, onHome) {
   const products     = data.productSummary || [];
   const buffer       = data.buffer;
   const failedOrders = data.failedOrders || { count: 0, summary: [], failedDir: "", failedPath: "" };
+  const runFailed    = data._runFailed   || false;
+  const failReason   = data._failReason  || "";
 
   const totalInKhod = (stats.realInTaager || 0) + (stats.missedInTaager || 0);
   const totalDupes  = (stats.realDupe     || 0) + (stats.missedDupe     || 0);
@@ -19,13 +21,22 @@ window.renderResults = function (data, dateFrom, dateTo, onRunAgain, onHome) {
   const failTitleFn = t("results.fail_title");
   const failTitle   = typeof failTitleFn === "function" ? failTitleFn(failedOrders.count) : failTitleFn;
 
+  const runFailedBanner = runFailed ? `
+    <div class="notice-box warn" style="border-color:var(--danger);background:rgba(255,77,109,0.1);margin-bottom:0">
+      <span class="notice-icon">❌</span>
+      <div class="notice-text">
+        <strong>Bot run failed</strong>
+        <div style="font-size:12px;color:var(--text2);margin-top:3px">${failReason || "An error occurred. Check the log for details."}</div>
+      </div>
+    </div>` : "";
+
   el.innerHTML = `
     <div style="display:flex;flex-direction:column;height:100%;padding:24px;gap:16px;overflow-y:auto">
 
       <!-- Header -->
       <div style="display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:10px">
         <div>
-          <div class="page-title" style="font-size:20px">${hasFailed ? "⚠️" : "✅"} ${title}</div>
+          <div class="page-title" style="font-size:20px">${runFailed ? "❌" : hasFailed ? "⚠️" : "✅"} ${title}</div>
           <div class="text-muted text-sm">${t("results.completed")}</div>
         </div>
         <div style="display:flex;gap:8px;flex-wrap:wrap">
@@ -35,6 +46,8 @@ window.renderResults = function (data, dateFrom, dateTo, onRunAgain, onHome) {
           ${buffer ? `<button class="btn btn-primary" id="btn-download">${t("results.download")}</button>` : ""}
         </div>
       </div>
+
+      ${runFailedBanner}
 
       <!-- Stats grid -->
       <div class="stats-grid" style="grid-template-columns:repeat(${hasFailed ? 4 : 3},1fr)">

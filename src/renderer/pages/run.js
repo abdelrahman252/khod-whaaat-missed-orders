@@ -526,6 +526,8 @@ window.renderRun = function (dateFrom, dateTo, onComplete, onHome) {
       if (Notification.permission === "granted") {
         new Notification("Khod whaat Bot — Error", { body: result.error || "Bot failed. Check the log." });
       }
+      // Go to results so the user can see what happened and use "Run Again"
+      setTimeout(() => onComplete({ orders: 0, failedOrders: { count: 0 }, _runFailed: true, _failReason: result.error }), 1500);
     }
   });
 };

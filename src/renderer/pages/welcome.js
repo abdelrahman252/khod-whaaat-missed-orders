@@ -256,7 +256,7 @@ window.renderWelcome = function (onContinue, onNewDate) {
   let countdownSecs = 30 * 60;
   let countdownInterval = null;
 
-  function updateAutoRunUI() {
+  function updateAutoRunUI(remainingMs) {
     const btn    = document.getElementById("btn-toggle-autorun");
     const knob   = document.getElementById("autorun-knob");
     const label  = document.getElementById("autorun-label");
@@ -269,7 +269,7 @@ window.renderWelcome = function (onContinue, onNewDate) {
       label.textContent = t("welcome.on"); label.style.color = "var(--warning)";
       next.style.display = "block";
       intRow.style.display = "block";
-      startCountdown();
+      startCountdown(remainingMs);
     } else {
       btn.style.background = "var(--border)";
       knob.style.transform = "translateX(0)";
@@ -285,9 +285,13 @@ window.renderWelcome = function (onContinue, onNewDate) {
     });
   }
 
-  function startCountdown() {
+  function startCountdown(remainingMs) {
     stopCountdown();
-    countdownSecs = autoRunIntervalMins * 60;
+    // Sync from main-process timer when available, so re-opening the window
+    // shows the actual time left instead of resetting to the full interval.
+    countdownSecs = (remainingMs !== undefined)
+      ? Math.ceil(remainingMs / 1000)
+      : autoRunIntervalMins * 60;
     const next = document.getElementById("autorun-next");
     const tick = () => {
       if (!next) return;
@@ -309,15 +313,21 @@ window.renderWelcome = function (onContinue, onNewDate) {
   document.getElementById("btn-toggle-autorun").addEventListener("click", async () => {
     autoRunEnabled = !autoRunEnabled;
     await window.api.setAutoRun(autoRunEnabled);
-    updateAutoRunUI();
+    // When toggled ON, immediately sync from main process
+    if (autoRunEnabled) {
+      const prog = await window.api.getAutoRunProgress();
+      updateAutoRunUI(prog ? prog.remainingMs : undefined);
+    } else {
+      updateAutoRunUI();
+    }
   });
 
   document.querySelectorAll(".interval-opt").forEach(btn => {
     btn.addEventListener("click", async () => {
       autoRunIntervalMins = parseInt(btn.dataset.mins);
       await window.api.setAutoRunInterval(autoRunIntervalMins);
-      countdownSecs = autoRunIntervalMins * 60;
-      updateAutoRunUI();
+      // Interval changed → new full countdown starts in main process
+      updateAutoRunUI(autoRunIntervalMins * 60 * 1000);
     });
   });
 
@@ -327,12 +337,14 @@ window.renderWelcome = function (onContinue, onNewDate) {
     onContinue({ dateFrom, dateTo });
   });
 
-  window.api.getCredentials().then((creds) => {
+  window.api.getCredentials().then(async (creds) => {
     launchMinEnabled = creds.launchMinimized || false;
     updateLaunchMinUI();
     autoRunEnabled = creds.autoRun || false;
     autoRunIntervalMins = creds.autoRunInterval || 30;
-    updateAutoRunUI();
+    // Sync countdown with real remaining time from main process
+    const prog = autoRunEnabled ? await window.api.getAutoRunProgress() : null;
+    updateAutoRunUI(prog ? prog.remainingMs : undefined);
   });
 
   document.getElementById("btn-reset").addEventListener("click", async () => {

@@ -19,6 +19,7 @@ contextBridge.exposeInMainWorld("api", {
   setAutoRun:         (val)  => ipcRenderer.invoke("set-auto-run", val),
   setAutoRunInterval: (mins) => ipcRenderer.invoke("set-auto-run-interval", mins),
   setLaunchMinimized: (val)  => ipcRenderer.invoke("set-launch-minimized", val),
+  getAutoRunProgress: ()     => ipcRenderer.invoke("get-auto-run-progress"),
   killBot:            ()     => ipcRenderer.send("kill-bot"),
   openFolder:         (folder) => ipcRenderer.invoke("open-folder", folder),
 
