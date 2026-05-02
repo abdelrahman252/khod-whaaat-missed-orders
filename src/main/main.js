@@ -40,21 +40,12 @@ function supabaseRequest(method, endpoint, body) {
 }
 
 function getIconPath() {
-  // In dev: __dirname is src/main/, assets are two levels up
-  // In packaged build with asar:true + asarUnpack:["assets/**/*"]:
-  //   assets land at  <resources>/app.asar.unpacked/assets/
-  //   NOT at          <resources>/assets/   (that was wrong before)
-  // We try the unpacked path first, then fall back to a sibling path for
-  // non-asar or differently-configured builds.
-  let base;
-  if (app.isPackaged) {
-    const unpacked = path.join(process.resourcesPath, "app.asar.unpacked", "assets");
-    const direct   = path.join(process.resourcesPath, "assets");
-    const fs       = require("fs");
-    base = fs.existsSync(unpacked) ? unpacked : direct;
-  } else {
-    base = path.join(__dirname, "..", "..", "assets");
-  }
+  // DEV:     assets/ is two levels up from src/main/
+  // PACKAGED: extraResources copies assets/ → resources/assets/ (real disk, outside asar)
+  //           so nativeImage.createFromPath() can always read it on any customer's PC
+  const base = app.isPackaged
+    ? path.join(process.resourcesPath, "assets")
+    : path.join(__dirname, "..", "..", "assets");
   if (process.platform === "win32") return path.join(base, "icon.ico");
   if (process.platform === "darwin") return path.join(base, "icon.icns");
   return path.join(base, "icon.png");

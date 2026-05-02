@@ -87,14 +87,35 @@
       "shortcutName": "Khod Whaat Orders"
     },
     "dmg": {
-      "title": "Khod Whaat Orders"
+      "title": "Khod Whaat Orders",
+      "background": null,
+      "window": {
+        "width": 540,
+        "height": 380
+      },
+      "contents": [
+        {
+          "x": 130,
+          "y": 220,
+          "type": "file"
+        },
+        {
+          "x": 410,
+          "y": 220,
+          "type": "link",
+          "path": "/Applications"
+        }
+      ]
     },
     "publish": {
       "provider": "github",
       "releaseType": "release"
     },
-    "asarUnpack": [
-      "assets/**/*"
+    "extraResources": [
+      {
+        "from": "assets",
+        "to": "assets"
+      }
     ]
   }
 }
