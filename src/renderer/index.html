@@ -3,9 +3,10 @@
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>Khod whaat  Bot</title>
+    <title>Khod whaat Bot</title>
     <link rel="stylesheet" href="styles/main.css" />
     <style>
+      /* ── Preloader ── */
       #preloader {
         position: fixed;
         inset: 0;
@@ -15,15 +16,11 @@
         justify-content: center;
         z-index: 99999;
       }
-
-      /* CENTER */
       .preloader-center {
         position: relative;
-        width: 140px;
-        height: 140px;
+        width: 120px;
+        height: 120px;
       }
-
-      /* RING */
       .ring {
         position: absolute;
         inset: 0;
@@ -32,21 +29,17 @@
         border-top: 2px solid #ff2d7a;
         border-right: 2px solid #7b5cf0;
         border-bottom: 2px solid #00d4ff;
-        animation: spin 1.2s linear infinite;
+        animation: preloader-spin 1.2s linear infinite;
       }
-
-      /* GLOW ORB */
       .glow {
         position: absolute;
         inset: 20%;
         border-radius: 50%;
         background: radial-gradient(circle, #7b5cf0, transparent);
-        filter: blur(20px);
+        filter: blur(16px);
         opacity: 0.7;
-        animation: pulse 2s ease-in-out infinite;
+        animation: preloader-pulse 2s ease-in-out infinite;
       }
-
-      /* LOGO */
       .logo {
         position: absolute;
         inset: 0;
@@ -55,18 +48,15 @@
         justify-content: center;
         font-weight: 800;
         color: white;
-        font-size: 18px;
+        font-size: 16px;
         letter-spacing: 2px;
       }
-
-      /* ANIMATIONS */
-      @keyframes spin {
+      @keyframes preloader-spin {
         to {
           transform: rotate(360deg);
         }
       }
-
-      @keyframes pulse {
+      @keyframes preloader-pulse {
         0%,
         100% {
           transform: scale(0.9);
@@ -77,6 +67,272 @@
           opacity: 1;
         }
       }
+
+      /* ── Titlebar overrides ── */
+      .titlebar {
+        height: 48px !important;
+        padding: 0 12px 0 16px !important;
+        gap: 6px !important;
+        justify-content: flex-start !important;
+      }
+
+      /* Left: app icon + name */
+      .titlebar-left {
+        flex-shrink: 0;
+        margin-right: 10px;
+      }
+
+      /* Center: user info — sits inline, not centered */
+      #top-bar-center {
+        flex: 0 0 auto;
+        display: none;
+        align-items: center;
+        gap: 8px;
+        -webkit-app-region: no-drag;
+        pointer-events: none;
+        margin-right: 6px;
+      }
+      #top-bar-center.visible {
+        display: flex;
+      }
+
+      #top-bar-avatar {
+        width: 26px;
+        height: 26px;
+        border-radius: 50%;
+        background: linear-gradient(135deg, #4f8ef7, #7c6af7);
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        font-size: 9px;
+        font-weight: 800;
+        color: #fff;
+        flex-shrink: 0;
+        pointer-events: auto;
+      }
+      #top-bar-info {
+        display: flex;
+        flex-direction: column;
+        gap: 1px;
+        pointer-events: auto;
+      }
+      #top-bar-name {
+        font-size: 11px;
+        font-weight: 700;
+        color: var(--text);
+        line-height: 1.15;
+      }
+      #top-bar-days {
+        font-size: 10px;
+        color: var(--text2);
+        line-height: 1.15;
+      }
+      #top-bar-days.warn {
+        color: #ffc94d;
+      }
+
+      /* Spacer pushes window controls to the right */
+      .titlebar-spacer {
+        flex: 1;
+        -webkit-app-region: drag;
+      }
+
+      /* Right: toggles + window controls — now just trailing items */
+      .titlebar-right {
+        display: contents;
+      }
+
+      .titlebar-divider {
+        width: 1px;
+        height: 18px;
+        background: var(--border);
+        margin: 0 6px;
+        flex-shrink: 0;
+      }
+
+      /* ── Lang toggle (pill) ── */
+      .tb-lang-switch {
+        position: relative;
+        display: inline-flex;
+        align-items: center;
+        margin: 0 4px;
+        -webkit-app-region: no-drag;
+      }
+      .tb-lang-switch > span {
+        position: absolute;
+        top: 50%;
+        transform: translateY(-50%);
+        pointer-events: none;
+        font-family: "Segoe UI", Arial, sans-serif;
+        font-weight: 700;
+        font-size: 11px;
+        text-transform: uppercase;
+        width: 50%;
+        text-align: center;
+        line-height: 1;
+      }
+      .check-toggle {
+        position: absolute;
+        margin-left: -9999px;
+        visibility: hidden;
+      }
+      .check-toggle + label {
+        display: block;
+        position: relative;
+        cursor: pointer;
+        outline: none;
+        user-select: none;
+      }
+      .check-toggle-round-flat + label {
+        padding: 2px;
+        width: 74px;
+        height: 28px;
+        background-color: var(--accent);
+        border-radius: 60px;
+        transition: background 0.2s;
+      }
+      .check-toggle-round-flat + label:before,
+      .check-toggle-round-flat + label:after {
+        display: block;
+        position: absolute;
+        content: "";
+      }
+      .check-toggle-round-flat + label:before {
+        top: 2px;
+        left: 2px;
+        bottom: 2px;
+        right: 2px;
+        background-color: var(--accent);
+        border-radius: 60px;
+        transition: background 0.2s;
+      }
+      .check-toggle-round-flat + label:after {
+        top: 3px;
+        left: 3px;
+        bottom: 3px;
+        width: 36px;
+        background-color: #fff;
+        border-radius: 52px;
+        transition: margin 0.2s;
+      }
+      .check-toggle-round-flat:checked + label {
+        background-color: var(--accent2);
+      }
+      .check-toggle-round-flat:checked + label:before {
+        background-color: var(--accent2);
+      }
+      .check-toggle-round-flat:checked + label:after {
+        margin-left: 32px;
+      }
+      .lang-on {
+        left: 0;
+        padding-left: 4px;
+        color: #fff;
+      }
+      .lang-off {
+        right: 0;
+        padding-right: 4px;
+        color: #fff;
+      }
+      .check-toggle-round-flat:checked ~ .lang-off {
+        opacity: 0.5;
+      }
+      .check-toggle-round-flat:not(:checked) ~ .lang-on {
+        opacity: 0.5;
+      }
+
+      /* ── Theme toggle (sun/moon switch) ── */
+      .tb-theme-switch {
+        font-size: 14px;
+        position: relative;
+        display: inline-flex;
+        align-items: center;
+        width: 52px;
+        height: 28px;
+        cursor: pointer;
+        margin: 0 4px;
+        -webkit-app-region: no-drag;
+        flex-shrink: 0;
+      }
+      .tb-theme-input {
+        opacity: 0;
+        width: 0;
+        height: 0;
+        position: absolute;
+      }
+      .tb-theme-slider {
+        position: absolute;
+        inset: 0;
+        background-color: #73c0fc;
+        border-radius: 30px;
+        transition: background 0.4s;
+      }
+      .tb-theme-slider:before {
+        position: absolute;
+        content: "";
+        height: 22px;
+        width: 22px;
+        border-radius: 50%;
+        left: 3px;
+        top: 3px;
+        z-index: 2;
+        background-color: #e8e8e8;
+        transition: transform 0.4s;
+      }
+      .tb-sun svg {
+        position: absolute;
+        top: 4px;
+        right: 4px;
+        z-index: 1;
+        width: 18px;
+        height: 18px;
+        pointer-events: none;
+        animation: tb-rotate 15s linear infinite;
+      }
+      .tb-moon svg {
+        fill: #73c0fc;
+        position: absolute;
+        top: 4px;
+        left: 4px;
+        z-index: 1;
+        width: 16px;
+        height: 16px;
+        pointer-events: none;
+        animation: tb-tilt 5s linear infinite;
+      }
+      @keyframes tb-rotate {
+        0% {
+          transform: rotate(0deg);
+        }
+        100% {
+          transform: rotate(360deg);
+        }
+      }
+      @keyframes tb-tilt {
+        0% {
+          transform: rotate(0deg);
+        }
+        25% {
+          transform: rotate(-30deg);
+        }
+        75% {
+          transform: rotate(15deg);
+        }
+        100% {
+          transform: rotate(0deg);
+        }
+      }
+      .tb-theme-input:checked + .tb-theme-slider {
+        background-color: #183153;
+      }
+      .tb-theme-input:checked + .tb-theme-slider:before {
+        transform: translateX(24px);
+      }
+
+      /* App sits below 48px titlebar */
+      #app {
+        top: 48px !important;
+      }
     </style>
   </head>
   <body>
@@ -84,20 +340,73 @@
       <div class="preloader-center">
         <div class="ring"></div>
         <div class="glow"></div>
-
         <div class="logo">MO</div>
       </div>
     </div>
-    <!-- Title bar -->
-    <div class="titlebar">
+
+    <!-- Titlebar: [⚡ App Name] ···· [avatar + name + days] ···· [EN 🌐] [Dark 🌙] [— □ ✕] -->
+    <div class="titlebar" id="main-titlebar">
+      <!-- App branding -->
       <div class="titlebar-left">
         <span class="app-icon">⚡</span>
-        <span class="app-name">Khod whaat  Bot</span>
+        <span class="app-name">Khod whaat Bot</span>
       </div>
-      <div class="titlebar-controls">
-        <button class="tb-btn" id="btn-minimize">&#8212;</button>
-        <button class="tb-btn" id="btn-maximize">&#9633;</button>
-        <button class="tb-btn tb-close" id="btn-close">&#10005;</button>
+      <div class="titlebar-divider"></div>
+
+      <!-- User info (hidden until licensed) -->
+      <div id="top-bar-center">
+        <div id="top-bar-avatar">?</div>
+        <div id="top-bar-info">
+          <div id="top-bar-name">—</div>
+          <div id="top-bar-days"></div>
+        </div>
+      </div>
+      <!-- Toggles -->
+      <div class="titlebar-divider"></div>
+
+      <!-- Lang toggle: EN ↔ AR -->
+      <div class="tb-lang-switch">
+        <input
+          id="toggle-lang"
+          class="check-toggle check-toggle-round-flat"
+          type="checkbox"
+        />
+        <label for="toggle-lang"></label>
+        <span class="lang-on">AR</span>
+        <span class="lang-off">EN</span>
+      </div>
+      <div class="titlebar-divider"></div>
+
+      <!-- Theme toggle: light ↔ dark -->
+      <label class="tb-theme-switch" title="Switch theme">
+        <span class="tb-sun"
+          ><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24">
+            <g fill="#ffd43b">
+              <circle r="5" cy="12" cx="12"></circle>
+              <path
+                d="m21 13h-1a1 1 0 0 1 0-2h1a1 1 0 0 1 0 2zm-17 0h-1a1 1 0 0 1 0-2h1a1 1 0 0 1 0 2zm13.66-5.66a1 1 0 0 1 -.66-.29 1 1 0 0 1 0-1.41l.71-.71a1 1 0 1 1 1.41 1.41l-.71.71a1 1 0 0 1 -.75.29zm-12.02 12.02a1 1 0 0 1 -.71-.29 1 1 0 0 1 0-1.41l.71-.66a1 1 0 0 1 1.41 1.41l-.71.71a1 1 0 0 1 -.7.24zm6.36-14.36a1 1 0 0 1 -1-1v-1a1 1 0 0 1 2 0v1a1 1 0 0 1 -1 1zm0 17a1 1 0 0 1 -1-1v-1a1 1 0 0 1 2 0v1a1 1 0 0 1 -1 1zm-5.66-14.66a1 1 0 0 1 -.7-.29l-.71-.71a1 1 0 0 1 1.41-1.41l.71.71a1 1 0 0 1 0 1.41 1 1 0 0 1 -.71.29zm12.02 12.02a1 1 0 0 1 -.7-.29l-.66-.71a1 1 0 0 1 1.36-1.36l.71.71a1 1 0 0 1 0 1.41 1 1 0 0 1 -.71.24z"
+              ></path>
+            </g></svg
+        ></span>
+        <span class="tb-moon"
+          ><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 384 512">
+            <path
+              d="m223.5 32c-123.5 0-223.5 100.3-223.5 224s100 224 223.5 224c60.6 0 115.5-24.2 155.8-63.4 5-4.9 6.3-12.5 3.1-18.7s-10.1-9.7-17-8.5c-9.8 1.7-19.8 2.6-30.1 2.6-96.9 0-175.5-78.8-175.5-176 0-65.8 36-123.1 89.3-153.3 6.1-3.5 9.2-10.5 7.7-17.3s-7.3-11.9-14.3-12.5c-6.3-.5-12.6-.8-19-.8z"
+            ></path></svg
+        ></span>
+        <input type="checkbox" id="toggle-theme" class="tb-theme-input" />
+        <span class="tb-theme-slider"></span>
+      </label>
+
+      <!-- Spacer: drags the window, pushes controls right -->
+      <div class="titlebar-spacer"></div>
+
+      <div class="titlebar-right">
+        <div class="titlebar-controls">
+          <button class="tb-btn" id="btn-minimize">&#8212;</button>
+          <button class="tb-btn" id="btn-maximize">&#9633;</button>
+          <button class="tb-btn tb-close" id="btn-close">&#10005;</button>
+        </div>
       </div>
     </div>
 
@@ -119,14 +428,12 @@
     <script>
       window.addEventListener("load", () => {
         const preloader = document.getElementById("preloader");
-
-        // small delay so it actually feels like a splash
+        // 400ms is enough to show the splash without blocking startup
         setTimeout(() => {
           preloader.style.opacity = "0";
-          preloader.style.transition = "0.4s ease";
-
-          setTimeout(() => preloader.remove(), 400);
-        }, 1200); // <-- control duration here
+          preloader.style.transition = "opacity 0.3s ease";
+          setTimeout(() => preloader.remove(), 300);
+        }, 400);
       });
     </script>
   </body>

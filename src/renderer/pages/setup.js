@@ -1,43 +1,45 @@
 // ── SETUP PAGE (credentials — email only, no phone) ──
 window.renderSetup = function (onComplete) {
   const el = document.getElementById("page-setup");
+  const t  = window._t;
+
   el.innerHTML = `
     <div class="center-layout">
       <div class="card" style="width:480px">
-        <div class="page-title">Welcome to Khod Bot ⚡</div>
-        <div class="page-subtitle">Enter your credentials once — they're stored securely on this device.</div>
+        <div class="page-title">${t("setup.title")}</div>
+        <div class="page-subtitle">${t("setup.subtitle")}</div>
 
-        <div class="form-section-title">📦 Easy-Orders Account</div>
+        <div class="form-section-title">${t("setup.easy_section")}</div>
         <div class="form-group">
-          <label>Store Name <span style="color:var(--text2);font-weight:400;text-transform:none">(leave empty if single store)</span></label>
-          <input type="text" id="easy-store" placeholder="e.g. themnzl" />
+          <label>${t("setup.store_label")} <span style="color:var(--text2);font-weight:400;text-transform:none">${t("setup.store_hint")}</span></label>
+          <input type="text" id="easy-store" placeholder="${t("setup.store_ph")}" />
         </div>
         <div class="form-group">
-          <label>Email</label>
-          <input type="email" id="easy-email" placeholder="you@example.com" autocomplete="off" />
+          <label>${t("setup.email_label")}</label>
+          <input type="email" id="easy-email" placeholder="${t("setup.email_ph")}" autocomplete="off" />
         </div>
         <div class="form-group">
-          <label>Password</label>
+          <label>${t("setup.pass_label")}</label>
           <input type="password" id="easy-pass" placeholder="••••••••" autocomplete="new-password" />
         </div>
 
-        <div class="form-section-title">🛒 Khod-Whaat Account</div>
+        <div class="form-section-title">${t("setup.khod_section")}</div>
         <div class="form-group">
-          <label>Email</label>
-          <input type="email" id="khod-email" placeholder="affiliate@khod-whaat.com" autocomplete="off" />
+          <label>${t("setup.email_label")}</label>
+          <input type="email" id="khod-email" placeholder="${t("setup.khod_email_ph")}" autocomplete="off" />
         </div>
         <div class="form-group">
-          <label>Password</label>
+          <label>${t("setup.pass_label")}</label>
           <input type="password" id="khod-pass" placeholder="••••••••" autocomplete="new-password" />
         </div>
 
         <div id="setup-error" class="notice-box danger mt-20" style="display:none">
           <span class="notice-icon">⚠️</span>
-          <div class="notice-text" id="setup-error-text"><strong>Missing fields</strong> — All required fields must be filled.</div>
+          <div class="notice-text" id="setup-error-text">${t("setup.err_missing")}</div>
         </div>
 
         <div class="mt-20">
-          <button class="btn btn-primary full-width btn-lg" id="btn-save-creds">Save & Continue →</button>
+          <button class="btn btn-primary full-width btn-lg" id="btn-save-creds">${t("setup.save_btn")}</button>
         </div>
       </div>
     </div>
@@ -54,7 +56,7 @@ window.renderSetup = function (onComplete) {
     const errorText = document.getElementById("setup-error-text");
 
     if (!easyEmail || !easyPassword || !khodEmail || !khodPassword) {
-      errorText.innerHTML = "<strong>Missing fields</strong> — All required fields must be filled.";
+      errorText.innerHTML = window._t("setup.err_missing");
       errorEl.style.display = "flex";
       return;
     }
@@ -62,15 +64,11 @@ window.renderSetup = function (onComplete) {
     errorEl.style.display = "none";
 
     const saveResult = await window.api.saveCredentials({
-      easyEmail,
-      easyPassword,
-      easyStore,
-      khodEmail,
-      khodPassword,
+      easyEmail, easyPassword, easyStore, khodEmail, khodPassword,
     });
 
     if (saveResult && saveResult.success === false && saveResult.reason === "account_locked") {
-      errorText.innerHTML = "<strong>Account Locked</strong> — This license is already linked to different accounts. Contact support to change them.";
+      errorText.innerHTML = window._t("setup.err_locked");
       errorEl.style.display = "flex";
       return;
     }
@@ -78,7 +76,6 @@ window.renderSetup = function (onComplete) {
     onComplete();
   });
 
-  // Enter key support
   el.querySelectorAll("input").forEach((inp) => {
     inp.addEventListener("keydown", (e) => {
       if (e.key === "Enter") document.getElementById("btn-save-creds").click();

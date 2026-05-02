@@ -72,4 +72,52 @@ function buildOutputExcel(orders) {
   return XLSX.write(wb, { type: "buffer", bookType: "xlsx" });
 }
 
-module.exports = { buildOutputExcel };
+// ════════════════════════════════════════
+// BUILD FAILED ORDERS EXCEL
+//
+// One sheet with full order details + source column (real / missed)
+// so the user knows where each failed order came from.
+// ════════════════════════════════════════
+function buildFailedExcel(failedOrders) {
+  const wb = XLSX.utils.book_new();
+
+  const headers = [
+    "المصدر",                   // source: real orders / missed orders
+    "اسم المستلم",              // customer name
+    "الهاتف",                   // phone
+    "المنتجات",                 // product name
+    "عدد القطع",                // qty
+    "السعر الكلي بدون الشحن",  // subtotal
+    "المدينة",                  // city
+    "العنوان",                  // address
+    "سبب الفشل",                // error reason
+  ];
+
+  const sourceLabel = (s) => {
+    if (s === "missed") return "طلبات فائتة";
+    return "طلبات فعلية";
+  };
+
+  const dataRows = failedOrders.map((f) => [
+    sourceLabel(f.source),
+    f.name    || "",
+    f.phone   || "",
+    f.product || "",
+    f.qty     || 1,
+    f.subtotal || "",
+    f.city    || "",
+    f.address || "",
+    f.error   || "",
+  ]);
+
+  const ws = XLSX.utils.aoa_to_sheet([headers, ...dataRows]);
+  ws["!cols"] = [
+    { wch: 16 }, { wch: 25 }, { wch: 16 }, { wch: 45 },
+    { wch: 10 }, { wch: 24 }, { wch: 20 }, { wch: 35 }, { wch: 50 },
+  ];
+
+  XLSX.utils.book_append_sheet(wb, ws, "Failed Orders");
+  return XLSX.write(wb, { type: "buffer", bookType: "xlsx" });
+}
+
+module.exports = { buildOutputExcel, buildFailedExcel };

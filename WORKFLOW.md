@@ -1,10 +1,10 @@
-# Taager Order Bot — Full Workflow Documentation
+# Khod Order Bot — Full Workflow Documentation
 
 ---
 
 ## Overview
 
-The bot does one job: find orders from Easy-Orders that are NOT yet in Taager, and upload them to Taager's cart bulk upload. Every step is documented below including exactly how prices are calculated, where bugs could hide, and what to verify manually.
+The bot does one job: find orders from Easy-Orders that are NOT yet in Khod, and create them one by one in Easy-Orders automatically. Every step is documented below including exactly how prices are calculated, where bugs could hide, and what to verify manually.
 
 ---
 
@@ -13,15 +13,20 @@ The bot does one job: find orders from Easy-Orders that are NOT yet in Taager, a
 ```
 Open App
   │
-  ├─ First time? → Setup page (enter credentials)
+  ├─ First time? → License page → Setup page (enter credentials)
   │
   └─ Returning? → Welcome page
-        │
-        ├─ Auto-Confirm toggle (OFF by default — keep OFF until fully trusted)
         │
         ├─ Continue — Today  → locks today's date, starts bot immediately
         │
         └─ New Date / Range  → pick single day or from→to range, then Launch Bot
+              │
+              └─ Bot runs 5 phases → Results dashboard
+                    │
+                    ├─ ⬇️ Download Excel       (all new orders)
+                    ├─ ⬇️ Download Failed Orders  (only if failures exist)
+                    ├─ 🔄 Run Again            (re-runs same date range)
+                    └─ 🏠 Home
 ```
 
 ---
@@ -33,7 +38,7 @@ Open App
 1. Navigate to `https://app.easy-orders.net/` (root, not login page)
 2. Check if URL contains "login" — if NOT, already logged in → skip to step 7
 3. If on login page → navigate to `/#/login`
-4. Fill `#username` with `easyEmail` from saved credentials
+4. Fill `#username` with `easyEmail` from saved credentials (up to 3 attempts with reload on failure)
 5. Fill `#password` with `easyPassword`
 6. Click `button[type="submit"]`
 7. Wait up to 5 minutes for URL to leave the login page (handles 2FA — user completes manually in browser)
@@ -42,11 +47,15 @@ Open App
 
 **Session:** Saved in `{userData}/bot-profile` — no re-login needed on next run unless site expires the session.
 
+**Session guard (mid-run):** If Easy-Orders expires the session during any phase (redirects to login mid-run), the bot automatically detects the login redirect, re-runs `phase1_easyOrdersLogin()`, and retries the failed action once — no crash, no lost orders.
+
 ---
 
 ## Phase 2 — Real Orders Export from Easy-Orders
 
 **File:** `src/bot/runner.js` → `phase2_realOrders()`
+
+Wrapped with session guard — if the session expires mid-export, re-logins and retries automatically.
 
 1. Navigate to `https://app.easy-orders.net/#/orders`
 2. Click `button:has-text("Export")`
@@ -71,12 +80,7 @@ Open App
   - `Total Cost` and `Shipping Cost` — fallback if Item Price is 0
   - `subtotal` = `Item Price × Quantity` (or `Total Cost - Shipping Cost`)
   - `unitPrice` = `Item Price` (or `Math.round(subtotal / qty)`)
-
-**⚠️ Price critical note:**
-- `unitPrice` = price per piece (e.g. 160 SAR for 1 piece)
-- `subtotal` = total for the order (e.g. 320 SAR for 2 pieces)
-- The output sheet uses `unitPrice` NOT `subtotal` — Taager multiplies by qty itself
-- If `Item Price` column is 0, unitPrice = `Math.round((TotalCost - Shipping) / qty)`
+  - `source` = `"real"` — carried through to failed orders Excel if this order fails in Phase 5
 
 ---
 
@@ -84,14 +88,15 @@ Open App
 
 **File:** `src/bot/runner.js` → `phase3_missedOrders()`
 
-Same export + polling logic as Phase 2 but for `/#/missed-orders` with keyword `"missed-orders"`.
+Same export + polling logic as Phase 2 but for `/#/missed-orders` with keyword `"missed-orders"`. Also wrapped with session guard.
 
 **What gets parsed** (`src/bot/parser.js` → `parseMissedOrders()`):
 - Skip rows where `Is Completed` = TRUE
 - Filter by `Created At` column matching date range
 - Skip invalid phones
 - Extract `Products` column → strip brackets → `[لعبة الكرة]` → `لعبة الكرة`
-- **No SKU, no price, no qty** — these are resolved in the next step
+- `source` = `"missed"` — carried through to failed orders Excel if this order fails in Phase 5
+- **No SKU, no price, no qty** — resolved in the next step from the product catalog
 
 ---
 
@@ -112,43 +117,39 @@ Built from real orders — no manual config needed:
 3. If match found → assign `minQty` and the corresponding price from catalog
 4. `unitPrice` = `Math.round(catalogPrice / minQty)`
 
-**⚠️ Price critical note for missed orders:**
-- The catalog stores `subtotal` (total for that qty tier, e.g. 320 SAR for qty=2)
-- `unitPrice` = `Math.round(320 / 2)` = 160 SAR ✅
-- The output uses `unitPrice` → 160 SAR per piece → Taager × 2 = 320 SAR total ✅
-
 ---
 
-## Phase 4 — Taager Login + Export
+## Phase 4 — Khod Login + Export
 
-**File:** `src/bot/runner.js` → `phase4_taager()`
+**File:** `src/bot/runner.js` → `phase4_khod()`
 
-**Login (email method):**
-1. Navigate to `https://taager.com/sa/auth/login`
+**Login:**
+1. Navigate to `https://khod-whaat.com/affiliate/auth/login`
 2. If URL doesn't contain `/login` or `/auth` → already logged in → skip
-3. Click `#register` button ("تسجيل الدخول بالبريد الإلكتروني")
-4. Fill `#email` and `#password`
-5. Click `#loginByPhoneNumber` (Taager's confusingly-named submit button for email form)
-6. Wait for redirect to `/sa/home` or `/sa/orders`
+3. Fill credentials (email or phone method based on `khodLoginMethod` setting)
+4. Submit → wait up to 5 minutes (handles 2FA)
+5. Switch language to Arabic via `/lang/sa` if needed
 
-**Login (phone method):**
-1. Fill `input[name="phoneNumber"]`
-2. Fill `#password`
-3. Click `#phone-login-submit-btn`
+**Session guard (mid-attempt):** After navigating to the orders page, the bot checks if the URL became a login page. If so, it re-runs `khodLogin()` and reloads the orders page before proceeding.
 
 **Export:**
-1. Navigate to `https://taager.com/sa/orders`
-2. Set start date to **dateFrom - 10 days** using Taager's calendar
-   - Why 10 days: catches orders that were submitted on previous days (e.g. if you didn't run the bot for 3 days, phones from those days are still in Taager and should be excluded)
-3. Click `#orders-search-button` → wait for results
-4. Click `#export-to-excel-button` → wait for download event
-5. Read into buffer (no disk write)
+1. Navigate to `https://khod-whaat.com/affiliate/orders/list/all`
+2. Pick date range using flatpickr calendar (`#from_date + input`)
+   - `dateFrom - 1 day` → today (always today as end date — catches orders from previous bot runs)
+3. Click فلترة (filter button) — tries multiple selectors with fallback
+4. Click استخراج اكسل (export button) — tries multiple selectors with fallback
+5. Wait for download event (up to 15 minutes)
+6. Read into buffer (no disk write)
+7. Up to 5 retry attempts with 6-minute cooldown between each
 
-**What gets parsed** (`src/bot/parser.js` → `parseTaagerPhones()`):
-- Find the column whose header contains "هاتف" (phone)
-- Extract ALL phones from all rows (no date filter — we want the full 10-day window)
-- Normalize each phone to 9-digit Saudi core using `normalizePhone()`
-- Return as a `Set<string>` for O(1) deduplication lookups
+**What gets parsed** (`src/bot/parser.js` → `parseKhodPhones()`):
+- Find the phone column (header contains "هاتف" but NOT "هاتف 2")
+- Extract ALL phones from all rows (no date filter)
+- Normalize each phone to 9-digit Saudi core
+- Return as a **phone-only** `Set<string>` for deduplication
+
+**⚠️ Why phone-only (not phone+product) for Khod:**
+Khod stores product names in a different format (`"1x اسم المنتج-"`) that cannot be reliably matched against Easy-Orders product names. Using phone+product would cause the check to always fail, letting already-submitted orders slip through. The safe rule: if a phone exists in Khod at all (any product), it was already processed — skip it.
 
 ---
 
@@ -178,92 +179,131 @@ Handles all Saudi phone formats:
 
 Priority order: real orders first, missed orders second.
 
-For each order:
-1. Normalize phone → 9-digit core
-2. Check against `taagerPhones` Set (from Phase 4 export) → if found → **skip** (already in Taager)
-3. Check against `seen` Set (within this batch) → if found → **skip** (duplicate in same run)
-4. If passes both → add to result
+Two separate dedup keys are used:
+
+**`khodKey` = `normPhone` only**
+→ Checks against the Khod export. If this phone exists in Khod at all → skip (already processed in a previous bot run).
+
+**`batchKey` = `normPhone + "|" + productName`**
+→ Checks within this run's batch only.
+- Same phone + **same product** → duplicate → skip one, keep one
+- Same phone + **different product** → two separate orders → **keep both**
 
 ```
 Stats logged:
-  realNew        → new real orders going to output
-  realInTaager   → real orders already submitted to Taager
-  realDupe       → duplicate phones within real orders batch
-  missedNew      → new missed orders going to output
-  missedInTaager → missed orders already submitted to Taager
-  missedDupe     → missed order phone already seen in real orders
+  realNew          → new real orders going to Phase 5
+  realInKhod       → real orders already in Khod (phone match) → skipped
+  realDupe         → same phone+product duplicate within batch → skipped
+  missedNew        → new missed orders going to Phase 5
+  missedInKhod     → missed orders already in Khod → skipped
+  missedDupe       → same phone+product already seen in real orders → skipped
 ```
 
 ---
 
-## Output Excel — العربة Template
+## Phase 5 — Create Orders in Easy-Orders
+
+**File:** `src/bot/runner.js` → `phase5_createOrders()` → `createSingleOrder()` → `createSingleOrderAttempt()`
+
+Processes orders one by one. Each order gets **up to 3 attempts** before being marked as failed.
+
+**Retry logic:**
+- Attempt fails for any reason (timeout, network blip, element not found) → navigate to orders list (resets React state) → check for session expiry → retry
+- After 3 failed attempts → record as failed → move to next order (bot does not stop)
+
+**Per order steps (`createSingleOrderAttempt`):**
+1. Navigate to `/#/orders/create`
+2. Session guard: if redirected to login → re-login → retry navigate
+3. Wait for `button:has-text("Choose Products")`
+4. Click "Choose Products" → modal opens
+5. **Multi-strategy product search** (see below)
+6. Click "Add Products" → wait for qty input to appear
+7. Set quantity
+8. Verify and fix price if needed (click pencil icon to unlock → fill unit price)
+9. Fill customer name, phone, city (dropdown by visible text), address
+10. Verify final total matches expected
+11. Click "Submit Order"
+12. Wait up to 20 seconds for redirect back to `/#/orders`
+
+**City selection:** Uses visible text matching (immune to UUID changes on deploy). Tries exact match first, then partial. Falls back to `منطقة الرياض` if city not found.
+
+---
+
+## Multi-Strategy Product Search
+
+**File:** `src/bot/runner.js` → `buildSearchStrategies()` + `selectProductInModal()`
+
+Problem: Easy-Orders search is sensitive to mixed Arabic/English product names. A full name like `"splash بخاخ تقشير القدمين بزيت البرتقال والشاي الأخضر 500 مل"` may return zero results because the English word at the start confuses the search index.
+
+Solution — tries 4 strategies in order, stops at first one that returns results:
+
+| # | Strategy | Example |
+|---|---|---|
+| 1 | Full product name | `splash بخاخ تقشير القدمين بزيت البرتقال...` |
+| 2 | Arabic words only | `بخاخ تقشير القدمين بزيت البرتقال والشاي الأخضر مل` |
+| 3 | First 3 Arabic words | `بخاخ تقشير القدمين` |
+| 4 | English brand word only | `splash` |
+
+**Row matching within results:** For each strategy's results, checks each row's product name cell against the target using:
+- Exact match
+- Cell text contains target (or vice versa)
+- Word overlap ≥ 50% (lowered from 60% for more forgiving matching)
+
+If results exist but no name match → uses first result as fallback on the last strategy.
+If all strategies return zero results → order is recorded as failed.
+
+---
+
+## Output Excel
 
 **File:** `src/bot/output.js` → `buildOutputExcel()`
 
-Column mapping to Taager's bulk upload format:
+| Column | Source |
+|---|---|
+| `عدد القطع` | `order.qty` |
+| `المنتجات` | `order.productName` |
+| `السعر الكلي بدون الشحن` | `order.subtotal` |
+| `تاريخ الإنشاء` | `order.date` |
+| `المدينة` | `order.city` |
+| `المنطقة` | `order.region` |
+| `العنوان` | `order.address` |
+| `اسم المستلم` | `order.name` |
+| `الهاتف  1` | `966` + normPhone |
 
-| Column | Source | Notes |
-|---|---|---|
-| `كود_المنتج` | `order.sku` | From EasyOrders SKU column |
-| `اسم_المنتج` | `order.productName` | Truncated to 50 chars |
-| `سعر_المنتج` | `order.unitPrice` | **Price PER PIECE** — Taager multiplies by qty |
-| `الكمية` | `order.qty` | Minimum qty from catalog |
-| `اسم_العميل` | `order.name` | Truncated to 50 chars |
-| `المحافظة` | `order.city` | Default: المنطقة الشرقية |
-| `العنوان` | `order.address` | Default: المنطقة الشرقية |
-| `العنوان الوطني` | `""` | Always empty (optional field) |
-| `رقم_الهاتف` | `formatPhone966(normPhone)` | Always `966XXXXXXXXX` format |
-
-**Sheet 2 (Summary):** Groups by product name — shows order count and total qty per product.
+**Sheet 2 (Summary):** Groups by product name — order count and total qty per product, plus a TOTAL row.
 
 ---
 
-## Phase 5 — Upload to Taager Cart
+## Failed Orders Excel
 
-**File:** `src/bot/runner.js` → `phase5_uploadToCart()`
+**File:** `src/bot/output.js` → `buildFailedExcel()`
 
-1. Write output buffer to temp file: `{os.tmpdir()}/taager-upload-{timestamp}.xlsx`
-2. Navigate to `https://taager.com/sa/cart`
-3. Click `#multipleCustomers-tab-btn` ("إرسال إلى عدة عملاء")
-4. Find `#upload-file-input` (hidden `<input type="file" accept=".xlsx">`)
-5. Call `setInputFiles(tempPath)` — injects file directly, no OS dialog opens
-6. Wait up to 60 seconds for `#confirm-bulk-orders` button to appear
+Generated automatically after Phase 5 if any orders failed. Available via the **⬇️ Download Failed Orders** button (appears in results header only when failures exist, styled in red).
 
-**If Auto-Confirm is OFF (default):**
-- Show alert in UI: "Action Required — Review & Confirm Orders"
-- Play double beep sound + fire system notification
-- Bot waits up to 10 minutes watching for the confirm button to disappear
-- User reviews orders in browser → clicks تأكيد كل الطلبات manually
-- Bot detects button disappeared → continues
-
-**If Auto-Confirm is ON:**
-- Bot clicks `#confirm-bulk-orders` automatically
-- No user action needed
-
-**After confirm (either mode):**
-1. Wait 5 seconds for Taager to process orders
-2. Check if `#download-failed-orders` button is visible (within 25s)
-3. If visible → click it → download failed orders xlsx → parse it
-4. Append failed orders to `{userData}/failed-orders/failed-orders.xlsx` with run date/time
-5. Delete temp upload file
-6. Return `{ count, rows, failedDir, failedFilePath }` to dashboard
+| Column | Content |
+|---|---|
+| `المصدر` | `طلبات فعلية` (real) or `طلبات فائتة` (missed) |
+| `اسم المستلم` | Customer name |
+| `الهاتف` | Phone in 966... format |
+| `المنتجات` | Product name |
+| `عدد القطع` | Qty |
+| `السعر الكلي بدون الشحن` | Subtotal |
+| `المدينة` | City |
+| `العنوان` | Address |
+| `سبب الفشل` | Full error message from the bot |
 
 ---
 
-## Failed Orders
+## Session Handling Summary
 
-**Saved to:** `C:\Users\{user}\AppData\Roaming\taager-order-bot\failed-orders\failed-orders.xlsx`
-
-Each row from Taager's failed orders file is saved with two extra columns:
-- `Run Date` — YYYY-MM-DD of when the bot ran
-- `Run Time` — HH:MM:SS
-
-Runs **accumulate** — each run's failures are appended to the same file. Use the "📁 Open Folder" button on the results dashboard to open it directly.
-
-Common failure reasons (from Taager):
-- `Product SA010EF40099 is not available` → SKU not active in your Taager account
-- Phone number invalid for the region
-- Address too vague
+| Where | What happens on session expiry |
+|---|---|
+| Phase 1 | Detects login page → fills credentials → waits for 2FA if needed |
+| Phase 2 & 3 (export) | `withSessionGuard` detects login redirect → re-runs phase1 → retries export |
+| Phase 4 Khod (mid-attempt) | Checks URL after page load → re-runs `khodLogin()` → reloads orders page |
+| Phase 4 Khod (between retries) | Checks URL before each retry attempt → re-runs `khodLogin()` if needed |
+| Phase 5 (per order) | Checks URL after `goto /orders/create` → re-runs phase1 → retries navigate |
+| Phase 5 (retry loop) | After failed attempt, checks URL before retrying → re-logins if needed |
 
 ---
 
@@ -271,57 +311,60 @@ Common failure reasons (from Taager):
 
 | Situation | Bot Behavior |
 |---|---|
-| Phone `00966...` | Correctly strips `00` then `966` (duk.js fix) |
+| Phone `00966...` | Strips `00` then `966` → correct 9-digit core |
 | Phone `0966...` (single zero) | Strips `0` → gets `966...` → strips `966` → correct |
 | Arabic digits in phone | Converted to latin digits before processing |
 | Multi-product order row (SKU1\nSKU2) | Takes first SKU only |
 | Missed order product not in real orders | Skipped — cannot determine price/SKU |
-| Order already in Taager (last 10 days) | Skipped — phone found in Taager export |
-| Duplicate phone in same batch | Second occurrence skipped |
+| Order already in Khod (phone match) | Skipped — phone found in Khod export |
+| Same phone, same product in one batch | Second occurrence skipped |
+| Same phone, **different** product in one batch | **Both kept** — treated as separate orders |
 | Is Completed = TRUE in missed orders | Skipped |
 | Status = cancelled in real orders | Skipped |
 | Easy-Orders export rate-limited | Waits 6 min, retries up to 3 times |
 | Store selection page after login | Clicks card matching `easyStore` credential |
 | Session already active | Skips login entirely |
-
----
-
-## Price Verification Checklist
-
-Before trusting auto-confirm, manually verify on a test run:
-
-- [ ] Open the downloaded Excel (or check Taager cart before confirming)
-- [ ] For a product with qty=1: `سعر_المنتج` should equal the per-piece price (e.g. 165 SAR)
-- [ ] For a product with qty=2: `سعر_المنتج` should be the per-piece price (e.g. 160 SAR), NOT the total (320 SAR)
-- [ ] Taager's shown total = `سعر_المنتج × الكمية` — verify this matches expected
-- [ ] Phone numbers should all start with `966` followed by 9 digits starting with `5`
-- [ ] Product names should match what's in your Taager catalog
-- [ ] SKU codes should be valid (failed orders appear if SKU not found)
+| Session expires mid-run | Auto re-login + retry, no crash |
+| Product name has English mixed with Arabic | Multi-strategy search: tries Arabic-only, first 3 words, English brand |
+| Product not found after all search strategies | Recorded as failed, bot continues to next order |
+| Network timeout / element not found | Up to 3 retry attempts per order with page reload between each |
+| Khod orders page not loading | Up to 3 page reloads before failing the attempt |
 
 ---
 
 ## File Structure
 
 ```
-taager-order-bot/
+khod-order-bot/
 ├── src/
 │   ├── main/
-│   │   ├── main.js          Electron main — IPC handlers, credential store, bot spawner
+│   │   ├── main.js          Electron main — IPC handlers, credential store, license check, bot spawner
 │   │   └── preload.js       Bridge between renderer and main (exposes window.api)
 │   ├── renderer/
 │   │   ├── index.html       Single HTML shell
-│   │   ├── app.js           Page router (setup → welcome → run → results)
+│   │   ├── app.js           Page router + translations (EN/AR)
 │   │   ├── styles/main.css  Dark theme CSS
 │   │   └── pages/
-│   │       ├── setup.js     First-run credential entry (email/phone toggle for Taager)
-│   │       ├── welcome.js   Home screen — date picker + auto-confirm toggle + reset
-│   │       ├── run.js       Live bot progress — phases, logs, sound alerts, 2FA notice
-│   │       └── results.js   Dashboard — stats, product breakdown, failed orders card
+│   │       ├── license.js   License key entry + validation
+│   │       ├── setup.js     Credential entry (Easy-Orders + Khod)
+│   │       ├── welcome.js   Home screen — date picker + settings
+│   │       ├── run.js       Live bot progress — phases, logs, cooldown timers
+│   │       └── results.js   Dashboard — stats, product breakdown, failed orders, download buttons
 │   └── bot/
-│       ├── runner.js        All Playwright automation — 5 phases
-│       ├── parser.js        Excel parsing, catalog building, deduplication
-│       ├── output.js        Builds العربة output Excel
-│       └── phone.js         Phone normalization (Saudi numbers)
+│       ├── runner.js        All Playwright automation — 5 phases + session guards + retry logic
+│       ├── parser.js        Excel parsing, catalog building, deduplication logic
+│       ├── output.js        Builds main output Excel + failed orders Excel
+│       └── phone.js         Phone normalization (Saudi numbers, all formats)
+├── admin-panel/
+│   ├── index.html           License management dashboard (web-based)
+│   ├── SETUP_GUIDE.md       Admin panel setup instructions
+│   └── SUPABASE_SETUP.sql   Database schema for license system
+├── assets/
+│   ├── icon.icns            macOS app icon
+│   ├── icon.ico             Windows app icon
+│   └── icon.png             Linux / fallback icon
+├── .github/workflows/
+│   └── build.yml            GitHub Actions — auto build + release on version tag
 ├── package.json
 ├── README.md
 └── WORKFLOW.md              ← This file
@@ -329,14 +372,39 @@ taager-order-bot/
 
 ---
 
-## Data Storage Locations (Windows)
+## Data Storage Locations
 
+**Windows:**
 | Data | Location |
 |---|---|
-| Credentials (encrypted) | `%APPDATA%\taager-order-bot\credentials.json` |
-| Browser session/cookies | `%APPDATA%\taager-order-bot\bot-profile\` |
-| Failed orders history | `%APPDATA%\taager-order-bot\failed-orders\failed-orders.xlsx` |
+| Credentials (encrypted) | `%APPDATA%\khod-order-bot\credentials.json` |
+| License key (encrypted) | `%APPDATA%\khod-order-bot\license.json` |
+| Browser session/cookies | `%APPDATA%\khod-order-bot\bot-profile\` |
+
+**macOS:**
+| Data | Location |
+|---|---|
+| Credentials (encrypted) | `~/Library/Application Support/khod-order-bot/credentials.json` |
+| License key (encrypted) | `~/Library/Application Support/khod-order-bot/license.json` |
+| Browser session/cookies | `~/Library/Application Support/khod-order-bot/bot-profile/` |
 
 ---
 
-*Last updated: April 2026*
+## GitHub Actions — Automated Builds
+
+Push a version tag to trigger a full build + GitHub Release:
+
+```bash
+git tag v1.0.4
+git push origin v1.0.4
+```
+
+Builds produced:
+- macOS: `Khod-Order-Bot-x64.dmg` + `Khod-Order-Bot-arm64.dmg` + ZIP variants
+- Windows: `Khod-Order-Bot-Setup.exe` (NSIS installer) + `Khod-Order-Bot-Portable.exe`
+
+Requires `GH_TOKEN` secret set in GitHub repo settings.
+
+---
+
+*Last updated: May 2026*

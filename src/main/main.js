@@ -192,15 +192,20 @@ ipcMain.handle("check-license", async () => {
   const deviceId = getDeviceFingerprint();
   try {
     const res = await supabaseRequest("GET",
-      `/rest/v1/licenses?license_key=eq.${encodeURIComponent(key)}&select=revoked,device_id,expires_at`, null);
+      `/rest/v1/licenses?license_key=eq.${encodeURIComponent(key)}&select=revoked,device_id,expires_at,customer_name`, null);
     if (!res.data || !Array.isArray(res.data) || !res.data.length) return { valid: false, reason: "License not found on server." };
     const r = res.data[0];
     if (r.revoked) return { valid: false, reason: "Your license has been revoked. Contact support." };
     if (r.expires_at && new Date(r.expires_at) < new Date()) return { valid: false, reason: `License expired on ${new Date(r.expires_at).toLocaleDateString()}. Please renew.` };
     if (r.device_id && r.device_id !== deviceId) return { valid: false, reason: "This license is activated on a different device. Contact support to transfer." };
     const daysLeft = r.expires_at ? Math.max(0, Math.ceil((new Date(r.expires_at) - new Date()) / 86400000)) : null;
-    return { valid: true, key, daysLeft };
-  } catch { return { valid: true, key, daysLeft: null, offline: true }; }
+    const customerName = r.customer_name || null;
+    if (customerName) licenseStore.set("customerName", customerName);
+    if (daysLeft !== null) licenseStore.set("daysLeft", daysLeft);
+    return { valid: true, key, daysLeft, customerName };
+  } catch {
+    return { valid: true, key, daysLeft: licenseStore.get("daysLeft", null), customerName: licenseStore.get("customerName", null), offline: true };
+  }
 });
 
 ipcMain.handle("submit-license", async (_, key) => {
@@ -220,8 +225,11 @@ ipcMain.handle("submit-license", async (_, key) => {
         { device_id: deviceId, activated_at: new Date().toISOString() });
     }
     const daysLeft = r.expires_at ? Math.max(0, Math.ceil((new Date(r.expires_at) - new Date()) / 86400000)) : null;
+    const customerName = r.customer_name || null;
     licenseStore.set("licenseKey", clean);
-    return { success: true, daysLeft };
+    if (customerName) licenseStore.set("customerName", customerName);
+    if (daysLeft !== null) licenseStore.set("daysLeft", daysLeft);
+    return { success: true, daysLeft, customerName };
   } catch { return { success: false, reason: "Cannot reach server. Check your internet connection." }; }
 });
 
@@ -272,6 +280,16 @@ ipcMain.handle("save-credentials", async (_, creds) => {
   store.set("khodEmail",    creds.khodEmail);
   store.set("khodPassword", creds.khodPassword);
   return { success: true };
+});
+
+ipcMain.handle("get-settings", () => ({
+  theme: store.get("theme", "dark"),
+  lang:  store.get("lang",  "en"),
+}));
+ipcMain.handle("save-settings", (_, { theme, lang }) => {
+  if (theme !== undefined) store.set("theme", theme);
+  if (lang  !== undefined) store.set("lang",  lang);
+  return true;
 });
 
 ipcMain.handle("open-folder", (_, p) => { shell.openPath(p); return true; });

@@ -1,33 +1,39 @@
 // ── WELCOME PAGE ──
 window.renderWelcome = function (onContinue, onNewDate) {
-  const el = document.getElementById("page-welcome");
+  const el  = document.getElementById("page-welcome");
+  const t   = window._t;
 
-  // Today's date formatted
-  const today = new Date();
-  const todayStr = formatDate(today);
-  const todayDisplay = today.toLocaleDateString("en-GB", { day: "numeric", month: "long", year: "numeric" });
+  const today        = new Date();
+  const todayStr     = formatDate(today);
+  const todayDisplay = today.toLocaleDateString(
+    window._kbotLang === "ar" ? "ar-EG" : "en-GB",
+    { day: "numeric", month: "long", year: "numeric", calendar: "gregory" }
+  );
+
+  const todayBtnFn = t("welcome.today_btn");
+  const todayBtnLabel = typeof todayBtnFn === "function" ? todayBtnFn(todayDisplay) : todayBtnFn;
 
   el.innerHTML = `
-    <div class="center-layout">
-      <div style="width:520px">
+    <div style="min-height:100%;display:flex;justify-content:center;padding:32px 24px 40px;overflow-y:auto;width:100%">
+      <div style="width:520px;max-width:100%">
 
         <!-- Header -->
         <div style="text-align:center; margin-bottom:32px">
           <div style="font-size:48px;margin-bottom:12px">⚡</div>
-          <div class="page-title" style="font-size:28px;text-align:center">Khod whaat Order Bot</div>
-          <div class="page-subtitle" style="text-align:center">Automate your daily order processing</div>
+          <div class="page-title" style="font-size:28px;text-align:center">${t("welcome.app_title")}</div>
+          <div class="page-subtitle" style="text-align:center">${t("welcome.app_subtitle")}</div>
         </div>
 
         <!-- Main actions -->
         <div class="card" style="margin-bottom:16px">
-          <div style="font-size:12px;font-weight:700;color:var(--accent);text-transform:uppercase;letter-spacing:.08em;margin-bottom:16px">Quick Start</div>
+          <div style="font-size:12px;font-weight:700;color:var(--accent);text-transform:uppercase;letter-spacing:.08em;margin-bottom:16px">${t("welcome.quick_start")}</div>
 
           <button class="btn btn-success full-width btn-lg" id="btn-today" style="margin-bottom:10px">
-            <span>📅</span> Continue — Today (${todayDisplay})
+            ${todayBtnLabel}
           </button>
 
           <button class="btn btn-ghost full-width btn-lg" id="btn-pick-date">
-            <span>🗓️</span> New Date / Range
+            ${t("welcome.new_date_btn")}
           </button>
         </div>
 
@@ -35,8 +41,8 @@ window.renderWelcome = function (onContinue, onNewDate) {
         <div class="card" style="margin-bottom:16px" id="launchmin-card">
           <div style="display:flex;align-items:center;justify-content:space-between">
             <div>
-              <div style="font-size:13px;font-weight:700;margin-bottom:3px">🔕 Launch Minimized</div>
-              <div class="text-sm text-muted">When ON, app starts hidden in the tray — won't pop up on Windows startup.</div>
+              <div style="font-size:13px;font-weight:700;margin-bottom:3px">${t("welcome.launch_min")}</div>
+              <div class="text-sm text-muted">${t("welcome.launch_min_desc")}</div>
             </div>
             <div style="margin-left:16px;flex-shrink:0">
               <button id="btn-toggle-launchmin" style="
@@ -49,7 +55,7 @@ window.renderWelcome = function (onContinue, onNewDate) {
                   background:#fff;transition:transform 0.25s;
                 "></span>
               </button>
-              <span id="launchmin-label" class="text-sm text-muted" style="margin-left:8px">OFF</span>
+              <span id="launchmin-label" class="text-sm text-muted" style="margin-left:8px">${t("welcome.off")}</span>
             </div>
           </div>
         </div>
@@ -58,8 +64,8 @@ window.renderWelcome = function (onContinue, onNewDate) {
         <div class="card" style="margin-bottom:16px" id="autorun-card">
           <div style="display:flex;align-items:center;justify-content:space-between">
             <div>
-              <div style="font-size:13px;font-weight:700;margin-bottom:3px">⏱️ Auto-Run</div>
-              <div class="text-sm text-muted">Automatically run for today's orders on a schedule.</div>
+              <div style="font-size:13px;font-weight:700;margin-bottom:3px">${t("welcome.autorun")}</div>
+              <div class="text-sm text-muted">${t("welcome.autorun_desc")}</div>
             </div>
             <div style="margin-left:16px;flex-shrink:0;display:flex;align-items:center;gap:8px">
               <button id="btn-toggle-autorun" style="
@@ -72,12 +78,11 @@ window.renderWelcome = function (onContinue, onNewDate) {
                   background:#fff;transition:transform 0.25s;
                 "></span>
               </button>
-              <span id="autorun-label" class="text-sm text-muted">OFF</span>
+              <span id="autorun-label" class="text-sm text-muted">${t("welcome.off")}</span>
             </div>
           </div>
-          <!-- Interval picker — shown when ON -->
           <div id="autorun-interval-row" style="margin-top:14px;display:none">
-            <div style="font-size:11px;font-weight:700;color:var(--text2);text-transform:uppercase;letter-spacing:.06em;margin-bottom:8px">Run Every</div>
+            <div style="font-size:11px;font-weight:700;color:var(--text2);text-transform:uppercase;letter-spacing:.06em;margin-bottom:8px">${t("welcome.run_every")}</div>
             <div style="display:flex;gap:8px;flex-wrap:wrap" id="interval-options">
               ${[{label:"30 min",mins:30},{label:"1 hour",mins:60},{label:"2 hours",mins:120},{label:"4 hours",mins:240},{label:"6 hours",mins:360}].map(o =>
                 `<button class="btn btn-ghost interval-opt" data-mins="${o.mins}" style="font-size:12px;padding:6px 14px">${o.label}</button>`
@@ -87,65 +92,65 @@ window.renderWelcome = function (onContinue, onNewDate) {
           <div id="autorun-next" class="text-sm text-muted" style="margin-top:8px;display:none"></div>
         </div>
 
-        <!-- Date picker card (hidden by default) -->
+        <!-- Date picker card -->
         <div class="card" id="date-picker-card" style="display:none; margin-bottom:16px">
-          <div style="font-size:12px;font-weight:700;color:var(--accent);text-transform:uppercase;letter-spacing:.08em;margin-bottom:16px">Select Date</div>
+          <div style="font-size:12px;font-weight:700;color:var(--accent);text-transform:uppercase;letter-spacing:.08em;margin-bottom:16px">${t("welcome.select_date")}</div>
 
           <div class="date-options">
             <div class="date-option selected" data-mode="today">
               <div class="opt-icon">📅</div>
-              <div class="opt-label">Today</div>
+              <div class="opt-label">${t("welcome.today")}</div>
               <div class="opt-desc">${todayDisplay}</div>
             </div>
             <div class="date-option" data-mode="single">
               <div class="opt-icon">🗓️</div>
-              <div class="opt-label">Single Day</div>
-              <div class="opt-desc">Pick one date</div>
+              <div class="opt-label">${t("welcome.single_day")}</div>
+              <div class="opt-desc">${t("welcome.pick_one")}</div>
             </div>
             <div class="date-option" data-mode="range">
               <div class="opt-icon">📆</div>
-              <div class="opt-label">Date Range</div>
-              <div class="opt-desc">From → To</div>
+              <div class="opt-label">${t("welcome.date_range")}</div>
+              <div class="opt-desc">${t("welcome.from_to")}</div>
             </div>
           </div>
 
           <div id="date-inputs-container" style="display:none"></div>
 
           <button class="btn btn-primary full-width mt-12" id="btn-launch" disabled>
-            🚀 Launch Bot
+            ${t("welcome.launch_btn")}
           </button>
         </div>
 
         <!-- Danger zone -->
         <div class="card">
-          <div style="font-size:12px;font-weight:700;color:var(--danger);text-transform:uppercase;letter-spacing:.08em;margin-bottom:12px">⚠️ Reset</div>
+          <div style="font-size:12px;font-weight:700;color:var(--danger);text-transform:uppercase;letter-spacing:.08em;margin-bottom:12px">${t("welcome.reset_section")}</div>
           <div class="notice-box warn" style="margin-bottom:14px">
             <span class="notice-icon">🔐</span>
-            <div class="notice-text"><strong>New Login Credentials?</strong>Clears all saved credentials, sessions, and cookies. You'll be asked to log in again.</div>
+            <div class="notice-text">${t("welcome.reset_notice")}</div>
           </div>
-          <button class="btn btn-danger full-width" id="btn-reset">Reset All Data & Credentials</button>
+          <button class="btn btn-danger full-width" id="btn-reset">${t("welcome.reset_btn")}</button>
         </div>
 
       </div>
     </div>
   `;
 
+  // Inject fast calendar styles once
+  injectCalendarStyles();
+
   let selectedMode = "today";
   let dateFrom = todayStr;
-  let dateTo = todayStr;
+  let dateTo   = todayStr;
 
-  // ── Today button ──
   document.getElementById("btn-today").addEventListener("click", () => {
     onContinue({ dateFrom: todayStr, dateTo: todayStr });
   });
 
-  // ── New date toggle ──
   document.getElementById("btn-pick-date").addEventListener("click", () => {
     const card = document.getElementById("date-picker-card");
     card.style.display = card.style.display === "none" ? "block" : "none";
   });
 
-  // ── Date mode selection ──
   el.querySelectorAll(".date-option").forEach((opt) => {
     opt.addEventListener("click", () => {
       el.querySelectorAll(".date-option").forEach((o) => o.classList.remove("selected"));
@@ -155,13 +160,13 @@ window.renderWelcome = function (onContinue, onNewDate) {
     });
   });
 
+  // ── Fast custom date picker renderer ──
   function renderDateInputs(mode) {
     const container = document.getElementById("date-inputs-container");
     const launchBtn = document.getElementById("btn-launch");
 
     if (mode === "today") {
-      dateFrom = todayStr;
-      dateTo = todayStr;
+      dateFrom = todayStr; dateTo = todayStr;
       container.style.display = "none";
       launchBtn.disabled = false;
       return;
@@ -171,55 +176,59 @@ window.renderWelcome = function (onContinue, onNewDate) {
 
     if (mode === "single") {
       container.innerHTML = `
-        <div class="date-inputs single">
-          <div class="form-group" style="margin:0">
-            <label>Date</label>
-            <input type="date" id="input-single" value="${todayStr}" max="${todayStr}" />
+        <div style="display:flex;justify-content:center">
+          <div class="form-group" style="margin:0;width:220px">
+            <label style="text-align:center;display:block">${t("welcome.today")}</label>
+            <div id="cal-single" class="fast-cal"></div>
           </div>
         </div>
       `;
-      document.getElementById("input-single").addEventListener("change", (e) => {
-        dateFrom = e.target.value;
-        dateTo = e.target.value;
-        launchBtn.disabled = !dateFrom;
-      });
-      dateFrom = todayStr;
-      dateTo = todayStr;
+      dateFrom = todayStr; dateTo = todayStr;
       launchBtn.disabled = false;
+
+      buildCalendar(
+        document.getElementById("cal-single"),
+        todayStr,
+        todayStr,
+        (val) => { dateFrom = val; dateTo = val; launchBtn.disabled = !dateFrom; }
+      );
     } else {
       container.innerHTML = `
-        <div class="date-inputs">
+        <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px">
           <div class="form-group" style="margin:0">
-            <label>From</label>
-            <input type="date" id="input-from" value="${todayStr}" max="${todayStr}" />
+            <label>${t("welcome.from")}</label>
+            <div id="cal-from" class="fast-cal"></div>
           </div>
           <div class="form-group" style="margin:0">
-            <label>To</label>
-            <input type="date" id="input-to" value="${todayStr}" max="${todayStr}" />
+            <label>${t("welcome.to")}</label>
+            <div id="cal-to" class="fast-cal"></div>
           </div>
         </div>
       `;
-      const updateRange = () => {
-        dateFrom = document.getElementById("input-from").value;
-        dateTo = document.getElementById("input-to").value;
-        launchBtn.disabled = !dateFrom || !dateTo;
-      };
-      document.getElementById("input-from").addEventListener("change", updateRange);
-      document.getElementById("input-to").addEventListener("change", updateRange);
-      dateFrom = todayStr;
-      dateTo = todayStr;
+      dateFrom = todayStr; dateTo = todayStr;
       launchBtn.disabled = false;
+
+      buildCalendar(
+        document.getElementById("cal-from"),
+        todayStr,
+        todayStr,
+        (val) => { dateFrom = val; launchBtn.disabled = !dateFrom || !dateTo; }
+      );
+      buildCalendar(
+        document.getElementById("cal-to"),
+        todayStr,
+        todayStr,
+        (val) => { dateTo = val; launchBtn.disabled = !dateFrom || !dateTo; }
+      );
     }
   }
 
-  // ── Launch ──
   document.getElementById("btn-launch").addEventListener("click", () => {
     onContinue({ dateFrom, dateTo });
   });
 
   // ── Launch minimized toggle ──
   let launchMinEnabled = false;
-
   function updateLaunchMinUI() {
     const btn   = document.getElementById("btn-toggle-launchmin");
     const knob  = document.getElementById("launchmin-knob");
@@ -228,14 +237,13 @@ window.renderWelcome = function (onContinue, onNewDate) {
     if (launchMinEnabled) {
       btn.style.background = "var(--accent)";
       knob.style.transform = "translateX(22px)";
-      label.textContent = "ON"; label.style.color = "var(--accent)";
+      label.textContent = t("welcome.on"); label.style.color = "var(--accent)";
     } else {
       btn.style.background = "var(--border)";
       knob.style.transform = "translateX(0)";
-      label.textContent = "OFF"; label.style.color = "var(--text2)";
+      label.textContent = t("welcome.off"); label.style.color = "var(--text2)";
     }
   }
-
   document.getElementById("btn-toggle-launchmin").addEventListener("click", async () => {
     launchMinEnabled = !launchMinEnabled;
     await window.api.setLaunchMinimized(launchMinEnabled);
@@ -249,28 +257,27 @@ window.renderWelcome = function (onContinue, onNewDate) {
   let countdownInterval = null;
 
   function updateAutoRunUI() {
-    const btn      = document.getElementById("btn-toggle-autorun");
-    const knob     = document.getElementById("autorun-knob");
-    const label    = document.getElementById("autorun-label");
-    const next     = document.getElementById("autorun-next");
-    const intRow   = document.getElementById("autorun-interval-row");
+    const btn    = document.getElementById("btn-toggle-autorun");
+    const knob   = document.getElementById("autorun-knob");
+    const label  = document.getElementById("autorun-label");
+    const next   = document.getElementById("autorun-next");
+    const intRow = document.getElementById("autorun-interval-row");
     if (!btn) return;
     if (autoRunEnabled) {
       btn.style.background = "var(--warning)";
       knob.style.transform = "translateX(22px)";
-      label.textContent = "ON"; label.style.color = "var(--warning)";
+      label.textContent = t("welcome.on"); label.style.color = "var(--warning)";
       next.style.display = "block";
       intRow.style.display = "block";
       startCountdown();
     } else {
       btn.style.background = "var(--border)";
       knob.style.transform = "translateX(0)";
-      label.textContent = "OFF"; label.style.color = "var(--text2)";
+      label.textContent = t("welcome.off"); label.style.color = "var(--text2)";
       next.style.display = "none";
       intRow.style.display = "none";
       stopCountdown();
     }
-    // Highlight active interval button
     document.querySelectorAll(".interval-opt").forEach(b => {
       const active = parseInt(b.dataset.mins) === autoRunIntervalMins;
       b.className = active ? "btn btn-primary interval-opt" : "btn btn-ghost interval-opt";
@@ -286,13 +293,15 @@ window.renderWelcome = function (onContinue, onNewDate) {
       if (!next) return;
       const m = Math.floor(countdownSecs / 60);
       const s = countdownSecs % 60;
-      next.textContent = `⏳ Next auto-run in ${m}:${String(s).padStart(2,"0")}`;
+      const fn = t("welcome.next_run");
+      next.textContent = typeof fn === "function"
+        ? fn(m, String(s).padStart(2,"0"))
+        : `⏳ Next auto-run in ${m}:${String(s).padStart(2,"0")}`;
       if (countdownSecs > 0) countdownSecs--;
     };
     tick();
     countdownInterval = setInterval(tick, 1000);
   }
-
   function stopCountdown() {
     if (countdownInterval) { clearInterval(countdownInterval); countdownInterval = null; }
   }
@@ -303,24 +312,21 @@ window.renderWelcome = function (onContinue, onNewDate) {
     updateAutoRunUI();
   });
 
-  // Interval option buttons
   document.querySelectorAll(".interval-opt").forEach(btn => {
     btn.addEventListener("click", async () => {
       autoRunIntervalMins = parseInt(btn.dataset.mins);
       await window.api.setAutoRunInterval(autoRunIntervalMins);
-      countdownSecs = autoRunIntervalMins * 60; // reset countdown
+      countdownSecs = autoRunIntervalMins * 60;
       updateAutoRunUI();
     });
   });
 
-  // ── Listen for auto-run ticks from main process ──
   window.api.removeAllListeners("auto-run-tick");
   window.api.onAutoRunTick(({ dateFrom, dateTo }) => {
-    countdownSecs = autoRunIntervalMins * 60; // reset countdown
+    countdownSecs = autoRunIntervalMins * 60;
     onContinue({ dateFrom, dateTo });
   });
 
-  // Load saved values for both new toggles
   window.api.getCredentials().then((creds) => {
     launchMinEnabled = creds.launchMinimized || false;
     updateLaunchMinUI();
@@ -329,13 +335,12 @@ window.renderWelcome = function (onContinue, onNewDate) {
     updateAutoRunUI();
   });
 
-  // ── Reset ──
   document.getElementById("btn-reset").addEventListener("click", async () => {
     const confirmed = await showConfirm(
-      "Reset All Data?",
-      "This will delete all saved credentials, browser sessions, and cookies. You'll need to enter your login details again.",
-      "Reset Everything",
-      "Cancel"
+      t("welcome.reset_confirm_title"),
+      t("welcome.reset_confirm_msg"),
+      t("welcome.reset_confirm_ok"),
+      t("welcome.reset_confirm_cancel")
     );
     if (confirmed) {
       await window.api.clearAllData();
@@ -343,6 +348,166 @@ window.renderWelcome = function (onContinue, onNewDate) {
     }
   });
 };
+
+// ══════════════════════════════════════════════════════
+// ── Fast Custom Calendar — no native picker, zero lag ──
+// ══════════════════════════════════════════════════════
+
+/**
+ * buildCalendar(container, initialValue, maxDate, onChange)
+ *
+ * Renders a compact inline calendar entirely with divs.
+ * Avoids all native <input type="date"> Electron lag.
+ * onChange(dateString) called when a day is selected.
+ */
+function buildCalendar(container, initial, maxDate, onChange) {
+  // Parse as local date (not UTC)
+  const parseLocal = (str) => {
+    const [y, m, d] = str.split("-").map(Number);
+    return new Date(y, m - 1, d);
+  };
+
+  const maxD   = parseLocal(maxDate);
+  let selected = parseLocal(initial);
+  let viewYear  = selected.getFullYear();
+  let viewMonth = selected.getMonth();
+
+  const DAYS   = ["Su","Mo","Tu","We","Th","Fr","Sa"];
+  const MONTHS = ["Jan","Feb","Mar","Apr","May","Jun",
+                  "Jul","Aug","Sep","Oct","Nov","Dec"];
+
+  function render() {
+    const selStr    = formatDate(selected);
+    const maxStr    = formatDate(maxD);
+    const todayStr2 = formatDate(new Date());
+
+    const firstDay  = new Date(viewYear, viewMonth, 1);
+    const lastDay   = new Date(viewYear, viewMonth + 1, 0);
+    const startDow  = firstDay.getDay();
+    const totalDays = lastDay.getDate();
+
+    const maxYear  = maxD.getFullYear();
+    const maxMonth = maxD.getMonth();
+    const canNext  = viewYear < maxYear || (viewYear === maxYear && viewMonth < maxMonth);
+    const minYear  = new Date().getFullYear() - 5;
+    const canPrev  = viewYear > minYear || (viewYear === minYear && viewMonth > 0);
+
+    // Build cells via string concat — fastest approach
+    let cells = "";
+    for (let i = 0; i < startDow; i++) {
+      cells += `<div class="fc-cell fc-empty"></div>`;
+    }
+    for (let d = 1; d <= totalDays; d++) {
+      const dateStr = `${viewYear}-${String(viewMonth+1).padStart(2,"0")}-${String(d).padStart(2,"0")}`;
+      const isSel  = dateStr === selStr;
+      const isTdy  = dateStr === todayStr2;
+      const isDis  = dateStr > maxStr;
+      let cls = "fc-cell fc-day";
+      if (isSel)      cls += " fc-selected";
+      else if (isTdy) cls += " fc-today";
+      if (isDis)      cls += " fc-disabled";
+      cells += `<div class="${cls}" data-date="${dateStr}">${d}</div>`;
+    }
+
+    container.innerHTML = `
+      <div class="fc-wrap">
+        <div class="fc-header">
+          <button class="fc-nav" data-dir="-1"${canPrev ? "" : " disabled"}>&#8249;</button>
+          <span class="fc-month-label">${MONTHS[viewMonth]} ${viewYear}</span>
+          <button class="fc-nav" data-dir="1"${canNext ? "" : " disabled"}>&#8250;</button>
+        </div>
+        <div class="fc-grid">
+          ${DAYS.map(d => `<div class="fc-cell fc-weekday">${d}</div>`).join("")}
+          ${cells}
+        </div>
+        <div class="fc-selected-display">${selStr}</div>
+      </div>
+    `;
+
+    // Single delegated click on the grid — more efficient than per-cell listeners
+    container.querySelector(".fc-grid").addEventListener("click", (e) => {
+      const cell = e.target.closest(".fc-day");
+      if (!cell || cell.classList.contains("fc-disabled")) return;
+      selected = parseLocal(cell.dataset.date);
+      render();
+      onChange(cell.dataset.date);
+    });
+
+    container.querySelectorAll(".fc-nav").forEach(btn => {
+      btn.addEventListener("click", () => {
+        viewMonth += parseInt(btn.dataset.dir);
+        if (viewMonth > 11) { viewMonth = 0; viewYear++; }
+        if (viewMonth < 0)  { viewMonth = 11; viewYear--; }
+        render();
+      });
+    });
+  }
+
+  render();
+}
+
+// Inject calendar CSS exactly once
+function injectCalendarStyles() {
+  if (document.getElementById("fast-cal-styles")) return;
+  const s = document.createElement("style");
+  s.id = "fast-cal-styles";
+  s.textContent = `
+    .fast-cal { width:100%; }
+    .fc-wrap {
+      background:var(--bg3);
+      border:1px solid var(--border);
+      border-radius:var(--radius-sm);
+      padding:10px;
+      user-select:none;
+    }
+    .fc-header {
+      display:flex;
+      align-items:center;
+      justify-content:space-between;
+      margin-bottom:8px;
+    }
+    .fc-month-label { font-size:13px;font-weight:700;color:var(--text); }
+    .fc-nav {
+      background:none;
+      border:1px solid var(--border);
+      border-radius:6px;
+      color:var(--text2);
+      cursor:pointer;
+      font-size:18px;
+      line-height:1;
+      padding:2px 8px;
+      transition:background 0.1s,color 0.1s;
+    }
+    .fc-nav:hover:not(:disabled) { background:var(--accent);color:#fff;border-color:var(--accent); }
+    .fc-nav:disabled { opacity:0.3;cursor:default; }
+    .fc-grid { display:grid;grid-template-columns:repeat(7,1fr);gap:2px; }
+    .fc-cell {
+      aspect-ratio:1;
+      display:flex;
+      align-items:center;
+      justify-content:center;
+      font-size:11px;
+      border-radius:4px;
+      min-width:0;
+    }
+    .fc-weekday { font-size:9px;font-weight:700;color:var(--text2);text-transform:uppercase; }
+    .fc-day { cursor:pointer;color:var(--text);transition:background 0.07s; }
+    .fc-day:hover:not(.fc-disabled) { background:rgba(79,142,247,0.18);color:var(--accent); }
+    .fc-today { background:rgba(79,142,247,0.1);color:var(--accent);font-weight:700; }
+    .fc-selected { background:var(--accent)!important;color:#fff!important;font-weight:700; }
+    .fc-disabled { opacity:0.25;cursor:default; }
+    .fc-empty { visibility:hidden; }
+    .fc-selected-display {
+      margin-top:8px;
+      text-align:center;
+      font-size:11px;
+      color:var(--text2);
+      font-variant-numeric:tabular-nums;
+      letter-spacing:0.04em;
+    }
+  `;
+  document.head.appendChild(s);
+}
 
 // ── Helpers ──
 function formatDate(date) {
@@ -371,6 +536,6 @@ function showConfirm(title, message, confirmText, cancelText) {
     `;
     document.body.appendChild(overlay);
     document.getElementById("dlg-confirm").addEventListener("click", () => { overlay.remove(); resolve(true); });
-    document.getElementById("dlg-cancel").addEventListener("click", () => { overlay.remove(); resolve(false); });
+    document.getElementById("dlg-cancel").addEventListener("click",  () => { overlay.remove(); resolve(false); });
   });
 }

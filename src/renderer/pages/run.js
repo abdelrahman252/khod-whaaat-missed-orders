@@ -41,7 +41,6 @@ function playSound(type) {
 
 // ════════════════════════════════════════
 // GLOBAL COOLDOWN — 6 min after each run
-// Stored on window so it survives page re-renders
 // ════════════════════════════════════════
 if (!window._cooldownUntil) window._cooldownUntil = 0;
 
@@ -65,33 +64,36 @@ function formatCountdown(ms) {
 // ════════════════════════════════════════
 window.renderRun = function (dateFrom, dateTo, onComplete, onHome) {
   const el = document.getElementById("page-run");
+  const t  = window._t;
 
-  const dateDisplay = dateFrom === dateTo
-    ? dateFrom
-    : `${dateFrom} → ${dateTo}`;
+  const dateDisplay = dateFrom === dateTo ? dateFrom : `${dateFrom} → ${dateTo}`;
+
+  const phaseNames = [
+    t("run.phase0"), t("run.phase1"), t("run.phase2"), t("run.phase3"), t("run.phase4")
+  ];
 
   el.innerHTML = `
-    <div style="display:flex;flex-direction:column;height:100%;padding:24px;gap:16px">
+    <div style="display:flex;flex-direction:column;height:100%;width:100%;padding:24px;gap:16px">
 
       <!-- Header -->
       <div style="display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:8px">
         <div>
-          <div class="page-title" style="font-size:20px">Running Bot</div>
+          <div class="page-title" style="font-size:20px">${t("run.title")}</div>
           <div class="text-muted text-sm">📅 ${dateDisplay}</div>
         </div>
         <div style="display:flex;align-items:center;gap:8px">
-          <div class="badge badge-accent" id="run-status-badge">● Starting...</div>
-          <button class="btn btn-danger" id="btn-stop" style="font-size:12px;padding:6px 14px">⏹ Stop</button>
-          <button class="btn btn-ghost" id="btn-home-run" style="font-size:12px;padding:6px 14px">🏠 Home</button>
+          <div class="badge badge-accent" id="run-status-badge">${t("run.starting")}</div>
+          <button class="btn btn-danger" id="btn-stop" style="font-size:12px;padding:6px 14px">${t("run.stop")}</button>
+          <button class="btn btn-ghost" id="btn-home-run" style="font-size:12px;padding:6px 14px">${t("run.home")}</button>
         </div>
       </div>
 
-      <!-- Cooldown bar (hidden until triggered) -->
-      <div id="global-cooldown-bar" style="display:none;background:rgba(124,106,247,0.1);border:1px solid #7c6af7;border-radius:var(--radius);padding:10px 16px;display:none;align-items:center;gap:12px">
+      <!-- Cooldown bar -->
+      <div id="global-cooldown-bar" style="display:none;background:rgba(124,106,247,0.1);border:1px solid #7c6af7;border-radius:var(--radius);padding:10px 16px;align-items:center;gap:12px">
         <span style="font-size:16px">⏳</span>
         <div style="flex:1">
-          <div style="font-size:12px;font-weight:700;color:#a89cf7">Cooldown — Easy-Orders Rate Limit</div>
-          <div style="font-size:11px;color:var(--text2)">Next run available in <strong id="cooldown-timer" style="color:#a89cf7">6:00</strong></div>
+          <div style="font-size:12px;font-weight:700;color:#a89cf7">${t("run.cooldown_label")}</div>
+          <div style="font-size:11px;color:var(--text2)">${t("run.cooldown_next")} <strong id="cooldown-timer" style="color:#a89cf7">6:00</strong></div>
         </div>
         <div style="width:120px;height:6px;background:var(--border);border-radius:3px;overflow:hidden">
           <div id="cooldown-bar-fill" style="height:100%;background:#7c6af7;width:100%;transition:width 1s linear"></div>
@@ -100,12 +102,12 @@ window.renderRun = function (dateFrom, dateTo, onComplete, onHome) {
 
       <!-- Phase status -->
       <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px" id="phases-grid">
-        ${["Easy-Orders Login", "Real Orders Export", "Missed Orders Export", "Khod Login & Export", "Create Orders in Easy-Orders"].map((name, i) => `
+        ${phaseNames.map((name, i) => `
           <div class="status-row" id="phase-${i}" style="${i === 4 ? 'grid-column:1/-1' : ''}">
             <div class="status-dot" id="dot-${i}"></div>
             <div>
               <div style="font-size:13px;font-weight:600">${name}</div>
-              <div class="text-sm text-muted" id="phase-label-${i}">Waiting...</div>
+              <div class="text-sm text-muted" id="phase-label-${i}">${t("run.waiting")}</div>
             </div>
           </div>
         `).join("")}
@@ -115,8 +117,8 @@ window.renderRun = function (dateFrom, dateTo, onComplete, onHome) {
       <div class="notice-box warn" id="notice-2fa" style="display:none">
         <span class="notice-icon">🔐</span>
         <div class="notice-text">
-          <strong>2FA Required</strong>
-          Complete two-step verification in the browser window, then return here.
+          <strong>${t("run.2fa_title")}</strong>
+          ${t("run.2fa_msg")}
         </div>
       </div>
 
@@ -124,16 +126,16 @@ window.renderRun = function (dateFrom, dateTo, onComplete, onHome) {
       <div class="notice-box warn" id="notice-confirm" style="display:none;border-color:var(--warning);background:rgba(255,201,77,0.12)">
         <span class="notice-icon">👀</span>
         <div class="notice-text">
-          <strong>Action Required — Review & Confirm Orders</strong>
-          Review in the browser window, then click <strong>تأكيد كل الطلبات</strong>. Bot is waiting (up to 10 min).
+          <strong>${t("run.confirm_title")}</strong>
+          ${t("run.confirm_msg")}
         </div>
       </div>
 
-      <!-- Khod Restart Notice (shown when export fails and is retrying) -->
+      <!-- Khod Restart Notice -->
       <div class="notice-box warn" id="notice-khod-restart" style="display:none;border-color:#ff6b35;background:rgba(255,107,53,0.1)">
         <span class="notice-icon">🔄</span>
         <div class="notice-text" style="flex:1">
-          <strong>Khod Export Failed — Restarting Automatically</strong>
+          <strong>${t("run.restart_title")}</strong>
           <div id="khod-restart-reason" style="font-size:11px;color:var(--text2);margin-top:3px"></div>
           <div style="display:flex;align-items:center;gap:10px;margin-top:8px">
             <div style="font-size:13px;color:#ff6b35;font-weight:700">
@@ -151,16 +153,16 @@ window.renderRun = function (dateFrom, dateTo, onComplete, onHome) {
       <div class="notice-box warn" id="notice-cooldown" style="display:none;border-color:#7c6af7;background:rgba(124,106,247,0.1)">
         <span class="notice-icon">⏸️</span>
         <div class="notice-text">
-          <strong>Rate Limit — Cooldown in Progress</strong>
+          <strong>${t("run.ratelimit_title")}</strong>
           <span id="cooldown-msg">Easy-Orders allows 1 export per 5 minutes. Waiting...</span>
         </div>
       </div>
 
-      <!-- Upload progress panel (shown during Phase 5) -->
+      <!-- Upload progress panel -->
       <div id="upload-progress-panel" style="display:none;background:var(--bg2);border:1px solid var(--accent);border-radius:var(--radius);padding:14px">
         <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:10px">
           <div style="font-size:12px;font-weight:700;color:var(--accent);text-transform:uppercase;letter-spacing:.06em">
-            📤 Creating Orders in Easy-Orders
+            ${t("run.creating")}
           </div>
           <div id="upload-counter" style="font-size:12px;color:var(--text2)">0 / 0</div>
         </div>
@@ -168,7 +170,7 @@ window.renderRun = function (dateFrom, dateTo, onComplete, onHome) {
           <div id="upload-progress-bar" style="height:100%;background:var(--accent);width:0%;transition:width 0.4s ease;border-radius:4px"></div>
         </div>
         <div style="display:flex;justify-content:space-between;font-size:11px">
-          <div id="upload-last-order" style="color:var(--text2)">Starting...</div>
+          <div id="upload-last-order" style="color:var(--text2)">${t("run.progress_start")}</div>
           <div style="display:flex;gap:12px">
             <span style="color:var(--success)">✅ <span id="upload-success-count">0</span></span>
             <span style="color:var(--danger)">❌ <span id="upload-fail-count">0</span></span>
@@ -181,7 +183,7 @@ window.renderRun = function (dateFrom, dateTo, onComplete, onHome) {
 
       <!-- Log terminal -->
       <div style="flex:1;display:flex;flex-direction:column;min-height:0">
-        <div style="font-size:11px;font-weight:700;color:var(--text2);text-transform:uppercase;letter-spacing:.06em;margin-bottom:6px">Live Log</div>
+        <div style="font-size:11px;font-weight:700;color:var(--text2);text-transform:uppercase;letter-spacing:.06em;margin-bottom:6px">${t("run.live_log")}</div>
         <div class="log-terminal" id="log-output" style="flex:1;height:auto"></div>
       </div>
 
@@ -192,7 +194,26 @@ window.renderRun = function (dateFrom, dateTo, onComplete, onHome) {
   const badge  = document.getElementById("run-status-badge");
   let botDone  = false;
 
-  // ── Home button — always works ──
+  // ── Log batching — collect lines between animation frames ──
+  // During heavy bot output this reduces DOM thrashing from O(n) reflows to 1/frame.
+  let _logQueue = [];
+  let _logRafPending = false;
+  function _flushLog() {
+    _logRafPending = false;
+    if (!_logQueue.length) return;
+    const frag = document.createDocumentFragment();
+    for (const { text, cls } of _logQueue) {
+      const line = document.createElement("div");
+      if (cls) line.className = cls;
+      line.textContent = text;
+      frag.appendChild(line);
+    }
+    _logQueue = [];
+    logEl.appendChild(frag);
+    logEl.scrollTop = logEl.scrollHeight;
+  }
+
+  // ── Home button ──
   document.getElementById("btn-home-run").addEventListener("click", () => {
     cleanup();
     onHome();
@@ -217,19 +238,18 @@ window.renderRun = function (dateFrom, dateTo, onComplete, onHome) {
 
   // ── Log helpers ──
   function appendLog(msg) {
-    const line = document.createElement("div");
-    if (msg.startsWith("✅") || msg.startsWith("📦") || msg.startsWith("📋")) {
-      line.className = "log-ok";
-    } else if (msg.startsWith("❌") || msg.startsWith("FATAL") || msg.startsWith("ERR:")) {
-      line.className = "log-err";
-    } else if (msg.startsWith("⚠️") || msg.startsWith("⏳") || msg.startsWith("⏸️")) {
-      line.className = "log-warn";
-    } else if (msg.startsWith("═") || msg.startsWith("PHASE") || msg.startsWith("📅") || msg.startsWith("🤖")) {
-      line.className = "log-info";
+    let cls = "";
+    const ch = msg[0];
+    if (ch === "✅" || msg.startsWith("📦") || msg.startsWith("📋")) cls = "log-ok";
+    else if (ch === "❌" || msg.startsWith("FATAL") || msg.startsWith("ERR:")) cls = "log-err";
+    else if (msg.startsWith("⚠️") || msg.startsWith("⏳") || msg.startsWith("⏸️")) cls = "log-warn";
+    else if (ch === "═" || msg.startsWith("PHASE") || msg.startsWith("📅") || msg.startsWith("🤖")) cls = "log-info";
+
+    _logQueue.push({ text: msg, cls });
+    if (!_logRafPending) {
+      _logRafPending = true;
+      requestAnimationFrame(_flushLog);
     }
-    line.textContent = msg;
-    logEl.appendChild(line);
-    logEl.scrollTop = logEl.scrollHeight;
     updatePhases(msg);
   }
 
@@ -238,8 +258,8 @@ window.renderRun = function (dateFrom, dateTo, onComplete, onHome) {
       { keywords: ["Easy-Orders Login", "PHASE 1", "easy-orders login"], idx: 0 },
       { keywords: ["Real Orders Export", "PHASE 2", "Real orders"],       idx: 1 },
       { keywords: ["Missed Orders Export", "PHASE 3", "Missed orders"],   idx: 2 },
-      { keywords: ["Khod whaat Login", "PHASE 4", "Khod whaat orders"],           idx: 3 },
-      { keywords: ["Upload to Khod whaat Cart", "PHASE 5", "Cart page"],      idx: 4 },
+      { keywords: ["Khod whaat Login", "PHASE 4", "Khod whaat orders"],   idx: 3 },
+      { keywords: ["Upload to Khod whaat Cart", "PHASE 5", "Cart page"],  idx: 4 },
     ];
     for (const p of phaseMap) {
       if (p.keywords.some((k) => msg.includes(k))) setPhaseActive(p.idx);
@@ -272,7 +292,6 @@ window.renderRun = function (dateFrom, dateTo, onComplete, onHome) {
     const bar = document.getElementById("global-cooldown-bar");
     if (!bar) return;
     bar.style.display = "flex";
-
     const TOTAL = 6 * 60 * 1000;
     cooldownInterval = setInterval(() => {
       const remaining = getCooldownRemaining();
@@ -287,7 +306,6 @@ window.renderRun = function (dateFrom, dateTo, onComplete, onHome) {
     }, 1000);
   }
 
-  // Show cooldown bar if it was already running (e.g. navigated home and back)
   if (getCooldownRemaining() > 0) showCooldownBar();
 
   // ── Event subscriptions ──
@@ -303,7 +321,7 @@ window.renderRun = function (dateFrom, dateTo, onComplete, onHome) {
     window.api.removeAllListeners("bot-khod-restart");
   }
 
-  cleanup(); // clear any stale listeners first
+  cleanup();
 
   window.api.onBotLog((msg) => appendLog(msg));
 
@@ -313,14 +331,16 @@ window.renderRun = function (dateFrom, dateTo, onComplete, onHome) {
     previewEl.style.display = "block";
     window._previewBuffer = data.buffer;
 
-    const cols = ["#", "SKU", "Product", "Price", "Qty", "City", "Phone"];
+    const cols = t("run.preview_cols");
     const rows = data.rows.slice(0, 10);
     const more = data.total > 10 ? `<div style="font-size:11px;color:var(--text2);padding:6px 0 0">+ ${data.total - 10} more rows…</div>` : "";
+    const headerFn = t("run.preview_header");
+    const headerLabel = typeof headerFn === "function" ? headerFn(data.total) : headerFn;
 
     previewEl.innerHTML = `
       <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:10px">
         <div style="font-size:12px;font-weight:700;color:var(--accent);text-transform:uppercase;letter-spacing:.06em">
-          📋 Preview — ${data.total} orders ready to upload
+          ${headerLabel}
         </div>
         <button id="btn-preview-download" class="btn btn-primary" style="font-size:11px;padding:5px 12px">⬇️ Download Now</button>
       </div>
@@ -399,7 +419,6 @@ window.renderRun = function (dateFrom, dateTo, onComplete, onHome) {
     badge.style.background = "rgba(255,107,53,0.15)";
     badge.style.color = "#ff6b35";
 
-    // Countdown
     if (window._khodRestartInterval) clearInterval(window._khodRestartInterval);
     const TOTAL = msg.waitSeconds;
     let remaining = msg.waitSeconds;
@@ -424,31 +443,30 @@ window.renderRun = function (dateFrom, dateTo, onComplete, onHome) {
     window._khodRestartInterval = setInterval(tick, 1000);
   });
 
+  // Cache order-progress refs once — these are queried on every progress tick
+  const _upPanel   = document.getElementById("upload-progress-panel");
+  const _upBar     = document.getElementById("upload-progress-bar");
+  const _upCounter = document.getElementById("upload-counter");
+  const _upLast    = document.getElementById("upload-last-order");
+  const _upSuccess = document.getElementById("upload-success-count");
+  const _upFail    = document.getElementById("upload-fail-count");
+
   window.api.on("bot-order-progress", (msg) => {
-    const panel = document.getElementById("upload-progress-panel");
-    if (panel) panel.style.display = "block";
-
+    if (_upPanel) _upPanel.style.display = "block";
     const pct = msg.total > 0 ? (msg.current / msg.total * 100) : 0;
-    const bar = document.getElementById("upload-progress-bar");
-    const counter = document.getElementById("upload-counter");
-    const lastOrder = document.getElementById("upload-last-order");
-    const successCount = document.getElementById("upload-success-count");
-    const failCount = document.getElementById("upload-fail-count");
-
-    if (bar)          bar.style.width = pct + "%";
-    if (counter)      counter.textContent = `${msg.current} / ${msg.total}`;
-    if (successCount) successCount.textContent = msg.success;
-    if (failCount)    failCount.textContent = msg.failed;
-    if (lastOrder) {
+    if (_upBar)     _upBar.style.width = pct + "%";
+    if (_upCounter) _upCounter.textContent = `${msg.current} / ${msg.total}`;
+    if (_upSuccess) _upSuccess.textContent = msg.success;
+    if (_upFail)    _upFail.textContent = msg.failed;
+    if (_upLast) {
       if (msg.lastOrder?.error) {
-        lastOrder.style.color = "var(--danger)";
-        lastOrder.textContent = `❌ ${msg.lastOrder.product} — ${msg.lastOrder.error}`;
+        _upLast.style.color = "var(--danger)";
+        _upLast.textContent = `❌ ${msg.lastOrder.product} — ${msg.lastOrder.error}`;
       } else {
-        lastOrder.style.color = "var(--text2)";
-        lastOrder.textContent = `↳ ${msg.lastOrder?.product || ""}`;
+        _upLast.style.color = "var(--text2)";
+        _upLast.textContent = `↳ ${msg.lastOrder?.product || ""}`;
       }
     }
-
     badge.textContent = `📤 Uploading ${msg.current}/${msg.total}`;
     badge.style.background = "rgba(0,214,143,0.12)";
     badge.style.color = "var(--success)";
@@ -470,14 +488,11 @@ window.renderRun = function (dateFrom, dateTo, onComplete, onHome) {
     window.api.botFinished();
     cleanup();
 
-    // Start 6-min cooldown after every run
     startGlobalCooldown();
     showCooldownBar();
 
-    // Hide stop button, keep home visible
     document.getElementById("btn-stop").style.display = "none";
 
-    // Mark active phases done
     for (let i = 0; i < 5; i++) {
       const dot = document.getElementById(`dot-${i}`);
       if (dot && dot.classList.contains("active")) {
@@ -495,7 +510,6 @@ window.renderRun = function (dateFrom, dateTo, onComplete, onHome) {
       playSound("success");
       setTimeout(() => onComplete(result.data), 1200);
     } else if (result.error === "LICENSE_INVALID") {
-      // License expired mid-session — redirect to license page
       badge.textContent = "🔒 License Expired";
       badge.style.background = "rgba(255,77,109,0.15)";
       badge.style.color = "var(--danger)";

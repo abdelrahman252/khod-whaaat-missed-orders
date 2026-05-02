@@ -13,10 +13,36 @@ const {
   resolveMissedOrders,
   mergeAndDeduplicate,
 } = require("./parser");
-const { buildOutputExcel } = require("./output");
+const { buildOutputExcel, buildFailedExcel } = require("./output");
 
 const config = JSON.parse(process.env.BOT_CONFIG || "{}");
 const log = (msg) => process.stdout.write(msg + "\n");
+
+// ════════════════════════════════════════
+// SESSION GUARD
+// Wraps any page action. If the site redirected
+// to a login page mid-run, re-logs in and retries once.
+// ════════════════════════════════════════
+async function withSessionGuard(page, actionFn, reloginFn, siteName) {
+  try {
+    return await actionFn();
+  } catch (err) {
+    const url = page.url();
+    const isLoggedOut =
+      url.includes("/login") ||
+      url.includes("/auth/login") ||
+      url.includes("#/login");
+
+    if (isLoggedOut) {
+      log(`⚠️ ${siteName}: session expired mid-run — re-logging in...`);
+      await reloginFn();
+      log(`🔄 ${siteName}: retrying after re-login...`);
+      return await actionFn(); // retry once
+    }
+
+    throw err; // not a session issue — bubble up normally
+  }
+}
 
 // ════════════════════════════════════════
 // FIND REAL CHROME
@@ -429,7 +455,12 @@ async function phase2_realOrders(page, exportFromDate) {
   log("  PHASE 2 — Real Orders Export");
   log("═══════════════════════════════════════\n");
 
-  const url    = await triggerEasyOrdersExport(page, exportFromDate, "orders");
+  const url = await withSessionGuard(
+    page,
+    () => triggerEasyOrdersExport(page, exportFromDate, "orders"),
+    () => phase1_easyOrdersLogin(page),
+    "Easy-Orders"
+  );
   const buffer = await downloadToBuffer(page, url);
   log(`✅ Real orders downloaded: ${buffer.length} bytes`);
   return buffer;
@@ -443,7 +474,12 @@ async function phase3_missedOrders(page, exportFromDate) {
   log("  PHASE 3 — Missed Orders Export");
   log("═══════════════════════════════════════\n");
 
-  const url    = await triggerEasyOrdersExport(page, exportFromDate, "missed-orders");
+  const url = await withSessionGuard(
+    page,
+    () => triggerEasyOrdersExport(page, exportFromDate, "missed-orders"),
+    () => phase1_easyOrdersLogin(page),
+    "Easy-Orders"
+  );
   const buffer = await downloadToBuffer(page, url);
   log(`✅ Missed orders downloaded: ${buffer.length} bytes`);
   return buffer;
@@ -537,6 +573,16 @@ async function khodExportAttempt(page, exportFromDate, dateTo, attemptNum) {
     try {
       await page.goto("https://khod-whaat.com/affiliate/orders/list/all", { waitUntil: "domcontentloaded" });
       await page.waitForTimeout(3000);
+
+      // ── Session guard: if redirected to login, re-login before proceeding ──
+      const currentUrl = page.url();
+      if (currentUrl.includes("/login") || currentUrl.includes("/auth")) {
+        log("🔐 Khod session expired mid-attempt — re-logging in...");
+        await khodLogin(page);
+        await page.goto("https://khod-whaat.com/affiliate/orders/list/all", { waitUntil: "domcontentloaded" });
+        await page.waitForTimeout(3000);
+      }
+
       // ── Wait for date input to appear ──
       log("⌛ Waiting for date filter input...");
       await page.waitForSelector("#from_date + input", { timeout: 20000 });
@@ -928,6 +974,11 @@ async function phase5_createOrders(page, orders) {
         name: order.name,
         product: order.productName,
         phone: "966" + order.normPhone,
+        source: order.source || "real",   // "real" or "missed"
+        city: order.city || "",
+        address: order.address || "",
+        qty: order.qty || 1,
+        subtotal: order.subtotal || 0,
         error: err.message,
       });
 
@@ -957,20 +1008,56 @@ async function phase5_createOrders(page, orders) {
 }
 
 async function createSingleOrder(page, order, orderNum) {
+  const MAX_ORDER_ATTEMPTS = 3;
+
+  for (let attempt = 1; attempt <= MAX_ORDER_ATTEMPTS; attempt++) {
+    try {
+      await createSingleOrderAttempt(page, order, orderNum, attempt);
+      return; // ✅ success
+    } catch (err) {
+      log(`${orderNum} ⚠️ Attempt ${attempt}/${MAX_ORDER_ATTEMPTS} failed: ${err.message}`);
+
+      if (attempt < MAX_ORDER_ATTEMPTS) {
+        log(`${orderNum} 🔄 Reloading page and retrying...`);
+        try {
+          // Hard reset: go to orders list first to fully clear React state
+          await page.goto("https://app.easy-orders.net/#/orders", { waitUntil: "domcontentloaded" });
+          await page.waitForTimeout(2000);
+          // Re-login if session was lost during the attempt
+          if (page.url().includes("login")) {
+            log(`${orderNum} 🔐 Session expired — re-logging in before retry...`);
+            await phase1_easyOrdersLogin(page);
+          }
+        } catch { /* non-fatal — next attempt will handle it */ }
+        await page.waitForTimeout(1500);
+      } else {
+        // All attempts exhausted — rethrow so phase5 records it as failed
+        throw err;
+      }
+    }
+  }
+}
+
+async function createSingleOrderAttempt(page, order, orderNum, attempt) {
   // ── Resolve address/city ──
-  // Rules:
-  //   - city: always from the sheet; DEFAULT_CITY only when sheet value is blank/null
-  //   - address: sheet value if present, otherwise use city name — never empty
   console.log("PARSED CITY:", order.city);
   const finalCity    = (order.city    && order.city.trim())    ? order.city.trim()    : DEFAULT_CITY;
   const finalAddress = (order.address && order.address.trim()) ? order.address.trim() : finalCity;
   console.log("FINAL CITY:", finalCity);
 
-  log(`${orderNum} ↳ city="${finalCity}" address="${finalAddress}"`);
+  if (attempt > 1) log(`${orderNum} ↳ [Attempt ${attempt}] city="${finalCity}"`);
+  else             log(`${orderNum} ↳ city="${finalCity}" address="${finalAddress}"`);
 
   // ── 1. Navigate directly to create page ──
-  // React fully resets on navigation — no need for the extra orders-list reload
   await page.goto("https://app.easy-orders.net/#/orders/create", { waitUntil: "domcontentloaded" });
+
+  // ── Session guard ──
+  if (page.url().includes("login")) {
+    log(`${orderNum} ⚠️ Easy-Orders session expired — re-logging in...`);
+    await phase1_easyOrdersLogin(page);
+    await page.goto("https://app.easy-orders.net/#/orders/create", { waitUntil: "domcontentloaded" });
+  }
+
   await page.waitForSelector('button:has-text("Choose Products")', { timeout: 15000 });
   await page.waitForTimeout(800);
 
@@ -978,34 +1065,20 @@ async function createSingleOrder(page, order, orderNum) {
   await page.click('button:has-text("Choose Products")');
   await page.waitForTimeout(1200);
 
-  // ── 3. Search — instant paste via React synthetic event (no per-char delay) ──
-  const searchInput = page.locator('input[name="name"]');
-  await searchInput.waitFor({ timeout: 10000 });
-  await searchInput.click({ clickCount: 3 });
-  await page.evaluate((text) => {
-    const el = document.querySelector('input[name="name"]');
-    if (!el) return;
-    const setter = Object.getOwnPropertyDescriptor(window.HTMLInputElement.prototype, "value").set;
-    setter.call(el, text);
-    el.dispatchEvent(new Event("input",  { bubbles: true }));
-    el.dispatchEvent(new Event("change", { bubbles: true }));
-  }, order.productName);
-  await page.waitForTimeout(1200); // wait for React to re-render search results
-
-  // ── 4. Find and click the matching product checkbox ──
+  // ── 3. Search + select product (multi-strategy inside selectProductInModal) ──
   const productSelected = await selectProductInModal(page, order.productName, orderNum);
   if (!productSelected) {
     throw new Error(`Product not found in modal: "${order.productName}"`);
   }
 
-  // ── 5. Click "Add Products" ──
+  // ── 4. Click "Add Products" ──
   await page.waitForSelector('button:has-text("Add Products")', { timeout: 8000 });
   await page.click('button:has-text("Add Products")');
-  // Wait for modal to close — detected by the qty input appearing (not a fixed delay)
+  // Wait for modal to close — detected by the qty input appearing
   const qtyInput = page.locator('div[aria-label="Quantity"] input[type="number"]');
   await qtyInput.waitFor({ timeout: 12000 });
 
-  // ── 6. Set quantity ──
+  // ── 5. Set quantity ──
   const targetQty      = order.qty      || 1;
   const targetSubtotal = order.subtotal || 0;
 
@@ -1013,31 +1086,27 @@ async function createSingleOrder(page, order, orderNum) {
   if (currentQty !== targetQty) {
     await qtyInput.click({ clickCount: 3 });
     await qtyInput.fill(String(targetQty));
-    await page.keyboard.press("Tab"); // trigger React re-render
+    await page.keyboard.press("Tab");
     await page.waitForTimeout(500);
     log(`${orderNum} ↳ Set qty: ${currentQty} → ${targetQty}`);
   }
 
-  // ── 7. Verify / fix price ──
+  // ── 6. Verify / fix price ──
   const targetUnitPrice = targetSubtotal / targetQty;
   await verifyAndFixPrice(page, targetUnitPrice, targetSubtotal, orderNum);
 
-  // ── 8. Fill customer info ──
-  // Name — wait for field to exist (page fully settled after modal close)
+  // ── 7. Fill customer info ──
   const nameInput = page.locator('input#full_name');
   await nameInput.waitFor({ timeout: 10000 });
   await nameInput.click({ clickCount: 3 });
   await nameInput.fill(order.name || "عميل");
 
-  // Phone — instant fill (no per-char delay needed for a local input)
   const phoneInput = page.locator('input#phone');
   await phoneInput.click({ clickCount: 3 });
   await phoneInput.fill("966" + order.normPhone);
 
-  // City / Government dropdown — select by visible text, NOT data-value (UUIDs change on every deploy)
   await selectCityByText(page, finalCity);
 
-  // Address — city name used as fallback so this is always non-empty
   const addressInput = page.locator('textarea#address');
   await addressInput.click({ clickCount: 3 });
   await addressInput.fill(finalAddress);
@@ -1076,57 +1145,125 @@ async function createSingleOrder(page, order, orderNum) {
   }
 }
 
-async function selectProductInModal(page, productName, orderNum) {
-  // Wait for table rows to appear
-  await page.waitForSelector('table tbody tr', { timeout: 8000 }).catch(() => {});
-  await page.waitForTimeout(500);
+// ════════════════════════════════════════
+// PRODUCT SEARCH STRATEGIES
+//
+// Problem: Easy-Orders search is sensitive to mixed Arabic/English names.
+// e.g. "splash بخاخ تقشير القدمين بزيت البرتقال" fails when searched in full
+// because the English word "splash" at the start confuses the search index.
+//
+// Solution: try multiple search queries in order until one returns results.
+//   1. Full product name (original)
+//   2. Arabic words only (strip English/numbers) — handles mixed names
+//   3. First 3 Arabic words — handles long names that get truncated
+//   4. Longest single Arabic word — last-resort keyword search
+// ════════════════════════════════════════
+function buildSearchStrategies(productName) {
+  const full = productName.trim();
 
-  // Get all product name cells
-  const rows = page.locator('table tbody tr');
-  const count = await rows.count();
+  // Extract only Arabic words (Unicode Arabic block)
+  const arabicWords = full.match(/[\u0600-\u06FF]+/g) || [];
 
-  if (count === 0) {
-    log(`${orderNum} ⚠️ No products found in modal for "${productName}"`);
-    return false;
+  // Extract only English words
+  const englishWords = full.match(/[a-zA-Z]+/g) || [];
+
+  const strategies = [full]; // always try full name first
+
+  if (arabicWords.length > 0) {
+    strategies.push(arabicWords.join(" "));            // all Arabic words
+    strategies.push(arabicWords.slice(0, 3).join(" ")); // first 3 Arabic words
+    if (arabicWords.length > 3) {
+      // Longest Arabic word — usually the most distinctive
+      const longest = arabicWords.sort((a, b) => b.length - a.length)[0];
+      strategies.push(longest);
+    }
   }
 
-  const cleanTarget = productName.trim().toLowerCase();
+  if (englishWords.length > 0) {
+    strategies.push(englishWords[0]); // just the English brand name e.g. "splash"
+  }
 
-  for (let i = 0; i < count; i++) {
-    const row = rows.nth(i);
-    const nameCell = row.locator('td[aria-label="product name"]');
-    const cellText = (await nameCell.innerText().catch(() => "")).trim().toLowerCase();
+  // Deduplicate while preserving order
+  return [...new Set(strategies)];
+}
 
-    // Match: exact, or target contains cell text, or cell text contains target
-    const isMatch = cellText === cleanTarget ||
-      cellText.includes(cleanTarget) ||
-      cleanTarget.includes(cellText) ||
-      // Partial word match: at least 60% of words overlap
-      wordOverlap(cleanTarget, cellText) >= 0.6;
+async function searchProductInModal(page, query, orderNum) {
+  const searchInput = page.locator('input[name="name"]');
+  await searchInput.waitFor({ timeout: 10000 });
+  await searchInput.click({ clickCount: 3 });
 
-    if (isMatch) {
-      log(`${orderNum} ↳ Product match: "${cellText}"`);
-      // Click the checkbox in this row
-      const checkbox = row.locator('td[aria-label="select"] input[type="checkbox"]');
+  // Inject value via React synthetic event (same as before)
+  await page.evaluate((text) => {
+    const el = document.querySelector('input[name="name"]');
+    if (!el) return;
+    const setter = Object.getOwnPropertyDescriptor(window.HTMLInputElement.prototype, "value").set;
+    setter.call(el, text);
+    el.dispatchEvent(new Event("input",  { bubbles: true }));
+    el.dispatchEvent(new Event("change", { bubbles: true }));
+  }, query);
+
+  await page.waitForTimeout(1200); // let React re-render results
+}
+
+async function selectProductInModal(page, productName, orderNum) {
+  const strategies = buildSearchStrategies(productName);
+  log(`${orderNum} 🔍 Product search strategies: ${strategies.map(s => `"${s}"`).join(" → ")}`);
+
+  for (const query of strategies) {
+    log(`${orderNum} 🔎 Trying search: "${query}"`);
+    await searchProductInModal(page, query, orderNum);
+
+    await page.waitForSelector('table tbody tr', { timeout: 8000 }).catch(() => {});
+    await page.waitForTimeout(500);
+
+    const rows = page.locator('table tbody tr');
+    const count = await rows.count();
+
+    if (count === 0) {
+      log(`${orderNum} ↳ No results for "${query}" — trying next strategy`);
+      continue;
+    }
+
+    // Try to find the best matching row
+    const cleanTarget = productName.trim().toLowerCase();
+    for (let i = 0; i < count; i++) {
+      const row = rows.nth(i);
+      const nameCell = row.locator('td[aria-label="product name"]');
+      const cellText = (await nameCell.innerText().catch(() => "")).trim().toLowerCase();
+
+      const isMatch =
+        cellText === cleanTarget ||
+        cellText.includes(cleanTarget) ||
+        cleanTarget.includes(cellText) ||
+        wordOverlap(cleanTarget, cellText) >= 0.5; // lowered from 0.6 → more forgiving
+
+      if (isMatch) {
+        log(`${orderNum} ✅ Product match via "${query}": "${cellText}"`);
+        const checkbox = row.locator('td[aria-label="select"] input[type="checkbox"]');
+        await checkbox.click();
+        await page.waitForTimeout(300);
+        return true;
+      }
+    }
+
+    // Results exist but no match found — if this is the last strategy, use first result
+    const isLastStrategy = query === strategies[strategies.length - 1];
+    if (isLastStrategy) {
+      log(`${orderNum} ⚠️ No name match — using first result as fallback`);
+      const firstIsExpandButton = await rows.first().locator('button[title="Expand variants"]').count();
+      const targetRow = firstIsExpandButton > 0 ? rows.nth(1) : rows.first();
+      const checkbox = targetRow.locator('td[aria-label="select"] input[type="checkbox"]');
       await checkbox.click();
       await page.waitForTimeout(300);
       return true;
     }
+
+    log(`${orderNum} ↳ Results found but no name match for "${query}" — trying next strategy`);
   }
 
-  // If no match found and search was already done, try first result as fallback
-  log(`${orderNum} ⚠️ No exact match found — using first result as fallback`);
-  const firstCheckbox = rows.first().locator('td[aria-label="select"] input[type="checkbox"]');
-  const firstIsExpandButton = await rows.first().locator('button[title="Expand variants"]').count();
-  if (firstIsExpandButton > 0) {
-    // First row is an expand row, use second
-    const secondCheckbox = rows.nth(1).locator('td[aria-label="select"] input[type="checkbox"]');
-    await secondCheckbox.click();
-  } else {
-    await firstCheckbox.click();
-  }
-  await page.waitForTimeout(300);
-  return true;
+  // All strategies exhausted with zero results each time
+  log(`${orderNum} ❌ Product not found in modal after all search strategies: "${productName}"`);
+  return false;
 }
 
 function wordOverlap(a, b) {
@@ -1330,6 +1467,10 @@ async function verifyFinalTotal(page, targetSubtotal, orderNum) {
     }
 
     // ── Send final result ──
+    const failedBuffer = uploadResults.failedOrders.length > 0
+      ? buildFailedExcel(uploadResults.failedOrders)
+      : null;
+
     process.send && process.send({
       type: "result",
       data: {
@@ -1343,6 +1484,7 @@ async function verifyFinalTotal(page, targetSubtotal, orderNum) {
           errorRows: uploadResults.failedOrders,
           failedDir: "",
           failedPath: "",
+          buffer: failedBuffer ? Array.from(failedBuffer) : null,
         },
       },
     });

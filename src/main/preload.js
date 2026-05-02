@@ -36,6 +36,10 @@ contextBridge.exposeInMainWorld("api", {
   on:              (ch, cb) => ipcRenderer.on(ch, (_, data) => cb(data)),
   removeAllListeners: (ch) => ipcRenderer.removeAllListeners(ch),
 
+  // Settings (theme + lang)
+  getSettings:  () => ipcRenderer.invoke("get-settings"),
+  saveSettings: (s) => ipcRenderer.invoke("save-settings", s),
+
   // Output
   saveOutputFile: (data) => ipcRenderer.invoke("save-output-file", data),
 });

@@ -296,9 +296,19 @@ function resolveMissedOrders(missedOrders, catalog) {
 }
 
 // ── Merge + deduplicate ──
-// Key = normPhone + "|" + productName  →  same phone with DIFFERENT product is NOT a dupe
-function mergeAndDeduplicate(realOrders, resolvedMissed, taagerPhones) {
-  const seen = new Set();
+// Dedup uses TWO different keys:
+//
+//   khodKey  = normPhone only
+//     → if this phone exists in Khod at all (any product), skip it.
+//       Khod product names can't be reliably compared against Easy-Orders names,
+//       so phone-only is the safe match here.
+//
+//   batchKey = normPhone + "|" + productName
+//     → within this run's batch, same phone + same product = duplicate, drop one.
+//       same phone + DIFFERENT product = two separate orders, keep both.
+//
+function mergeAndDeduplicate(realOrders, resolvedMissed, khodPhones) {
+  const seen = new Set(); // tracks phone+product within this batch
   const result = [];
   const stats = {
     realNew: 0, realDupe: 0, realInTaager: 0,
@@ -306,26 +316,28 @@ function mergeAndDeduplicate(realOrders, resolvedMissed, taagerPhones) {
   };
 
   for (const order of realOrders) {
-    const key = order.normPhone + "|" + (order.productName || "").trim().toLowerCase();
-    if (taagerPhones.has(key)) { stats.realInTaager++; continue; }
-    if (seen.has(key)) { stats.realDupe++; continue; }
-    seen.add(key);
+    const khodKey  = order.normPhone;
+    const batchKey = order.normPhone + "|" + (order.productName || "").trim().toLowerCase();
+    if (khodPhones.has(khodKey))  { stats.realInTaager++; continue; }
+    if (seen.has(batchKey))       { stats.realDupe++;     continue; }
+    seen.add(batchKey);
     result.push(order);
     stats.realNew++;
   }
 
   for (const order of resolvedMissed) {
-    const key = order.normPhone + "|" + (order.productName || "").trim().toLowerCase();
-    if (taagerPhones.has(key)) { stats.missedInTaager++; continue; }
-    if (seen.has(key)) { stats.missedDupe++; continue; }
-    seen.add(key);
+    const khodKey  = order.normPhone;
+    const batchKey = order.normPhone + "|" + (order.productName || "").trim().toLowerCase();
+    if (khodPhones.has(khodKey))  { stats.missedInTaager++; continue; }
+    if (seen.has(batchKey))       { stats.missedDupe++;     continue; }
+    seen.add(batchKey);
     result.push(order);
     stats.missedNew++;
   }
 
   console.log(`✅ New orders: real=${stats.realNew} missed=${stats.missedNew}`);
-  console.log(`🚫 In Taager: real=${stats.realInTaager} missed=${stats.missedInTaager}`);
-  console.log(`🔁 Dupes in batch: real=${stats.realDupe} missed=${stats.missedDupe}`);
+  console.log(`🚫 Already in Khod (phone match): real=${stats.realInTaager} missed=${stats.missedInTaager}`);
+  console.log(`🔁 Dupes in this batch (same phone+product): real=${stats.realDupe} missed=${stats.missedDupe}`);
 
   return { orders: result, stats };
 }
@@ -363,33 +375,23 @@ function parseKhodPhones(buffer) {
     }
   }
 
-  // Find product column — "المنتجات" (col 15 by default)
-  let productColIdx = 15;
-  for (let i = 0; i < header.length; i++) {
-    const h = String(header[i] || "");
-    if (h.includes("المنتج")) {
-      productColIdx = i;
-      break;
-    }
-  }
-
-  // Build composite Set: "normPhone|productName"
-  // so same phone with a DIFFERENT product is NOT treated as already-in-Khod.
+  // Build phone-only Set for Khod dedup.
+  //
+  // WHY phone-only (not phone+product like Easy-Orders internal dedup):
+  // Khod stores product names in a different format ("1x اسم المنتج-") that
+  // cannot be reliably matched against Easy-Orders product names. Using
+  // phone+product would cause taagerPhones.has(key) to always return false,
+  // letting already-submitted orders slip through as new.
+  //
+  // Safe rule: if this phone exists in Khod at all, it was already processed
+  // in a previous bot run — skip all its orders regardless of product.
   const phones = new Set();
   for (let i = 1; i < rows.length; i++) {
     const norm = normalizePhone(rows[i][phoneColIdx]);
     if (!norm) continue;
-
-    // Khod product format: "1x اسم المنتج-" → extract the name part
-    const rawProduct = String(rows[i][productColIdx] || "").trim();
-    const productMatch = rawProduct.match(/\d+x\s+(.+?)[\-\s]*$/);
-    const productName = productMatch
-      ? productMatch[1].trim().toLowerCase()
-      : rawProduct.toLowerCase();
-
-    phones.add(norm + "|" + productName);
+    phones.add(norm); // phone-only key
   }
 
-  console.log(`📋 Khod: ${phones.size} phone+product combos loaded (dedup list)`);
+  console.log(`📋 Khod: ${phones.size} unique phones loaded (dedup list)`);
   return phones;
 }
