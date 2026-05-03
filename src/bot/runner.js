@@ -73,7 +73,9 @@ function findChrome() {
     for (const p of paths) if (fs.existsSync(p)) return p;
   }
   throw new Error(
-    "CHROME_NOT_FOUND"
+    "CHROME_NOT_FOUND: Google Chrome is not installed or could not be found on this device.\n" +
+    "Please install Google Chrome from https://www.google.com/chrome/ and try again.\n" +
+    "If Chrome is installed in a non-standard location, contact support."
   );
 }
 
@@ -220,34 +222,77 @@ async function triggerEasyOrdersExport(page, exportFromDate, keyword) {
   // ── Step 2: Poll notifications for the ready file ──
   const pollForFile = async (triggeredAt) => {
     await page.goto("https://app.easy-orders.net/#/notifications", { waitUntil: "domcontentloaded" });
+    await page.waitForTimeout(2000);
 
     for (let i = 1; i <= CHECK_ROUNDS; i++) {
       log(`🔁 Checking notifications (${i}/${CHECK_ROUNDS}) for "${keyword}"...`);
       try {
         const found = await page.evaluate(
           ({ triggeredAt, keyword }) => {
+            // Strategy 1: link contains keyword AND .xlsx — strict match
             const links = Array.from(document.querySelectorAll(`a[href*="${keyword}"][href*=".xlsx"]`));
-            for (const link of links) {
+
+            // Strategy 2 (fallback): any .xlsx link on the page if keyword not in URL
+            const fallbackLinks = links.length === 0
+              ? Array.from(document.querySelectorAll('a[href*=".xlsx"]'))
+              : [];
+
+            const allCandidates = links.length > 0 ? links : fallbackLinks;
+
+            for (const link of allCandidates) {
+              // ── Check 1: try to find a success chip anywhere in the surrounding DOM ──
+              let hasSuccessChip = false;
               let node = link.parentElement;
-              let hasChip = false;
-              for (let j = 0; j < 15; j++) {
+              for (let j = 0; j < 20; j++) {
                 if (!node) break;
-                if (node.querySelector(".MuiChip-colorSuccess")) { hasChip = true; break; }
+                // MUI success chip (green) — class may vary by MUI version
+                if (
+                  node.querySelector(".MuiChip-colorSuccess") ||
+                  node.querySelector('[class*="colorSuccess"]') ||
+                  node.querySelector('[class*="chip-success"]')
+                ) {
+                  hasSuccessChip = true;
+                  break;
+                }
                 node = node.parentElement;
               }
-              if (!hasChip) continue;
-              const match = link.href.match(/\/([0-9]{13,})/);
+
+              // ── Check 2: if no chip found, check for any red/error class that
+              //    explicitly marks it as FAILED — if not failed, treat as ready ──
+              let isExplicitlyFailed = false;
+              let node2 = link.parentElement;
+              for (let j = 0; j < 20; j++) {
+                if (!node2) break;
+                if (
+                  node2.querySelector(".MuiChip-colorError") ||
+                  node2.querySelector('[class*="colorError"]') ||
+                  node2.querySelector('[class*="chip-error"]')
+                ) {
+                  isExplicitlyFailed = true;
+                  break;
+                }
+                node2 = node2.parentElement;
+              }
+
+              if (isExplicitlyFailed) continue; // skip confirmed failures
+
+              // ── Timestamp guard: skip links older than 1 min before trigger ──
+              const match = link.href.match(/\/([0-9]{10,})/);
               if (match) {
                 const ts = Number(match[1].slice(0, 13));
-                if (ts < triggeredAt - 60000) continue;
+                if (ts > 0 && ts < triggeredAt - 60000) continue;
               }
-              return link.href;
+
+              // Accept if: has success chip OR no chip found at all (some builds don't show chips)
+              if (hasSuccessChip || !link.closest('[class*="MuiChip"]')) {
+                return link.href;
+              }
             }
             return null;
           },
           { triggeredAt, keyword }
         );
-        if (found) { log(`✅ Download URL found`); return found; }
+        if (found) { log(`✅ Download URL found: ${found.slice(0, 80)}...`); return found; }
       } catch (e) {
         log(`⚠️ Check error: ${e.message}`);
       }
@@ -384,6 +429,11 @@ async function phase1_easyOrdersLogin(page) {
     log("✅ Easy-orders login confirmed\n");
   }
 
+  // ── Switch to English FIRST — before store selection and everything else ──
+  // This ensures all button text ("Export", "Choose Products", etc.) is in English
+  // for every selector that follows in this run.
+  await ensureEasyOrdersEnglish(page);
+
   // ── Store selection (if user has multiple stores) ──
   await page.waitForTimeout(1500);
   if (page.url().includes("store-selection")) {
@@ -429,22 +479,74 @@ async function phase1_easyOrdersLogin(page) {
     );
     await page.waitForTimeout(1500);
     log("✅ Store selected\n");
+
+    // Re-confirm English after store redirect (page may reload on store select)
+    await ensureEasyOrdersEnglish(page);
   }
 
-  // Switch to English if needed
-  try {
-    const langLabel = await page.$eval(
-      '[aria-label="language-switcher"] p',
-      (el) => el.innerText.trim()
-    );
-    if (langLabel !== "en") {
+}
+
+// ════════════════════════════════════════
+// SWITCH EASY-ORDERS TO ENGLISH
+// Must run BEFORE any export/navigation that depends on English button text.
+// Called immediately after login (and after store selection if applicable).
+// ════════════════════════════════════════
+async function ensureEasyOrdersEnglish(page) {
+  // Retry up to 3 times — the language switcher sometimes takes a moment to mount
+  for (let attempt = 1; attempt <= 3; attempt++) {
+    try {
+      // Wait for the switcher to be in the DOM before reading it
+      await page.waitForSelector('[aria-label="language-switcher"]', { timeout: 8000 });
+
+      const langLabel = await page.$eval(
+        '[aria-label="language-switcher"] p',
+        (el) => el.innerText.trim().toLowerCase()
+      );
+
+      if (langLabel === "en") {
+        log("✅ Easy-Orders: already in English");
+        return;
+      }
+
+      log(`🌐 Easy-Orders: language is "${langLabel}" — switching to English (attempt ${attempt}/3)...`);
       await page.click('[aria-label="language-switcher"]');
-      await page.waitForTimeout(1000);
-      await page.click('[role="menuitem"][aria-label="english"]');
+      await page.waitForTimeout(800);
+
+      // The menu may render as [role="menuitem"][aria-label="english"] or just :has-text("English")
+      const switched = await page.locator('[role="menuitem"][aria-label="english"]').count() > 0
+        ? (await page.click('[role="menuitem"][aria-label="english"]'), true)
+        : await page.locator('[role="menuitem"]:has-text("English")').count() > 0
+          ? (await page.locator('[role="menuitem"]:has-text("English")').first().click(), true)
+          : false;
+
+      if (!switched) {
+        // Close the menu and retry
+        await page.keyboard.press("Escape");
+        await page.waitForTimeout(1000);
+        continue;
+      }
+
       await page.waitForTimeout(2000);
-      log("✅ Switched to English");
+
+      // Verify switch worked
+      const newLabel = await page.$eval(
+        '[aria-label="language-switcher"] p',
+        (el) => el.innerText.trim().toLowerCase()
+      ).catch(() => "");
+
+      if (newLabel === "en") {
+        log("✅ Easy-Orders: switched to English successfully");
+        return;
+      }
+
+      log(`⚠️ Easy-Orders: language switch attempt ${attempt} may not have worked (now: "${newLabel}") — retrying...`);
+      await page.waitForTimeout(1500);
+    } catch (e) {
+      log(`⚠️ Easy-Orders language check attempt ${attempt}/3 failed: ${e.message}`);
+      await page.waitForTimeout(1500);
     }
-  } catch {}
+  }
+  log("⚠️ Easy-Orders: could not confirm English switch — continuing anyway");
 }
 
 // ════════════════════════════════════════
@@ -712,29 +814,16 @@ async function phase4_khod(page, exportFromDate, dateTo) {
   await khodLogin(page);
   log("");
 
-  // ── Ensure Arabic language is active ──
-  // The current language shows as text in .topbar-link span
-  // If it says "english" we navigate to /lang/sa to switch to Arabic
+  // ── Ensure Arabic language is active BEFORE any export attempt ──
+  // We always navigate to /lang/sa first — this is idempotent (safe if already Arabic)
+  // and eliminates the selector-based language detection which fails on some client machines.
+  log("🌐 Khod: ensuring Arabic language is active...");
   try {
-    const langSpan = await page.$(".topbar-link .d-none.d-sm-inline-block");
-    if (langSpan) {
-      const langText = (await langSpan.innerText()).trim().toLowerCase();
-      if (langText === "english") {
-        log("🌐 Khod: switching language from English → Arabic...");
-        await page.goto("https://khod-whaat.com/lang/sa", { waitUntil: "domcontentloaded" });
-        await page.waitForTimeout(2000);
-        log("✅ Khod: language set to Arabic");
-      } else {
-        log("✅ Khod: language already Arabic, no change needed");
-      }
-    } else {
-      // Selector not found — navigate to Arabic directly as safe fallback
-      log("⚠️ Khod: could not read language — forcing Arabic via /lang/sa");
-      await page.goto("https://khod-whaat.com/lang/sa", { waitUntil: "domcontentloaded" });
-      await page.waitForTimeout(2000);
-    }
+    await page.goto("https://khod-whaat.com/lang/sa", { waitUntil: "domcontentloaded" });
+    await page.waitForTimeout(2000);
+    log("✅ Khod: Arabic language confirmed");
   } catch (e) {
-    log(`⚠️ Khod language check failed (non-fatal): ${e.message}`);
+    log(`⚠️ Khod: language set failed (non-fatal): ${e.message} — continuing`);
   }
 
   // ── Export with full fallback retry loop ──
@@ -800,6 +889,13 @@ async function phase4_khod(page, exportFromDate, dateTo) {
             log("🔐 Session expired — re-logging into Khod...");
             await khodLogin(page);
           }
+        } catch {}
+
+        // Always re-set Arabic after a re-login or page reload
+        try {
+          await page.goto("https://khod-whaat.com/lang/sa", { waitUntil: "domcontentloaded" });
+          await page.waitForTimeout(2000);
+          log("🌐 Khod: Arabic language re-confirmed before next attempt");
         } catch {}
       }
     }
@@ -1373,30 +1469,29 @@ async function verifyFinalTotal(page, targetSubtotal, orderNum) {
   const context = await chromium.launchPersistentContext(profilePath, {
     executablePath: chromePath,
     headless: false,
-    // ── Fast-launch flags ──────────────────────────────────────────────────
-    // Drop --start-maximized (forces a full window-paint cycle before ready).
-    // Instead we size the viewport directly and let Chrome open at default size.
     args: [
-      "--no-first-run",              // skip first-run wizard / welcome screen
-      "--no-default-browser-check",  // skip "make Chrome your default?" dialog
-      "--disable-background-networking", // no sync/update pings on startup
+      "--no-first-run",
+      "--no-default-browser-check",
+      "--disable-background-networking",
       "--disable-client-side-phishing-detection",
-      "--disable-default-apps",      // don't load bundled web apps
-      "--disable-extensions-except=", // no extensions unless explicitly listed
+      "--disable-default-apps",
+      "--disable-extensions-except=",
       "--disable-hang-monitor",
       "--disable-popup-blocking",
       "--disable-prompt-on-repost",
-      "--disable-sync",              // no Google account sync on open
+      "--disable-sync",
       "--disable-translate",
-      "--metrics-recording-only",    // skip UMA uploads that block startup
+      "--metrics-recording-only",
       "--no-service-autorun",
       "--password-store=basic",
       "--use-mock-keychain",
-      "--window-size=1760,1080",     // set size at launch, avoid post-resize round-trip
+      "--window-size=1760,1080",
+      "--disable-gpu-sandbox",        // prevents crashes on some client GPUs
+      "--disable-dev-shm-usage",      // prevents crashes on low-memory machines (shared memory too small)
+      "--no-sandbox",                 // needed on some Windows configurations where sandbox init fails
     ],
-    // Tell Playwright not to wait for a "ready" navigation — Chrome opens faster
-    // and the bot's own waitForSelector calls act as the real readiness gate.
-    waitForInitialPage: false,
+    // waitForInitialPage defaults to true — keeps this on to avoid race conditions
+    // on slower client machines where the page isn't ready when we start interacting
   });
 
   const page = context.pages()[0] || (await context.newPage());
