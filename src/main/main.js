@@ -64,10 +64,19 @@ function getDeviceFingerprint() {
     const nets = os.networkInterfaces();
     const macs = [];
     for (const iface of Object.values(nets))
-      for (const net of iface)
-        if (!net.internal && net.mac && net.mac !== "00:00:00:00:00:00") macs.push(net.mac.toLowerCase());
+      for (const net of iface) {
+        if (net.internal) continue;
+        if (!net.mac || net.mac === "00:00:00:00:00:00") continue;
+        // Skip virtual/VPN adapters whose MACs change on connect/disconnect
+        const m = net.mac.toLowerCase();
+        if (m.startsWith("00:ff") || m.startsWith("02:00") || m.startsWith("0a:00") ||
+            m.startsWith("00:50:56") || m.startsWith("00:0c:29") || m.startsWith("08:00:27")) continue;
+        macs.push(m);
+      }
     macs.sort();
-    const raw = `${macs.join("|")}::${os.hostname().toLowerCase()}::${(os.cpus()[0]||{model:"x"}).model}`;
+    // Use only the FIRST stable MAC + hostname — adding new adapters won't shift the fingerprint
+    const stableMac = macs[0] || "nomac";
+    const raw = `${stableMac}::${os.hostname().toLowerCase()}`;
     return crypto.createHash("sha256").update(raw).digest("hex").toUpperCase().slice(0, 16);
   } catch {
     return crypto.createHash("sha256").update(os.hostname()).digest("hex").toUpperCase().slice(0, 16);
@@ -241,7 +250,7 @@ ipcMain.handle("check-license", async () => {
     const r = res.data[0];
     if (r.revoked) return { valid: false, reason: "Your license has been revoked. Contact support." };
     if (r.expires_at && new Date(r.expires_at) < new Date()) return { valid: false, reason: `License expired on ${new Date(r.expires_at).toLocaleDateString()}. Please renew.` };
-    if (r.device_id && r.device_id !== deviceId) return { valid: false, reason: "This license is activated on a different device. Contact support to transfer." };
+    if (r.device_id && r.device_id !== deviceId) return { valid: false, reason: "License is linked to a different device fingerprint (e.g. VPN or network change may have caused this). Please contact support to reset the device lock." };
     const daysLeft = r.expires_at ? Math.max(0, Math.ceil((new Date(r.expires_at) - new Date()) / 86400000)) : null;
     const customerName = r.customer_name || null;
     if (customerName) licenseStore.set("customerName", customerName);
@@ -263,7 +272,7 @@ ipcMain.handle("submit-license", async (_, key) => {
     const r = res.data[0];
     if (r.revoked) return { success: false, reason: "This license has been revoked. Contact support." };
     if (r.expires_at && new Date(r.expires_at) < new Date()) return { success: false, reason: `This license expired on ${new Date(r.expires_at).toLocaleDateString()}. Please renew.` };
-    if (r.device_id && r.device_id !== deviceId) return { success: false, reason: "This license is already active on a different device. Contact support to transfer." };
+    if (r.device_id && r.device_id !== deviceId) return { success: false, reason: "This license is already activated on a different device. If you changed your network adapter or installed a VPN, contact support to reset the device lock." };
     if (!r.device_id) {
       await supabaseRequest("PATCH", `/rest/v1/licenses?license_key=eq.${encodeURIComponent(clean)}`,
         { device_id: deviceId, activated_at: new Date().toISOString() });
