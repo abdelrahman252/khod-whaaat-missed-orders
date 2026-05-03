@@ -108,24 +108,54 @@ async function pickDateInEasyOrdersCalendar(page, targetDt) {
   const targetMonth = targetDt.getMonth();
   const targetYear  = targetDt.getFullYear();
   const dayClass    = String(targetDt.getDate()).padStart(3, "0");
-  const monthNames  = ["January","February","March","April","May","June","July","August","September","October","November","December"];
+  const monthNamesEn = ["January","February","March","April","May","June","July","August","September","October","November","December"];
+  const monthNamesAr = ["يناير","فبراير","مارس","أبريل","مايو","يونيو","يوليو","أغسطس","سبتمبر","أكتوبر","نوفمبر","ديسمبر"];
 
   await page.waitForSelector(".react-datepicker", { timeout: 8000 });
   await page.waitForTimeout(300);
 
+  // Detect Hijri calendar and try to switch to Gregorian
+  const HIJRI_MONTHS = ["محرم","صفر","ربيع الأول","ربيع الثاني","جمادى الأولى","جمادى الثانية","رجب","شعبان","رمضان","شوال","ذو القعدة","ذو الحجة"];
+  const headerText0 = await page.$eval(".react-datepicker__current-month", (el) => el.innerText.trim()).catch(() => "");
+  const isHijri = HIJRI_MONTHS.some(hm => headerText0.includes(hm));
+  if (isHijri) {
+    log("⚠️ Calendar showing Hijri dates — switching to Gregorian (ميلادي)...");
+    const toggled = await page.evaluate(() => {
+      const candidates = Array.from(document.querySelectorAll("button, span, div"))
+        .filter(el => {
+          const t = el.innerText || "";
+          return t.includes("ميلادي") || t.includes("م") || t.includes("Gregorian");
+        });
+      if (candidates.length > 0) { candidates[0].click(); return true; }
+      return false;
+    });
+    if (toggled) {
+      await page.waitForTimeout(800);
+      log("✅ Switched to Gregorian calendar");
+    } else {
+      log("⚠️ No Gregorian toggle found — will navigate using Arabic month names");
+    }
+  }
+
+  // Navigate to the correct month — handles both English and Arabic headers
   for (let i = 0; i < 24; i++) {
     const headerText = await page.$eval(".react-datepicker__current-month", (el) => el.innerText.trim()).catch(() => "");
-    const parts      = headerText.split(" ");
-    const shownMonth = monthNames.indexOf(parts[0]);
-    const shownYear  = parseInt(parts[1]);
+    const parts = headerText.trim().split(/\s+/);
 
-    if (shownYear === targetYear && shownMonth === targetMonth) break;
+    let shownMonth = monthNamesEn.indexOf(parts[0]);
+    if (shownMonth === -1) shownMonth = monthNamesAr.indexOf(parts[0]);
 
-    const shownTotal  = shownYear  * 12 + shownMonth;
+    // Year is the last 4-digit token in the header
+    const yearToken = parts.find(p => /^\d{4}$/.test(p));
+    const shownYear = yearToken ? parseInt(yearToken) : NaN;
+
+    if (!isNaN(shownYear) && shownYear === targetYear && shownMonth === targetMonth) break;
+
+    const shownTotal  = isNaN(shownYear) ? -1 : shownYear * 12 + shownMonth;
     const targetTotal = targetYear * 12 + targetMonth;
 
-    if (targetTotal < shownTotal) await page.click(".react-datepicker__navigation--previous");
-    else                          await page.click(".react-datepicker__navigation--next");
+    if (shownTotal === -1 || targetTotal < shownTotal) await page.click(".react-datepicker__navigation--previous");
+    else                                                await page.click(".react-datepicker__navigation--next");
     await page.waitForTimeout(300);
   }
 
@@ -183,11 +213,19 @@ async function triggerEasyOrdersExport(page, exportFromDate, keyword) {
   const triggerExport = async (n) => {
     log(`\n📤 Export attempt ${n}/${MAX_ATTEMPTS} for "${keyword}"...`);
 
+    // ── Ensure English FIRST — before any selector checks ──
+    await page.goto(pageUrl, { waitUntil: "domcontentloaded" });
+    await page.waitForTimeout(1500);
+    const switchedLang = await ensureEasyOrdersEnglish(page);
+    if (switchedLang) {
+      log("⏳ Language switched — waiting for page to re-render...");
+      await page.waitForTimeout(2000);
+    }
+
     // ── FALLBACK: reload page up to 3 times if table or export button not found ──
     let pageReady = false;
     for (let reload = 1; reload <= 3; reload++) {
       try {
-        await page.goto(pageUrl, { waitUntil: "domcontentloaded" });
         await page.waitForSelector("table", { timeout: 15000 });
         await page.waitForSelector('button:has-text("Export")', { timeout: 15000 });
         pageReady = true;
@@ -196,7 +234,11 @@ async function triggerEasyOrdersExport(page, exportFromDate, keyword) {
         log(`⚠️ Page not ready (reload ${reload}/3): ${e.message}`);
         if (reload < 3) {
           log(`🔄 Reloading page and trying again...`);
+          await page.goto(pageUrl, { waitUntil: "domcontentloaded" });
           await page.waitForTimeout(4000);
+          // Re-ensure English after reload
+          const switched2 = await ensureEasyOrdersEnglish(page);
+          if (switched2) await page.waitForTimeout(2000);
         } else {
           throw new Error(`Export page failed to load after 3 reloads for "${keyword}": ${e.message}`);
         }
@@ -224,73 +266,46 @@ async function triggerEasyOrdersExport(page, exportFromDate, keyword) {
     await page.goto("https://app.easy-orders.net/#/notifications", { waitUntil: "domcontentloaded" });
     await page.waitForTimeout(2000);
 
+    // Build href patterns that distinguish orders vs missed-orders without suffix tricks.
+    // Use dash-wrapped strings: "-orders-" never matches "-missed-orders-" files.
+    const hrefMustContain    = keyword === "missed-orders" ? "-missed-orders-" : "-orders-";
+    const hrefMustNotContain = keyword === "orders"        ? "-missed-orders-" : null;
+
     for (let i = 1; i <= CHECK_ROUNDS; i++) {
       log(`🔁 Checking notifications (${i}/${CHECK_ROUNDS}) for "${keyword}"...`);
       try {
         const found = await page.evaluate(
-          ({ triggeredAt, keyword }) => {
-            // Strategy 1: link contains keyword AND .xlsx — strict match
-            const links = Array.from(document.querySelectorAll(`a[href*="${keyword}"][href*=".xlsx"]`));
+          ({ hrefMustContain, hrefMustNotContain }) => {
+            // Rows are ordered newest-first — first matching row with chip = correct file
+            const rows = Array.from(document.querySelectorAll("tr"));
 
-            // Strategy 2 (fallback): any .xlsx link on the page if keyword not in URL
-            const fallbackLinks = links.length === 0
-              ? Array.from(document.querySelectorAll('a[href*=".xlsx"]'))
-              : [];
+            for (const row of rows) {
+              const links = Array.from(row.querySelectorAll('a[href*=".xlsx"]'));
+              if (!links.length) continue;
 
-            const allCandidates = links.length > 0 ? links : fallbackLinks;
+              // Find a link whose href matches our keyword pattern
+              const matchingLink = links.find(a => {
+                const href = a.href || "";
+                if (!href.includes(hrefMustContain)) return false;
+                if (hrefMustNotContain && href.includes(hrefMustNotContain)) return false;
+                return true;
+              });
+              if (!matchingLink) continue;
 
-            for (const link of allCandidates) {
-              // ── Check 1: try to find a success chip anywhere in the surrounding DOM ──
-              let hasSuccessChip = false;
-              let node = link.parentElement;
-              for (let j = 0; j < 20; j++) {
-                if (!node) break;
-                // MUI success chip (green) — class may vary by MUI version
-                if (
-                  node.querySelector(".MuiChip-colorSuccess") ||
-                  node.querySelector('[class*="colorSuccess"]') ||
-                  node.querySelector('[class*="chip-success"]')
-                ) {
-                  hasSuccessChip = true;
-                  break;
-                }
-                node = node.parentElement;
+              // Check for success chip anywhere in this row (chip is sibling of link,
+              // not ancestor — so searching the whole row is the correct approach)
+              const hasChip = !!row.querySelector(".MuiChip-colorSuccess");
+
+              if (hasChip) {
+                return matchingLink.href; // newest ready export for this keyword
               }
-
-              // ── Check 2: if no chip found, check for any red/error class that
-              //    explicitly marks it as FAILED — if not failed, treat as ready ──
-              let isExplicitlyFailed = false;
-              let node2 = link.parentElement;
-              for (let j = 0; j < 20; j++) {
-                if (!node2) break;
-                if (
-                  node2.querySelector(".MuiChip-colorError") ||
-                  node2.querySelector('[class*="colorError"]') ||
-                  node2.querySelector('[class*="chip-error"]')
-                ) {
-                  isExplicitlyFailed = true;
-                  break;
-                }
-                node2 = node2.parentElement;
-              }
-
-              if (isExplicitlyFailed) continue; // skip confirmed failures
-
-              // ── Timestamp guard: skip links older than 1 min before trigger ──
-              const match = link.href.match(/\/([0-9]{10,})/);
-              if (match) {
-                const ts = Number(match[1].slice(0, 13));
-                if (ts > 0 && ts < triggeredAt - 60000) continue;
-              }
-
-              // Accept if: has success chip OR no chip found at all (some builds don't show chips)
-              if (hasSuccessChip || !link.closest('[class*="MuiChip"]')) {
-                return link.href;
-              }
+              // Row matched keyword but no chip yet — export still processing.
+              // Rows are newest-first so stop here, don't check older rows.
+              return null;
             }
             return null;
           },
-          { triggeredAt, keyword }
+          { hrefMustContain, hrefMustNotContain }
         );
         if (found) { log(`✅ Download URL found: ${found.slice(0, 80)}...`); return found; }
       } catch (e) {
@@ -373,39 +388,57 @@ async function phase1_easyOrdersLogin(page) {
   } else {
     log("🔐 Easy-orders: session expired, logging in...");
 
-    // ── LOGIN WITH FALLBACK: if form fields not found, reload and try again ──
-    let loginFormFound = false;
-    for (let loginAttempt = 1; loginAttempt <= 3; loginAttempt++) {
-      try {
-        await page.goto("https://app.easy-orders.net/#/login", { waitUntil: "domcontentloaded" });
-        await page.waitForTimeout(1000);
+    // ── LOGIN WITH FALLBACK: wait for React SPA to mount form before filling ──
+    // Navigate to login page
+    await page.goto("https://app.easy-orders.net/#/login", { waitUntil: "domcontentloaded" });
 
-        // Wait for email field: id="username", type="email"
-        await page.waitForSelector('#username', { timeout: 10000 });
-        loginFormFound = true;
+    // SPA needs time to mount the login form — wait for the actual input, not just DOM ready
+    try {
+      await page.waitForSelector('#username', { timeout: 15000 });
+    } catch {
+      // If #username never appeared, try a full reload
+      log("⚠️ Login form didn't mount — reloading...");
+      await page.reload({ waitUntil: "domcontentloaded" });
+      await page.waitForSelector('#username', { timeout: 15000 });
+    }
 
-        await page.fill('#username', config.easyEmail);
-        await page.waitForTimeout(400);
+    // Small buffer after form appears — React may still be binding event handlers
+    await page.waitForTimeout(800);
 
-        // Password field: id="password"
-        await page.fill('#password', config.easyPassword);
-        await page.waitForTimeout(400);
+    try {
+      // Clear fields before filling — avoids leftover values from previous attempts
+      await page.fill('#username', '');
+      await page.waitForTimeout(200);
+      await page.fill('#username', config.easyEmail);
+      await page.waitForTimeout(400);
 
-        // Submit: button[type="submit"]
-        await page.click('button[type="submit"]');
-        await page.waitForTimeout(2000);
+      await page.fill('#password', '');
+      await page.waitForTimeout(200);
+      await page.fill('#password', config.easyPassword);
+      await page.waitForTimeout(500);
 
-        log("✅ Easy-orders: credentials submitted, waiting for result...");
-        break;
-      } catch (e) {
-        log(`⚠️ Easy-orders login attempt ${loginAttempt}/3 failed: ${e.message}`);
-        if (loginAttempt < 3) {
-          log(`🔄 Reloading login page and retrying (${loginAttempt + 1}/3)...`);
-          await page.waitForTimeout(3000);
-        } else {
-          log("❌ Could not find Easy-orders login form after 3 attempts");
-        }
+      // Make sure the submit button is not disabled before clicking
+      const submitBtn = page.locator('button[type="submit"]');
+      await submitBtn.waitFor({ state: "visible", timeout: 5000 });
+      const isDisabled = await submitBtn.isDisabled().catch(() => false);
+      if (isDisabled) {
+        log("⚠️ Submit button is disabled — waiting for it to enable...");
+        await page.waitForFunction(
+          () => !document.querySelector('button[type="submit"]')?.disabled,
+          { timeout: 8000 }
+        );
       }
+
+      // Click via evaluate — avoids "element not in viewport" errors on some screen sizes
+      await page.evaluate(() => {
+        const btn = document.querySelector('button[type="submit"]');
+        if (btn) btn.click();
+      });
+      await page.waitForTimeout(2000);
+
+      log("✅ Easy-orders: credentials submitted, waiting for result...");
+    } catch (e) {
+      log(`⚠️ Easy-orders login form error: ${e.message}`);
     }
 
     // 2FA: signal the UI, then wait up to 5 min for login to complete
@@ -490,63 +523,51 @@ async function phase1_easyOrdersLogin(page) {
 // SWITCH EASY-ORDERS TO ENGLISH
 // Must run BEFORE any export/navigation that depends on English button text.
 // Called immediately after login (and after store selection if applicable).
+// Returns true if a language switch was performed (caller may want to re-wait for render).
 // ════════════════════════════════════════
 async function ensureEasyOrdersEnglish(page) {
-  // Retry up to 3 times — the language switcher sometimes takes a moment to mount
-  for (let attempt = 1; attempt <= 3; attempt++) {
-    try {
-      // Wait for the switcher to be in the DOM before reading it
-      await page.waitForSelector('[aria-label="language-switcher"]', { timeout: 8000 });
-
-      const langLabel = await page.$eval(
+  try {
+    // If switcher not in DOM yet (slow client), retry up to 3 times with short waits
+    let langLabel = null;
+    for (let attempt = 0; attempt < 3; attempt++) {
+      langLabel = await page.$eval(
         '[aria-label="language-switcher"] p',
-        (el) => el.innerText.trim().toLowerCase()
-      );
+        (el) => el.innerText.trim()
+      ).catch(() => null);
 
-      if (langLabel === "en") {
-        log("✅ Easy-Orders: already in English");
-        return;
+      if (langLabel !== null) break;
+      if (attempt < 2) {
+        log(`⏳ Language switcher not found yet (attempt ${attempt + 1}/3) — waiting...`);
+        await page.waitForTimeout(1500);
       }
+    }
 
-      log(`🌐 Easy-Orders: language is "${langLabel}" — switching to English (attempt ${attempt}/3)...`);
+    if (langLabel === null) {
+      log("⚠️ Language switcher not found after retries — continuing anyway");
+      return false;
+    }
+
+    if (langLabel !== "en") {
+      log("🌐 Easy-orders switched to non-English — forcing English...");
       await page.click('[aria-label="language-switcher"]');
       await page.waitForTimeout(800);
-
-      // The menu may render as [role="menuitem"][aria-label="english"] or just :has-text("English")
-      const switched = await page.locator('[role="menuitem"][aria-label="english"]').count() > 0
-        ? (await page.click('[role="menuitem"][aria-label="english"]'), true)
-        : await page.locator('[role="menuitem"]:has-text("English")').count() > 0
-          ? (await page.locator('[role="menuitem"]:has-text("English")').first().click(), true)
-          : false;
-
-      if (!switched) {
-        // Close the menu and retry
+      const clicked =
+        await page.locator('[role="menuitem"][aria-label="english"]').click().then(() => true).catch(() => false) ||
+        await page.locator('[role="menuitem"]:has-text("English")').click().then(() => true).catch(() => false) ||
+        await page.locator('[role="menuitem"]:has-text("en")').click().then(() => true).catch(() => false);
+      if (clicked) {
+        await page.waitForTimeout(1500);
+        log("✅ Switched back to English");
+        return true; // caller should re-wait for page re-render
+      } else {
+        log("⚠️ Could not find English menu item — continuing anyway");
         await page.keyboard.press("Escape");
-        await page.waitForTimeout(1000);
-        continue;
       }
-
-      await page.waitForTimeout(2000);
-
-      // Verify switch worked
-      const newLabel = await page.$eval(
-        '[aria-label="language-switcher"] p',
-        (el) => el.innerText.trim().toLowerCase()
-      ).catch(() => "");
-
-      if (newLabel === "en") {
-        log("✅ Easy-Orders: switched to English successfully");
-        return;
-      }
-
-      log(`⚠️ Easy-Orders: language switch attempt ${attempt} may not have worked (now: "${newLabel}") — retrying...`);
-      await page.waitForTimeout(1500);
-    } catch (e) {
-      log(`⚠️ Easy-Orders language check attempt ${attempt}/3 failed: ${e.message}`);
-      await page.waitForTimeout(1500);
     }
+  } catch (e) {
+    log(`⚠️ Language check error: ${e.message}`);
   }
-  log("⚠️ Easy-Orders: could not confirm English switch — continuing anyway");
+  return false;
 }
 
 // ════════════════════════════════════════
@@ -1485,19 +1506,25 @@ async function verifyFinalTotal(page, targetSubtotal, orderNum) {
       "--no-service-autorun",
       "--password-store=basic",
       "--use-mock-keychain",
-      "--window-size=1760,1080",
+      // Force 100% zoom on all screens regardless of OS DPI setting.
+      // Without this, high-DPI (125%, 150%) displays make the page look
+      // zoomed-in and cut off — elements appear huge and nothing fits.
+      "--force-device-scale-factor=1",
+      // Force Gregorian calendar + English locale so date pickers always
+      // show Gregorian dates (not Hijri). Fixes التاريخ بالهجري on Arabic OS.
+      "--lang=en-US",
+      "--accept-lang=en-US,en",
+      "--window-size=1400,900",
       "--disable-gpu-sandbox",        // prevents crashes on some client GPUs
       "--disable-dev-shm-usage",      // prevents crashes on low-memory machines (shared memory too small)
       "--no-sandbox",                 // needed on some Windows configurations where sandbox init fails
     ],
-    // waitForInitialPage defaults to true — keeps this on to avoid race conditions
-    // on slower client machines where the page isn't ready when we start interacting
+    locale: "en-US",
+    waitForInitialPage: false,
   });
 
   const page = context.pages()[0] || (await context.newPage());
-  // Viewport is already set via --window-size above; skip the extra round-trip.
-  // Only set it here as a safety fallback in case the flag was ignored.
-  page.setViewportSize({ width: 1760, height: 1080 }).catch(() => {});
+  page.setViewportSize({ width: 1400, height: 900 }).catch(() => {});
 
   // Minimize the Chrome window via CDP if launchMinimized is set
   if (config.launchMinimized) {
