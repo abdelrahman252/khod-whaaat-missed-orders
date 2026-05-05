@@ -358,7 +358,10 @@
         <div id="top-bar-avatar">?</div>
         <div id="top-bar-info">
           <div id="top-bar-name">—</div>
-          <div id="top-bar-days"></div>
+          <div style="display:flex;align-items:center;gap:8px">
+            <div id="top-bar-days"></div>
+            <div id="top-bar-accounts" style="display:none;font-size:10px;font-weight:700;letter-spacing:.06em;text-transform:uppercase;background:rgba(124,106,247,.15);border:1px solid rgba(124,106,247,.35);color:#a89cf7;border-radius:99px;padding:2px 8px"></div>
+          </div>
         </div>
       </div>
       <!-- Toggles -->
@@ -414,27 +417,18 @@
     <div id="app">
       <div id="page-license" class="page"></div>
       <div id="page-setup" class="page"></div>
-      <div id="page-welcome" class="page"></div>
       <div id="page-run" class="page"></div>
       <div id="page-results" class="page"></div>
     </div>
 
     <script src="pages/license.js"></script>
     <script src="pages/setup.js"></script>
-    <script src="pages/welcome.js"></script>
     <script src="pages/run.js"></script>
     <script src="pages/results.js"></script>
     <script src="app.js"></script>
     <script>
-      window.addEventListener("load", () => {
-        const preloader = document.getElementById("preloader");
-        // 400ms is enough to show the splash without blocking startup
-        setTimeout(() => {
-          preloader.style.opacity = "0";
-          preloader.style.transition = "opacity 0.3s ease";
-          setTimeout(() => preloader.remove(), 300);
-        }, 400);
-      });
+      // Preloader is dismissed by showPage() in app.js — only once the first
+      // real page has been rendered and activated. No timer-based removal here.
     </script>
   </body>
 </html>

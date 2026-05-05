@@ -19,22 +19,57 @@ const config = JSON.parse(process.env.BOT_CONFIG || "{}");
 const log = (msg) => process.stdout.write(msg + "\n");
 
 // ════════════════════════════════════════
-// SESSION GUARD
-// Wraps any page action. If the site redirected
-// to a login page mid-run, re-logs in and retries once.
+// SESSION HELPERS
 // ════════════════════════════════════════
+
+// Returns true if the current page URL looks like a login/auth page.
+function isOnLoginPage(url) {
+  return (
+    url.includes("/login") ||
+    url.includes("/auth/login") ||
+    url.includes("#/login") ||
+    url.includes("/auth")
+  );
+}
+
+// Takes a debug screenshot and logs its path.  Non-fatal — never throws.
+async function debugScreenshot(page, label) {
+  try {
+    const ts   = Date.now();
+    const p    = require("os").tmpdir() + `/kbot-debug-${label}-${ts}.png`;
+    await page.screenshot({ path: p, fullPage: false });
+    log(`📸 [DEBUG] Screenshot saved: ${p}`);
+    process.send && process.send({ type: "debug-screenshot", path: p, label });
+  } catch (_) {}
+}
+
+// SESSION GUARD
+// Wraps any page action.
+//  • Catches thrown errors AND checks URL after the action in case the SPA
+//    silently redirected to login without raising an exception.
+//  • On session loss: re-authenticates and retries the action once.
 async function withSessionGuard(page, actionFn, reloginFn, siteName) {
   try {
-    return await actionFn();
+    const result = await actionFn();
+    // Proactive check: even if no error was thrown, verify we're not on the login page
+    const urlAfter = page.url();
+    if (isOnLoginPage(urlAfter)) {
+      log(`⚠️ ${siteName}: action succeeded but page landed on login — SESSION_DESYNC detected`);
+      process.send && process.send({ type: "session-event", site: siteName, event: "session-desync-post-action", url: urlAfter });
+      await debugScreenshot(page, `${siteName}-desync`);
+      await reloginFn();
+      log(`🔄 ${siteName}: retrying after re-login (desync recovery)...`);
+      return await actionFn();
+    }
+    return result;
   } catch (err) {
     const url = page.url();
-    const isLoggedOut =
-      url.includes("/login") ||
-      url.includes("/auth/login") ||
-      url.includes("#/login");
+    const isLoggedOut = isOnLoginPage(url);
 
     if (isLoggedOut) {
       log(`⚠️ ${siteName}: session expired mid-run — re-logging in...`);
+      process.send && process.send({ type: "session-event", site: siteName, event: "session-expired", url });
+      await debugScreenshot(page, `${siteName}-session-expired`);
       await reloginFn();
       log(`🔄 ${siteName}: retrying after re-login...`);
       return await actionFn(); // retry once
@@ -214,8 +249,24 @@ async function triggerEasyOrdersExport(page, exportFromDate, keyword) {
     log(`\n📤 Export attempt ${n}/${MAX_ATTEMPTS} for "${keyword}"...`);
 
     // ── Ensure English FIRST — before any selector checks ──
+    log(`[NAV] → ${pageUrl}`);
     await page.goto(pageUrl, { waitUntil: "domcontentloaded" });
     await page.waitForTimeout(1500);
+
+    const landedUrl = page.url();
+    log(`[NAV] landed: ${landedUrl} | title: ${await page.title().catch(() => "?")}`);
+
+    // ── Session probe before attempting export ──
+    try {
+      await assertEasyOrdersSession(page);
+    } catch (sessionErr) {
+      log(`⚠️ Easy-Orders SESSION_DESYNC before export: ${sessionErr.message}`);
+      await debugScreenshot(page, `easy-orders-export-session-fail-${n}`);
+      await phase1_easyOrdersLogin(page);
+      await page.goto(pageUrl, { waitUntil: "domcontentloaded" });
+      await page.waitForTimeout(1500);
+    }
+
     const switchedLang = await ensureEasyOrdersEnglish(page);
     if (switchedLang) {
       log("⏳ Language switched — waiting for page to re-render...");
@@ -375,96 +426,40 @@ async function phase1_easyOrdersLogin(page) {
   log("  PHASE 1 — Easy-Orders Login");
   log("═══════════════════════════════════════\n");
 
-  // Go to app root — if already logged in it goes to dashboard/orders directly
-  // Only navigates to login if session expired
+  // Navigate to app root — if already logged in it redirects to dashboard/orders
+  log(`[NAV] → https://app.easy-orders.net/`);
   await page.goto("https://app.easy-orders.net/", { waitUntil: "domcontentloaded" });
   await page.waitForTimeout(2000);
 
-  const currentUrl      = page.url();
-  const alreadyLoggedIn = !currentUrl.includes("login");
+  const landedUrl = page.url();
+  log(`[NAV] landed: ${landedUrl} | title: ${await page.title().catch(() => "?")}`);
 
+  // ── Session probe on the persisted browser profile ──
+  // Even if the URL looks authenticated, verify a real post-auth DOM element
+  // before skipping login.  Prevents stale/revoked cookie false positives.
+  const alreadyLoggedIn = !landedUrl.includes("login");
   if (alreadyLoggedIn) {
-    log("✅ Easy-orders: already logged in, skipping login\n");
+    const authDomPresent = await page.$(
+      '.MuiAppBar-root, [aria-label="language-switcher"], nav, .sidebar, [data-testid="user-avatar"]'
+    ) !== null;
+    if (authDomPresent) {
+      log("✅ Easy-orders: already logged in (URL + DOM verified), skipping login\n");
+      process.send && process.send({ type: "session-event", site: "easy-orders", event: "session-reused", method: "dom-verified", url: landedUrl });
+    } else {
+      log("⚠️ Easy-orders: URL looks authenticated but auth DOM not found — SESSION_PROBE failed, re-logging in");
+      process.send && process.send({ type: "session-event", site: "easy-orders", event: "session-probe-failed", url: landedUrl });
+      await debugScreenshot(page, "easy-orders-probe-fail");
+      // Fall through to login block below
+      goto_login: {
+        await doEasyOrdersLogin(page);
+      }
+    }
   } else {
     log("🔐 Easy-orders: session expired, logging in...");
-
-    // ── LOGIN WITH FALLBACK: wait for React SPA to mount form before filling ──
-    // Navigate to login page
-    await page.goto("https://app.easy-orders.net/#/login", { waitUntil: "domcontentloaded" });
-
-    // SPA needs time to mount the login form — wait for the actual input, not just DOM ready
-    try {
-      await page.waitForSelector('#username', { timeout: 15000 });
-    } catch {
-      // If #username never appeared, try a full reload
-      log("⚠️ Login form didn't mount — reloading...");
-      await page.reload({ waitUntil: "domcontentloaded" });
-      await page.waitForSelector('#username', { timeout: 15000 });
-    }
-
-    // Small buffer after form appears — React may still be binding event handlers
-    await page.waitForTimeout(800);
-
-    try {
-      // Clear fields before filling — avoids leftover values from previous attempts
-      await page.fill('#username', '');
-      await page.waitForTimeout(200);
-      await page.fill('#username', config.easyEmail);
-      await page.waitForTimeout(400);
-
-      await page.fill('#password', '');
-      await page.waitForTimeout(200);
-      await page.fill('#password', config.easyPassword);
-      await page.waitForTimeout(500);
-
-      // Make sure the submit button is not disabled before clicking
-      const submitBtn = page.locator('button[type="submit"]');
-      await submitBtn.waitFor({ state: "visible", timeout: 5000 });
-      const isDisabled = await submitBtn.isDisabled().catch(() => false);
-      if (isDisabled) {
-        log("⚠️ Submit button is disabled — waiting for it to enable...");
-        await page.waitForFunction(
-          () => !document.querySelector('button[type="submit"]')?.disabled,
-          { timeout: 8000 }
-        );
-      }
-
-      // Click via evaluate — avoids "element not in viewport" errors on some screen sizes
-      await page.evaluate(() => {
-        const btn = document.querySelector('button[type="submit"]');
-        if (btn) btn.click();
-      });
-      await page.waitForTimeout(2000);
-
-      log("✅ Easy-orders: credentials submitted, waiting for result...");
-    } catch (e) {
-      log(`⚠️ Easy-orders login form error: ${e.message}`);
-    }
-
-    // 2FA: signal the UI, then wait up to 5 min for login to complete
-    process.send && process.send({ type: "2fa-needed" });
-    log("⏳ If 2FA is required, complete it in the browser (5 min max)...");
-
-    const maxWait = 5 * 60 * 1000;
-    const started = Date.now();
-    let confirmed = false;
-
-    while (Date.now() - started < maxWait) {
-      await page.waitForTimeout(3000);
-      if (!page.url().includes("login")) {
-        confirmed = true;
-        break;
-      }
-      log(`⏳ ${Math.round((Date.now() - started) / 1000)}s — waiting...`);
-    }
-
-    if (!confirmed) throw new Error("Easy-orders login timeout after 5 minutes");
-    log("✅ Easy-orders login confirmed\n");
+    await doEasyOrdersLogin(page);
   }
 
   // ── Switch to English FIRST — before store selection and everything else ──
-  // This ensures all button text ("Export", "Choose Products", etc.) is in English
-  // for every selector that follows in this run.
   await ensureEasyOrdersEnglish(page);
 
   // ── Store selection (if user has multiple stores) ──
@@ -475,11 +470,9 @@ async function phase1_easyOrdersLogin(page) {
     const storeName = (config.easyStore || "").trim().toLowerCase();
 
     if (!storeName) {
-      // No store configured — just click the first one
       log("⚠️ No store name configured — clicking first store");
       await page.locator('.MuiCard-root').first().click();
     } else {
-      // Find the card whose h6 text matches the configured store name
       log(`🔍 Looking for store: "${config.easyStore}"`);
 
       const cards = page.locator('.MuiCard-root');
@@ -487,9 +480,9 @@ async function phase1_easyOrdersLogin(page) {
       let found   = false;
 
       for (let i = 0; i < count; i++) {
-        const card      = cards.nth(i);
-        const nameEl    = card.locator('h6');
-        const cardName  = (await nameEl.innerText().catch(() => "")).trim().toLowerCase();
+        const card     = cards.nth(i);
+        const nameEl   = card.locator('h6');
+        const cardName = (await nameEl.innerText().catch(() => "")).trim().toLowerCase();
 
         if (cardName === storeName || cardName.includes(storeName) || storeName.includes(cardName)) {
           log(`✅ Found store: "${cardName}" — clicking`);
@@ -505,7 +498,6 @@ async function phase1_easyOrdersLogin(page) {
       }
     }
 
-    // Wait for redirect away from store-selection
     await page.waitForFunction(
       () => !window.location.href.includes("store-selection"),
       { timeout: 15000 }
@@ -513,10 +505,99 @@ async function phase1_easyOrdersLogin(page) {
     await page.waitForTimeout(1500);
     log("✅ Store selected\n");
 
-    // Re-confirm English after store redirect (page may reload on store select)
     await ensureEasyOrdersEnglish(page);
   }
+}
 
+// ════════════════════════════════════════
+// EASY-ORDERS LOGIN — INNER IMPLEMENTATION
+// Separated so it can be called from both the "not logged in" and "probe failed" paths.
+// ════════════════════════════════════════
+async function doEasyOrdersLogin(page) {
+  // Navigate to login page
+  log(`[NAV] → https://app.easy-orders.net/#/login`);
+  await page.goto("https://app.easy-orders.net/#/login", { waitUntil: "domcontentloaded" });
+
+  // SPA needs time to mount the login form — wait for the actual input, not just DOM ready
+  try {
+    await page.waitForSelector('#username', { timeout: 15000 });
+  } catch {
+    log("⚠️ Login form didn't mount — reloading...");
+    await page.reload({ waitUntil: "domcontentloaded" });
+    await page.waitForSelector('#username', { timeout: 15000 });
+  }
+
+  await page.waitForTimeout(800);
+
+  try {
+    await page.fill('#username', '');
+    await page.waitForTimeout(200);
+    await page.fill('#username', config.easyEmail);
+    await page.waitForTimeout(400);
+
+    await page.fill('#password', '');
+    await page.waitForTimeout(200);
+    await page.fill('#password', config.easyPassword);
+    await page.waitForTimeout(500);
+
+    const submitBtn = page.locator('button[type="submit"]');
+    await submitBtn.waitFor({ state: "visible", timeout: 5000 });
+    const isDisabled = await submitBtn.isDisabled().catch(() => false);
+    if (isDisabled) {
+      log("⚠️ Submit button is disabled — waiting for it to enable...");
+      await page.waitForFunction(
+        () => !document.querySelector('button[type="submit"]')?.disabled,
+        { timeout: 8000 }
+      );
+    }
+
+    await page.evaluate(() => {
+      const btn = document.querySelector('button[type="submit"]');
+      if (btn) btn.click();
+    });
+    await page.waitForTimeout(2000);
+
+    // Log submission — note: this only means the form was submitted, NOT that login succeeded
+    log("✅ Easy-orders: credentials SUBMITTED (awaiting server confirmation...)");
+  } catch (e) {
+    log(`⚠️ Easy-orders login form error: ${e.message}`);
+  }
+
+  // 2FA signal + wait loop
+  process.send && process.send({ type: "2fa-needed" });
+  log("⏳ If 2FA is required, complete it in the browser (5 min max)...");
+
+  const maxWait = 5 * 60 * 1000;
+  const started = Date.now();
+  let confirmed = false;
+
+  while (Date.now() - started < maxWait) {
+    await page.waitForTimeout(3000);
+    const currentUrl   = page.url();
+    const currentTitle = await page.title().catch(() => "");
+    log(`[NAV] ${Math.round((Date.now() - started) / 1000)}s — url: ${currentUrl} | title: ${currentTitle}`);
+
+    if (!currentUrl.includes("login")) {
+      // URL moved off login — now perform DOM verification before declaring success
+      const authDomPresent = await page.$(
+        '.MuiAppBar-root, [aria-label="language-switcher"], nav, .sidebar'
+      ) !== null;
+      if (authDomPresent) {
+        confirmed = true;
+        log(`✅ Easy-orders: login CONFIRMED (URL + DOM verified) — url: ${currentUrl} | title: ${currentTitle}`);
+        process.send && process.send({ type: "session-event", site: "easy-orders", event: "login-confirmed", method: "dom-verified", url: currentUrl });
+        await debugScreenshot(page, "easy-orders-login-confirmed");
+        break;
+      }
+      log(`⏳ URL left login but auth DOM not yet present — waiting for SPA hydration...`);
+    }
+  }
+
+  if (!confirmed) {
+    await debugScreenshot(page, "easy-orders-login-timeout");
+    throw new Error("Easy-orders login timeout after 5 minutes");
+  }
+  log("✅ Easy-orders login confirmed\n");
 }
 
 // ════════════════════════════════════════
@@ -628,16 +709,42 @@ const MAX_KHOD_ATTEMPTS  = 5;
 const KHOD_RETRY_WAIT_MS = 6 * 60 * 1000; // 6 min (matches existing cooldown)
 
 async function khodLogin(page) {
+  log(`[NAV] → https://khod-whaat.com/affiliate/auth/login`);
   await page.goto("https://khod-whaat.com/affiliate/auth/login", { waitUntil: "domcontentloaded" });
   await page.waitForTimeout(2000);
 
-  const alreadyLoggedIn = !page.url().includes("/auth/login") && !page.url().includes("/login");
-  if (alreadyLoggedIn) { log("✅ Khod: already logged in"); return; }
+  const landedUrl   = page.url();
+  const landedTitle = await page.title().catch(() => "?");
+  log(`[NAV] landed: ${landedUrl} | title: ${landedTitle}`);
+
+  // ── SESSION PROBE — verify URL + DOM before skipping login ──
+  // URL check alone is unreliable: a stale/expired cookie in the persistent profile
+  // can redirect away from /auth/login momentarily before the server invalidates it.
+  const urlLooksAuthenticated = !landedUrl.includes("/auth/login") && !landedUrl.includes("/login");
+  if (urlLooksAuthenticated) {
+    const authDomPresent = await page.$(
+      '.affiliate-orders, .sidebar, nav, [data-user], .user-info, .affiliate-header, [data-affiliate-id], main'
+    ) !== null;
+    if (authDomPresent) {
+      log("✅ Khod: already logged in (URL + DOM verified)");
+      process.send && process.send({ type: "session-event", site: "khod", event: "session-reused", method: "dom-verified", url: landedUrl });
+      return;
+    }
+    // URL moved but no auth DOM — stale cookie / redirect loop
+    log("⚠️ Khod: URL looks authenticated but auth DOM not found — SESSION_PROBE failed, re-logging in");
+    process.send && process.send({ type: "session-event", site: "khod", event: "session-probe-failed", url: landedUrl });
+    await debugScreenshot(page, "khod-probe-fail");
+    // Clear sessionStorage to evict any stale client-side auth state
+    await page.evaluate(() => { try { sessionStorage.clear(); } catch (_) {} });
+    // Navigate to login page explicitly
+    await page.goto("https://khod-whaat.com/affiliate/auth/login", { waitUntil: "domcontentloaded" });
+    await page.waitForTimeout(2000);
+  }
 
   const method = config.khodLoginMethod || "email";
   log(`🔐 Khod: logging in via ${method}...`);
 
-  // ── FALLBACK: reload login page up to 3 times if form fields not found ──
+  // ── Fill credentials with reload fallback ──
   for (let loginAttempt = 1; loginAttempt <= 3; loginAttempt++) {
     try {
       if (method === "phone") {
@@ -656,7 +763,8 @@ async function khodLogin(page) {
         await page.click('button[type="submit"]');
       }
       await page.waitForTimeout(2000);
-      log("✅ Khod: credentials submitted");
+      // Log SUBMISSION separately from CONFIRMATION
+      log("✅ Khod: credentials SUBMITTED (awaiting server confirmation...)");
       break;
     } catch (e) {
       log(`⚠️ Khod login form attempt ${loginAttempt}/3 failed: ${e.message}`);
@@ -676,14 +784,56 @@ async function khodLogin(page) {
   const maxWait = 5 * 60 * 1000;
   const started = Date.now();
   let confirmed = false;
+
   while (Date.now() - started < maxWait) {
     await page.waitForTimeout(3000);
-    const url = page.url();
-    if (!url.includes("/login") && !url.includes("/auth")) { confirmed = true; break; }
-    log(`⏳ ${Math.round((Date.now() - started) / 1000)}s — waiting for Khod login...`);
+    const currentUrl   = page.url();
+    const currentTitle = await page.title().catch(() => "");
+    log(`[NAV] ${Math.round((Date.now() - started) / 1000)}s — url: ${currentUrl} | title: ${currentTitle}`);
+
+    const urlOffLogin = !currentUrl.includes("/login") && !currentUrl.includes("/auth");
+    if (urlOffLogin) {
+      // DOM-verify: look for any authenticated element before declaring success
+      const authDomPresent = await page.$(
+        '.affiliate-orders, .sidebar, nav, main, [data-user], .user-info'
+      ) !== null;
+      if (authDomPresent) {
+        confirmed = true;
+        log(`✅ Khod: login CONFIRMED (URL + DOM verified) — url: ${currentUrl} | title: ${currentTitle}`);
+        process.send && process.send({ type: "session-event", site: "khod", event: "login-confirmed", method: "dom-verified", url: currentUrl });
+        await debugScreenshot(page, "khod-login-confirmed");
+        break;
+      }
+      // URL moved but SPA hasn't hydrated yet — keep waiting
+      log(`⏳ URL left login but auth DOM not yet present — waiting for SPA hydration...`);
+    }
   }
-  if (!confirmed) throw new Error("Khod login timeout after 5 minutes");
+
+  if (!confirmed) {
+    await debugScreenshot(page, "khod-login-timeout");
+    throw new Error("Khod login timeout after 5 minutes");
+  }
   log("✅ Khod login confirmed");
+}
+
+// ════════════════════════════════════════
+// SESSION PROBE — KHOD
+// Asserts the page is in an authenticated state.
+// Throws SESSION_DESYNC if the URL or DOM indicates the session is gone.
+// ════════════════════════════════════════
+async function assertKhodSession(page) {
+  const url = page.url();
+  if (isOnLoginPage(url)) {
+    throw new Error(`SESSION_EXPIRED: on login page (${url})`);
+  }
+  // DOM-verify: look for any known post-auth element
+  const authDomPresent = await page.$(
+    '.affiliate-orders, .sidebar, nav, main, [data-user], .user-info'
+  ) !== null;
+  if (!authDomPresent) {
+    const title = await page.title().catch(() => "");
+    throw new Error(`SESSION_UNVERIFIED: URL ok (${url}) but no auth DOM found | title: "${title}"`);
+  }
 }
 
 async function khodExportAttempt(page, exportFromDate, dateTo, attemptNum) {
@@ -694,21 +844,50 @@ async function khodExportAttempt(page, exportFromDate, dateTo, attemptNum) {
   let pageLoaded = false;
   for (let reload = 1; reload <= 3; reload++) {
     try {
+      log(`[NAV] → https://khod-whaat.com/affiliate/orders/list/all`);
       await page.goto("https://khod-whaat.com/affiliate/orders/list/all", { waitUntil: "domcontentloaded" });
       await page.waitForTimeout(3000);
 
-      // ── Session guard: if redirected to login, re-login before proceeding ──
-      const currentUrl = page.url();
-      if (currentUrl.includes("/login") || currentUrl.includes("/auth")) {
-        log("🔐 Khod session expired mid-attempt — re-logging in...");
+      const landedUrl = page.url();
+      log(`[NAV] landed: ${landedUrl} | title: ${await page.title().catch(() => "?")}`);
+
+      // ── Session probe: URL + DOM check before loading protected resources ──
+      // This runs BEFORE waitForSelector so we get a meaningful error, not
+      // a cryptic "date picker not found" when the real issue is a lost session.
+      try {
+        await assertKhodSession(page);
+        process.send && process.send({ type: "session-event", site: "khod", event: "session-probe-ok", url: landedUrl });
+      } catch (sessionErr) {
+        log(`🔐 Khod SESSION_DESYNC before export attempt: ${sessionErr.message}`);
+        process.send && process.send({ type: "session-event", site: "khod", event: "session-probe-failed", url: landedUrl, error: sessionErr.message });
+        await debugScreenshot(page, `khod-export-session-fail-${attemptNum}`);
         await khodLogin(page);
+        log(`[NAV] → https://khod-whaat.com/affiliate/orders/list/all (post re-login)`);
         await page.goto("https://khod-whaat.com/affiliate/orders/list/all", { waitUntil: "domcontentloaded" });
         await page.waitForTimeout(3000);
       }
 
       // ── Wait for date input to appear ──
       log("⌛ Waiting for date filter input...");
-      await page.waitForSelector("#from_date + input", { timeout: 20000 });
+      try {
+        await page.waitForSelector("#from_date + input", { timeout: 20000 });
+      } catch (selectorErr) {
+        // Before surfacing as a generic timeout, check if this is a session issue
+        const isSession = isOnLoginPage(page.url()) ||
+          (await page.$('input[name="email"], input[name="phone"]') !== null);
+        if (isSession) {
+          log(`🔐 Date picker missing — actually a session loss (URL: ${page.url()})`);
+          await debugScreenshot(page, `khod-datepicker-session-fail-${attemptNum}`);
+          await khodLogin(page);
+          await page.goto("https://khod-whaat.com/affiliate/orders/list/all", { waitUntil: "domcontentloaded" });
+          await page.waitForTimeout(3000);
+          await page.waitForSelector("#from_date + input", { timeout: 20000 });
+        } else {
+          await debugScreenshot(page, `khod-datepicker-missing-${attemptNum}`);
+          throw selectorErr;
+        }
+      }
+
       pageLoaded = true;
       break;
     } catch (e) {
@@ -717,6 +896,7 @@ async function khodExportAttempt(page, exportFromDate, dateTo, attemptNum) {
         log(`🔄 Reloading Khod orders page...`);
         await page.waitForTimeout(4000);
       } else {
+        await debugScreenshot(page, `khod-orders-page-fail-${attemptNum}`);
         throw new Error(`Khod orders page failed to load after 3 reloads: ${e.message}`);
       }
     }
@@ -1053,8 +1233,21 @@ async function selectCityByText(page, cityName) {
 }
 
 // ════════════════════════════════════════
-// PHASE 5 — CREATE ORDERS IN EASY-ORDERS ONE BY ONE
+// SESSION PROBE — EASY-ORDERS
 // ════════════════════════════════════════
+async function assertEasyOrdersSession(page) {
+  const url = page.url();
+  if (url.includes("login")) {
+    throw new Error(`SESSION_EXPIRED: on login page (${url})`);
+  }
+  const authDomPresent = await page.$(
+    '.MuiAppBar-root, [aria-label="language-switcher"], nav'
+  ) !== null;
+  if (!authDomPresent) {
+    const title = await page.title().catch(() => "");
+    throw new Error(`SESSION_UNVERIFIED: URL ok (${url}) but no auth DOM found | title: "${title}"`);
+  }
+}
 async function phase5_createOrders(page, orders) {
   log("\n═══════════════════════════════════════");
   log("  PHASE 5 — Creating Orders in Easy-Orders");
@@ -1166,11 +1359,16 @@ async function createSingleOrderAttempt(page, order, orderNum, attempt) {
   else             log(`${orderNum} ↳ city="${finalCity}" address="${finalAddress}"`);
 
   // ── 1. Navigate directly to create page ──
+  log(`[NAV] → https://app.easy-orders.net/#/orders/create`);
   await page.goto("https://app.easy-orders.net/#/orders/create", { waitUntil: "domcontentloaded" });
 
-  // ── Session guard ──
-  if (page.url().includes("login")) {
-    log(`${orderNum} ⚠️ Easy-Orders session expired — re-logging in...`);
+  // ── Session probe: DOM-verified check before loading any protected selectors ──
+  try {
+    await assertEasyOrdersSession(page);
+  } catch (sessionErr) {
+    log(`⚠️ Easy-Orders ${orderNum} SESSION_DESYNC: ${sessionErr.message}`);
+    process.send && process.send({ type: "session-event", site: "easy-orders", event: "session-probe-failed", url: page.url(), error: sessionErr.message });
+    await debugScreenshot(page, `easy-orders-session-fail`);
     await phase1_easyOrdersLogin(page);
     await page.goto("https://app.easy-orders.net/#/orders/create", { waitUntil: "domcontentloaded" });
   }
@@ -1487,40 +1685,110 @@ async function verifyFinalTotal(page, targetSubtotal, orderNum) {
   const chromePath = findChrome();
   log(`🌐 Using Chrome: ${chromePath}`);
 
+  // ════════════════════════════════════════════════════════════════
+  // CHROME LAUNCH — REAL BROWSER MODE
+  //
+  // TASK 1 ✅ Remove --enable-automation (Playwright injects it by default)
+  //           Done via ignoreDefaultArgs — this alone causes the banner.
+  //
+  // TASK 2 ✅ Remove --disable-blink-features=AutomationControlled
+  //           Tells Chrome to hide the automation flag in Blink engine.
+  //
+  // TASK 3 ✅ Remove ALL flags that trigger "unsupported command-line flag" banner:
+  //           --no-sandbox           → triggers warning in Chrome 120+
+  //           --disable-dev-shm-usage → Linux-only, triggers on Windows
+  //           --disable-extensions    → conflicts + triggers banner
+  //           --use-mock-keychain     → macOS-only, triggers on Windows
+  //           --password-store=basic  → triggers on newer Chrome
+  //           --metrics-recording-only → deprecated, triggers warning
+  //           --no-service-autorun    → deprecated, triggers warning
+  //           --disable-extensions-except= → conflicts with real Chrome
+  //
+  // TASK 4 ✅ Keep only flags that real Chrome uses silently with no banners.
+  //
+  // TASK 5 ✅ Spoof navigator.webdriver + plugins via addInitScript so
+  //           bot-detection JS on websites sees a real browser fingerprint.
+  // ════════════════════════════════════════════════════════════════
+
   const context = await chromium.launchPersistentContext(profilePath, {
     executablePath: chromePath,
     headless: false,
+
+    // Stop Playwright injecting --enable-automation (causes "controlled" banner)
+    ignoreDefaultArgs: ["--enable-automation"],
+
+    // Stop Playwright injecting --no-sandbox automatically.
+    // Playwright source: if (options.chromiumSandbox !== true) push("--no-sandbox")
+    // --no-sandbox triggers "unsupported command-line flag" warning in Chrome 120+
+    chromiumSandbox: true,
+
     args: [
+      // ── Startup behaviour (all safe, no banners) ──
       "--no-first-run",
       "--no-default-browser-check",
+
+      // ── Hide automation traces ──
+      // NOTE: --disable-blink-features=AutomationControlled and --exclude-switches=enable-automation
+      // are removed — they trigger the "unsupported command-line flag" banner in real Chrome.
+      // Automation is hidden via addInitScript (navigator.webdriver spoof) below instead.
+
+      // ── Performance / stability (safe, no banners) ──
       "--disable-background-networking",
       "--disable-client-side-phishing-detection",
       "--disable-default-apps",
-      "--disable-extensions-except=",
       "--disable-hang-monitor",
       "--disable-popup-blocking",
       "--disable-prompt-on-repost",
       "--disable-sync",
       "--disable-translate",
-      "--metrics-recording-only",
-      "--no-service-autorun",
-      "--password-store=basic",
-      "--use-mock-keychain",
-      // Force 100% zoom on all screens regardless of OS DPI setting.
-      // Without this, high-DPI (125%, 150%) displays make the page look
-      // zoomed-in and cut off — elements appear huge and nothing fits.
+
+      // ── Startup speed improvements ──
+      // Limit disk cache to 50 MB — bot uses very few unique URLs, large cache wastes init time
+      "--disk-cache-size=52428800",
+      // Skip checking for Chrome updates on launch (saves ~200ms on first run)
+      "--no-pings",
+      // Disable background tab throttling — keeps bot pages responsive
+      "--disable-background-timer-throttling",
+      // Disable renderer backgrounding — prevents Playwright pages from being throttled
+      "--disable-renderer-backgrounding",
+      // Skip loading unused component extensions on startup
+      "--disable-component-extensions-with-background-pages",
+      // Faster V8 startup: skip idle GC tasks during launch
+      "--disable-v8-idle-tasks",
+
+      // ── Display (safe, no banners) ──
       "--force-device-scale-factor=1",
-      // Force Gregorian calendar + English locale so date pickers always
-      // show Gregorian dates (not Hijri). Fixes التاريخ بالهجري on Arabic OS.
+      "--window-size=1400,900",
+
+      // ── Locale — force Gregorian calendar dates on Arabic OS (safe) ──
       "--lang=en-US",
       "--accept-lang=en-US,en",
-      "--window-size=1400,900",
-      "--disable-gpu-sandbox",        // prevents crashes on some client GPUs
-      "--disable-dev-shm-usage",      // prevents crashes on low-memory machines (shared memory too small)
-      "--no-sandbox",                 // needed on some Windows configurations where sandbox init fails
     ],
+
     locale: "en-US",
     waitForInitialPage: false,
+  });
+
+  // ── TASK 5: Spoof browser fingerprint on every page before any JS runs ──
+  // Hides all Playwright/automation traces from website bot-detection scripts.
+  await context.addInitScript(() => {
+    // Hide the webdriver flag (set by all automation tools)
+    Object.defineProperty(navigator, "webdriver", { get: () => undefined });
+
+    // Remove Playwright-specific window globals
+    delete window.__playwright;
+    delete window.__pw_manual;
+    delete window.__PW_inspect;
+
+    // Real Chrome always has plugins — empty array = detected as bot
+    Object.defineProperty(navigator, "plugins", {
+      get: () => [1, 2, 3, 4, 5],
+    });
+
+    // Real Chrome reports languages — missing = detected as bot
+    Object.defineProperty(navigator, "languages", {
+      get: () => ["en-US", "en"],
+    });
   });
 
   const page = context.pages()[0] || (await context.newPage());

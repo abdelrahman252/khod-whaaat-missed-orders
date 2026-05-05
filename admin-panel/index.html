@@ -1,0 +1,613 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+<title>Khod Bot — Admin Panel</title>
+<style>
+  @import url('https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;600;700&family=IBM+Plex+Sans:wght@400;500;600;700&display=swap');
+  :root {
+    --bg:#0a0c0f; --bg2:#111318; --bg3:#1a1d24; --border:#2a2d35;
+    --accent:#7c6af7; --accent2:#4f8ef7; --green:#00d68f; --red:#ff4d6d;
+    --yellow:#ffc94d; --text1:#f0f2f7; --text2:#8b8fa8; --text3:#55596a; --radius:10px;
+  }
+  * { box-sizing:border-box; margin:0; padding:0; }
+  body { background:var(--bg); color:var(--text1); font-family:'IBM Plex Sans',sans-serif; min-height:100vh; }
+  .topbar { background:var(--bg2); border-bottom:1px solid var(--border); padding:14px 32px; display:flex; align-items:center; justify-content:space-between; position:sticky; top:0; z-index:100; }
+  .topbar-logo { font-family:'IBM Plex Mono',monospace; font-size:15px; font-weight:700; color:var(--text1); letter-spacing:-.3px; }
+  .topbar-logo span { color:var(--accent); }
+  .topbar-status { font-family:'IBM Plex Mono',monospace; font-size:11px; color:var(--text2); }
+  .dot { display:inline-block; width:7px; height:7px; border-radius:50%; background:var(--text3); margin-right:6px; }
+  .dot.green { background:var(--green); box-shadow:0 0 6px var(--green); }
+  #config-banner { background:linear-gradient(90deg,rgba(124,106,247,.15),rgba(79,142,247,.1)); border-bottom:1px solid rgba(124,106,247,.3); padding:14px 32px; display:flex; align-items:center; gap:16px; }
+  #config-banner label { font-size:11px; font-weight:700; color:var(--text2); text-transform:uppercase; letter-spacing:.08em; white-space:nowrap; }
+  #config-banner input { background:var(--bg); border:1px solid var(--border); border-radius:7px; padding:7px 12px; font-family:'IBM Plex Mono',monospace; font-size:12px; color:var(--text1); flex:1; outline:none; }
+  #config-banner input:focus { border-color:var(--accent); }
+  #btn-connect { padding:8px 20px; background:var(--accent); border:none; border-radius:7px; color:#fff; font-size:13px; font-weight:600; cursor:pointer; white-space:nowrap; transition:opacity .2s; }
+  #btn-connect:hover { opacity:.85; }
+  .main { display:flex; gap:0; min-height:calc(100vh - 49px - 55px); }
+  .sidebar { width:220px; min-width:220px; background:var(--bg2); border-right:1px solid var(--border); padding:24px 0; }
+  .sidebar-section { font-size:10px; font-weight:700; color:var(--text3); text-transform:uppercase; letter-spacing:.1em; padding:0 20px; margin-bottom:8px; margin-top:20px; }
+  .sidebar-section:first-child { margin-top:0; }
+  .nav-item { display:flex; align-items:center; gap:10px; padding:9px 20px; font-size:13px; color:var(--text2); cursor:pointer; transition:background .15s,color .15s; border-left:2px solid transparent; }
+  .nav-item:hover { background:var(--bg3); color:var(--text1); }
+  .nav-item.active { background:rgba(124,106,247,.1); color:var(--accent); border-left-color:var(--accent); }
+  .nav-item .icon { font-size:15px; width:20px; text-align:center; }
+  .content { flex:1; padding:32px; overflow-y:auto; }
+  .page { display:none; } .page.active { display:block; }
+  .page-header { margin-bottom:28px; }
+  .page-title { font-size:22px; font-weight:700; letter-spacing:-.5px; margin-bottom:4px; }
+  .page-sub { font-size:13px; color:var(--text2); }
+  .card { background:var(--bg2); border:1px solid var(--border); border-radius:var(--radius); padding:24px; margin-bottom:20px; }
+  .card-title { font-size:12px; font-weight:700; color:var(--text2); text-transform:uppercase; letter-spacing:.08em; margin-bottom:18px; }
+  .stats-row { display:grid; grid-template-columns:repeat(4,1fr); gap:16px; margin-bottom:24px; }
+  .stat-card { background:var(--bg2); border:1px solid var(--border); border-radius:var(--radius); padding:20px; }
+  .stat-label { font-size:11px; font-weight:700; color:var(--text2); text-transform:uppercase; letter-spacing:.08em; margin-bottom:8px; }
+  .stat-value { font-size:28px; font-weight:700; font-family:'IBM Plex Mono',monospace; color:var(--text1); }
+  .stat-value.green { color:var(--green); } .stat-value.red { color:var(--red); } .stat-value.yellow { color:var(--yellow); }
+  .form-grid { display:grid; grid-template-columns:1fr 1fr; gap:16px; }
+  .form-group { display:flex; flex-direction:column; gap:6px; }
+  .form-group label { font-size:11px; font-weight:700; color:var(--text2); text-transform:uppercase; letter-spacing:.07em; }
+  .form-group input, .form-group select { background:var(--bg3); border:1px solid var(--border); border-radius:7px; padding:10px 12px; font-family:'IBM Plex Sans',sans-serif; font-size:13px; color:var(--text1); outline:none; transition:border-color .2s; }
+  .form-group input:focus, .form-group select:focus { border-color:var(--accent); }
+  .form-group .hint { font-size:11px; color:var(--text3); margin-top:2px; }
+  .btn { padding:9px 18px; border:none; border-radius:7px; font-family:'IBM Plex Sans',sans-serif; font-size:13px; font-weight:600; cursor:pointer; transition:opacity .2s; display:inline-flex; align-items:center; gap:6px; }
+  .btn:hover { opacity:.85; }
+  .btn-primary { background:linear-gradient(135deg,var(--accent),var(--accent2)); color:#fff; }
+  .btn-green   { background:var(--green); color:#021c12; }
+  .btn-red     { background:var(--red); color:#fff; }
+  .btn-ghost   { background:var(--bg3); border:1px solid var(--border); color:var(--text1); }
+  .btn-sm { padding:6px 14px; font-size:12px; }
+  .table-wrap { overflow-x:auto; }
+  table { width:100%; border-collapse:collapse; font-size:13px; }
+  thead th { text-align:left; padding:10px 14px; font-size:10px; font-weight:700; color:var(--text3); text-transform:uppercase; letter-spacing:.08em; border-bottom:1px solid var(--border); white-space:nowrap; }
+  tbody tr { border-bottom:1px solid rgba(42,45,53,.7); transition:background .15s; }
+  tbody tr:hover { background:var(--bg3); }
+  tbody td { padding:12px 14px; color:var(--text1); vertical-align:middle; }
+  tbody td.mono { font-family:'IBM Plex Mono',monospace; font-size:12px; color:var(--text2); }
+  .badge { display:inline-block; padding:3px 9px; border-radius:99px; font-size:11px; font-weight:700; letter-spacing:.05em; text-transform:uppercase; }
+  .badge-green  { background:rgba(0,214,143,.15);  color:var(--green);  border:1px solid rgba(0,214,143,.3); }
+  .badge-red    { background:rgba(255,77,109,.15);  color:var(--red);    border:1px solid rgba(255,77,109,.3); }
+  .badge-yellow { background:rgba(255,201,77,.15);  color:var(--yellow); border:1px solid rgba(255,201,77,.3); }
+  .badge-gray   { background:rgba(139,143,168,.1);  color:var(--text2);  border:1px solid var(--border); }
+  .badge-blue   { background:rgba(79,142,247,.15);  color:#8bbcf7;       border:1px solid rgba(79,142,247,.3); }
+  .badge-purple { background:rgba(124,106,247,.15); color:#b3a9f9;       border:1px solid rgba(124,106,247,.3); }
+  .notice { padding:14px 18px; border-radius:8px; font-size:13px; display:flex; align-items:flex-start; gap:10px; margin-bottom:16px; }
+  .notice-info    { background:rgba(79,142,247,.1);  border:1px solid rgba(79,142,247,.3);  color:#8bbcf7; }
+  .notice-warn    { background:rgba(255,201,77,.1);  border:1px solid rgba(255,201,77,.3);  color:var(--yellow); }
+  .notice-success { background:rgba(0,214,143,.1);   border:1px solid rgba(0,214,143,.3);   color:var(--green); }
+  .notice-error   { background:rgba(255,77,109,.1);  border:1px solid rgba(255,77,109,.3);  color:var(--red); }
+  .modal-overlay { position:fixed; inset:0; background:rgba(0,0,0,.75); display:flex; align-items:center; justify-content:center; z-index:999; opacity:0; pointer-events:none; transition:opacity .2s; }
+  .modal-overlay.open { opacity:1; pointer-events:all; }
+  .modal { background:var(--bg2); border:1px solid var(--border); border-radius:14px; padding:30px; width:540px; max-width:95vw; transform:scale(.95); transition:transform .2s; }
+  .modal-overlay.open .modal { transform:scale(1); }
+  .modal-title { font-size:18px; font-weight:700; margin-bottom:6px; }
+  .modal-sub { font-size:13px; color:var(--text2); margin-bottom:24px; }
+  .modal-actions { display:flex; gap:10px; justify-content:flex-end; margin-top:24px; }
+  #toast-container { position:fixed; bottom:24px; right:24px; z-index:9999; display:flex; flex-direction:column; gap:8px; }
+  .toast { background:var(--bg2); border:1px solid var(--border); border-radius:8px; padding:12px 18px; font-size:13px; color:var(--text1); box-shadow:0 8px 24px rgba(0,0,0,.4); animation:toast-in .3s ease; display:flex; align-items:center; gap:10px; }
+  .toast.success { border-color:rgba(0,214,143,.4); } .toast.error { border-color:rgba(255,77,109,.4); }
+  @keyframes toast-in { from { opacity:0; transform:translateY(10px); } to { opacity:1; transform:translateY(0); } }
+  .key-output { background:var(--bg3); border:1px solid var(--border); border-radius:8px; padding:14px 16px; font-family:'IBM Plex Mono',monospace; font-size:14px; color:var(--accent); letter-spacing:.1em; word-break:break-all; margin-top:12px; display:none; user-select:all; text-align:center; }
+  .empty { text-align:center; padding:60px 20px; color:var(--text2); }
+  .empty-icon { font-size:40px; margin-bottom:12px; }
+  .empty-title { font-size:16px; font-weight:600; color:var(--text1); margin-bottom:6px; }
+  .empty-sub { font-size:13px; }
+  .spinner { width:18px; height:18px; border:2px solid var(--border); border-top-color:var(--accent); border-radius:50%; animation:spin .7s linear infinite; display:inline-block; }
+  @keyframes spin { to { transform:rotate(360deg); } }
+  .mt-16 { margin-top:16px; } .mt-8 { margin-top:8px; } .gap-8 { display:flex; gap:8px; flex-wrap:wrap; }
+  .full-grid { grid-column:1/-1; }
+  .acc-slot { background:var(--bg3); border:1px solid var(--border); border-radius:8px; padding:12px 14px; display:flex; align-items:center; justify-content:space-between; gap:12px; margin-bottom:8px; }
+  .acc-slot-info { font-size:12px; color:var(--text2); font-family:'IBM Plex Mono',monospace; flex:1; min-width:0; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+  .acc-slot-label { font-size:11px; font-weight:700; color:var(--text1); margin-bottom:2px; }
+</style>
+</head>
+<body>
+
+<div class="topbar">
+  <div class="topbar-logo">⚡ Khod Bot <span>Admin</span></div>
+  <div class="topbar-status"><span class="dot" id="conn-dot"></span><span id="conn-label">Not connected</span></div>
+</div>
+
+<div id="config-banner">
+  <label>Supabase URL</label>
+  <input id="inp-url" type="text" placeholder="https://xxxx.supabase.co" autocomplete="off" />
+  <label>Publishable Key</label>
+  <input id="inp-key" type="text" placeholder="sb_publishable_..." autocomplete="off" style="flex:2" />
+  <button id="btn-connect" onclick="connect()">Connect</button>
+</div>
+
+<div class="main">
+  <div class="sidebar">
+    <div class="sidebar-section">Menu</div>
+    <div class="nav-item active" onclick="switchPage('dashboard')" id="nav-dashboard"><span class="icon">📊</span> Dashboard</div>
+    <div class="nav-item" onclick="switchPage('licenses')" id="nav-licenses"><span class="icon">🔑</span> Licenses</div>
+    <div class="nav-item" onclick="switchPage('keygen')" id="nav-keygen"><span class="icon">✨</span> Generate Key</div>
+    <div class="sidebar-section">Tools</div>
+    <div class="nav-item" onclick="switchPage('device')" id="nav-device"><span class="icon">💻</span> Reset Device</div>
+    <div class="nav-item" onclick="switchPage('revoke')" id="nav-revoke"><span class="icon">🚫</span> Revoke License</div>
+  </div>
+
+  <div class="content">
+
+    <!-- DASHBOARD -->
+    <div class="page active" id="page-dashboard">
+      <div class="page-header">
+        <div class="page-title">Dashboard</div>
+        <div class="page-sub">Overview of all licenses and customers</div>
+      </div>
+      <div class="stats-row">
+        <div class="stat-card"><div class="stat-label">Total Licenses</div><div class="stat-value" id="stat-total">—</div></div>
+        <div class="stat-card"><div class="stat-label">Active</div><div class="stat-value green" id="stat-active">—</div></div>
+        <div class="stat-card"><div class="stat-label">Expired</div><div class="stat-value yellow" id="stat-expired">—</div></div>
+        <div class="stat-card"><div class="stat-label">Revoked</div><div class="stat-value red" id="stat-revoked">—</div></div>
+      </div>
+      <div class="notice notice-info">ℹ️ Connect to Supabase using the bar above to load live data.</div>
+    </div>
+
+    <!-- LICENSES -->
+    <div class="page" id="page-licenses">
+      <div class="page-header" style="display:flex;align-items:center;justify-content:space-between">
+        <div><div class="page-title">All Licenses</div><div class="page-sub">Click a license to manage accounts</div></div>
+        <button class="btn btn-primary" onclick="loadLicenses()">🔄 Refresh</button>
+      </div>
+      <div class="card"><div class="table-wrap" id="licenses-table-wrap">
+        <div class="empty"><div class="empty-icon">🔑</div><div class="empty-title">No data</div><div class="empty-sub">Connect to Supabase first</div></div>
+      </div></div>
+    </div>
+
+    <!-- KEYGEN -->
+    <div class="page" id="page-keygen">
+      <div class="page-header">
+        <div class="page-title">Generate License Key</div>
+        <div class="page-sub">Create a key — set how many account slots the customer gets</div>
+      </div>
+      <div class="card" style="max-width:580px">
+        <div class="notice notice-info" style="margin-bottom:20px">
+          🤖 <strong>Fully automatic.</strong> Device locks on first activation. Set <strong>Max Accounts</strong> to control how many credential slots the customer can add.
+        </div>
+        <div class="form-grid">
+          <div class="form-group">
+            <label>Customer Name <span style="font-weight:400;color:var(--text3);text-transform:none">(optional)</span></label>
+            <input id="kg-name" type="text" placeholder="e.g. Ahmed Store" />
+          </div>
+          <div class="form-group">
+            <label>Expiry Date</label>
+            <input id="kg-expiry" type="date" />
+            <span class="hint">Default: 30 days from today</span>
+          </div>
+          <div class="form-group">
+            <label>Max Accounts <span style="font-weight:400;color:var(--text3);text-transform:none">(1–15)</span></label>
+            <input id="kg-max-accounts" type="number" min="1" max="15" value="1" placeholder="1" />
+            <span class="hint">How many credential slots this license allows</span>
+          </div>
+          <div class="form-group full-grid">
+            <label>Notes <span style="font-weight:400;color:var(--text3);text-transform:none">(optional)</span></label>
+            <input id="kg-notes" type="text" placeholder="e.g. Monthly subscription - May 2026" />
+          </div>
+        </div>
+        <div style="display:flex;gap:10px;margin-top:20px;align-items:center">
+          <button class="btn btn-primary" onclick="generateKey()">⚡ Generate &amp; Save Key</button>
+          <button class="btn btn-ghost" onclick="copyKey()" id="btn-copy-key" style="display:none">📋 Copy Key</button>
+        </div>
+        <div class="key-output" id="key-output-box"></div>
+        <div id="keygen-notice" class="mt-16"></div>
+      </div>
+    </div>
+
+    <!-- RESET DEVICE -->
+    <div class="page" id="page-device">
+      <div class="page-header">
+        <div class="page-title">Reset Device Lock</div>
+        <div class="page-sub">Allow a customer to activate on a new device</div>
+      </div>
+      <div class="card" style="max-width:520px">
+        <div class="notice notice-warn">⚠️ Use when customer changed PC, reinstalled Windows, or VPN changed their device fingerprint. After reset, next activation auto-locks to the new device.</div>
+        <div class="form-group mt-16"><label>License Key</label><input id="dev-key" type="text" placeholder="KHOD-XXXX-XXXX-XXXX-XXXX" /></div>
+        <div style="margin-top:16px"><button class="btn btn-primary" onclick="resetDevice()">💻 Reset Device Lock</button></div>
+        <div id="device-notice" class="mt-16"></div>
+      </div>
+    </div>
+
+    <!-- REVOKE -->
+    <div class="page" id="page-revoke">
+      <div class="page-header">
+        <div class="page-title">Revoke License</div>
+        <div class="page-sub">Block a customer immediately</div>
+      </div>
+      <div class="card" style="max-width:520px">
+        <div class="notice notice-warn">⚠️ Revoking blocks the customer on their next app check.</div>
+        <div class="form-group mt-16"><label>License Key</label><input id="rev-key" type="text" placeholder="KHOD-XXXX-XXXX-XXXX-XXXX" /></div>
+        <div style="margin-top:16px;display:flex;gap:10px">
+          <button class="btn btn-red"   onclick="revokeLicense()">🚫 Revoke</button>
+          <button class="btn btn-ghost" onclick="unrevokeLicense()">✅ Un-Revoke</button>
+        </div>
+        <div id="revoke-notice" class="mt-16"></div>
+      </div>
+    </div>
+
+  </div>
+</div>
+
+<!-- ACCOUNT MANAGEMENT MODAL -->
+<div class="modal-overlay" id="modal-accounts">
+  <div class="modal" style="width:580px">
+    <div class="modal-title" id="modal-lic-key-display">Account Management</div>
+    <div class="modal-sub">Lock or unlock individual account slots for this license.</div>
+    <div id="modal-accounts-body">Loading...</div>
+    <div class="modal-actions">
+      <button class="btn btn-ghost" onclick="closeAccountModal()">Close</button>
+    </div>
+  </div>
+</div>
+
+<div id="toast-container"></div>
+
+<script>
+let SUPABASE_URL = "", SUPABASE_KEY = "";
+let currentModalKey = "";
+
+window.addEventListener("load", () => {
+  const savedUrl = localStorage.getItem("sb_url") || "";
+  const savedKey = localStorage.getItem("sb_key") || "";
+  if (savedUrl) document.getElementById("inp-url").value = savedUrl;
+  if (savedKey) document.getElementById("inp-key").value = savedKey;
+  if (savedUrl && savedKey) { SUPABASE_URL = cleanUrl(savedUrl); SUPABASE_KEY = savedKey; setConnected(true); loadDashboard(); }
+  const d = new Date(); d.setDate(d.getDate() + 30);
+  document.getElementById("kg-expiry").value = d.toISOString().slice(0,10);
+});
+
+function cleanUrl(raw) {
+  try { return new URL(raw.trim()).origin; }
+  catch { return raw.trim().replace(/\/rest\/v1\/?.*$/, "").replace(/\/$/, ""); }
+}
+function connect() {
+  SUPABASE_URL = cleanUrl(document.getElementById("inp-url").value);
+  SUPABASE_KEY = document.getElementById("inp-key").value.trim();
+  if (!SUPABASE_URL || !SUPABASE_KEY) { showToast("Please enter both URL and key", "error"); return; }
+  document.getElementById("inp-url").value = SUPABASE_URL;
+  localStorage.setItem("sb_url", SUPABASE_URL); localStorage.setItem("sb_key", SUPABASE_KEY);
+  setConnected(true); loadDashboard(); showToast("Connected ✓", "success");
+}
+function setConnected(ok) {
+  document.getElementById("conn-dot").className = "dot " + (ok ? "green" : "");
+  document.getElementById("conn-label").textContent = ok ? "Connected" : "Not connected";
+}
+
+async function sbReq(method, path, body) {
+  const headers = { "Content-Type":"application/json", "Authorization":"Bearer "+SUPABASE_KEY, "apikey":SUPABASE_KEY };
+  if (method === "POST")  headers["Prefer"] = "return=representation";
+  if (method === "PATCH") headers["Prefer"] = "return=minimal";
+  const res = await fetch(SUPABASE_URL + "/rest/v1" + path, { method, headers, body: body ? JSON.stringify(body) : undefined });
+  const text = await res.text();
+  try { return { ok: res.ok, status: res.status, data: JSON.parse(text) }; }
+  catch { return { ok: res.ok, status: res.status, data: text }; }
+}
+
+function switchPage(name) {
+  document.querySelectorAll(".page").forEach(p => p.classList.remove("active"));
+  document.querySelectorAll(".nav-item").forEach(n => n.classList.remove("active"));
+  document.getElementById("page-" + name).classList.add("active");
+  document.getElementById("nav-" + name).classList.add("active");
+  if (name === "licenses") loadLicenses();
+  if (name === "dashboard") loadDashboard();
+}
+
+// DASHBOARD
+async function loadDashboard() {
+  if (!SUPABASE_URL) return;
+  const res = await sbReq("GET", "/licenses?select=expires_at,revoked", null);
+  if (!res.ok) return;
+  const rows = res.data; const now = new Date();
+  let active = 0, expired = 0, revoked = 0;
+  rows.forEach(r => { if (r.revoked) { revoked++; return; } if (new Date(r.expires_at) >= now) active++; else expired++; });
+  document.getElementById("stat-total").textContent   = rows.length;
+  document.getElementById("stat-active").textContent  = active;
+  document.getElementById("stat-expired").textContent = expired;
+  document.getElementById("stat-revoked").textContent = revoked;
+}
+
+// LICENSES TABLE
+async function loadLicenses() {
+  if (!SUPABASE_URL) { showToast("Connect first", "error"); return; }
+  const wrap = document.getElementById("licenses-table-wrap");
+  wrap.innerHTML = '<div style="text-align:center;padding:40px"><span class="spinner"></span></div>';
+  const res = await sbReq("GET", "/licenses?select=*&order=created_at.desc", null);
+  if (!res.ok) { wrap.innerHTML = '<div class="notice notice-error">Failed: ' + JSON.stringify(res.data) + '</div>'; return; }
+  const rows = res.data;
+  if (!rows.length) { wrap.innerHTML = '<div class="empty"><div class="empty-icon">🔑</div><div class="empty-title">No licenses yet</div></div>'; return; }
+  const now = new Date();
+  wrap.innerHTML = `
+    <table>
+      <thead><tr>
+        <th>License Key</th><th>Customer</th><th>Expires</th><th>Status</th>
+        <th>Device</th><th>Max Acc.</th><th>Actions</th>
+      </tr></thead>
+      <tbody>${rows.map(r => {
+        const exp = new Date(r.expires_at);
+        const daysLeft = Math.ceil((exp - now) / 86400000);
+        let status = r.revoked ? '<span class="badge badge-red">Revoked</span>'
+          : daysLeft < 0 ? '<span class="badge badge-yellow">Expired</span>'
+          : '<span class="badge badge-green">Active · ' + daysLeft + 'd</span>';
+        const device = r.device_id ? '<span class="badge badge-blue" title="' + r.device_id + '">Locked</span>' : '<span class="badge badge-gray">Pending</span>';
+        const maxAcc = r.max_accounts || 1;
+        const maxBadge = maxAcc > 1 ? '<span class="badge badge-purple">' + maxAcc + ' slots</span>' : '<span class="badge badge-gray">1 slot</span>';
+        const sk = r.license_key.replace(/'/g, "\\'");
+        return '<tr><td class="mono" style="font-size:11px">' + r.license_key + '</td>'
+          + '<td>' + (r.customer_name || '<span style="color:var(--text3)">—</span>') + '</td>'
+          + '<td class="mono">' + (r.expires_at ? r.expires_at.slice(0,10) : '—') + '</td>'
+          + '<td>' + status + '</td><td>' + device + '</td><td>' + maxBadge + '</td>'
+          + '<td><div class="gap-8">'
+          + '<button class="btn btn-primary btn-sm" onclick="openAccountModal(\'' + sk + '\',' + maxAcc + ')">👥 Accounts</button>'
+          + '<button class="btn btn-ghost btn-sm" onclick="editMaxAccounts(\'' + sk + '\',' + maxAcc + ')">✏️ Slots</button>'
+          + '<button class="btn btn-ghost btn-sm" onclick="quickResetDevice(\'' + sk + '\')">💻 Device</button>'
+          + (r.revoked ? '<button class="btn btn-green btn-sm" onclick="quickUnrevoke(\'' + sk + '\')">✅ Restore</button>'
+                       : '<button class="btn btn-red btn-sm" onclick="quickRevoke(\'' + sk + '\')">🚫 Revoke</button>')
+          + '<button class="btn btn-sm" style="background:transparent;border:1px solid #3a3d45;color:#55596a;padding:6px 10px" onclick="quickDelete(\'' + sk + '\')">🗑️</button>'
+          + '</div></td></tr>';
+      }).join("")}</tbody>
+    </table>`;
+}
+
+// ACCOUNT MANAGEMENT MODAL
+async function openAccountModal(key, maxAccounts) {
+  currentModalKey = key;
+  document.getElementById("modal-lic-key-display").textContent = "Accounts: " + key;
+  document.getElementById("modal-accounts-body").innerHTML = '<div style="text-align:center;padding:20px"><span class="spinner"></span></div>';
+  document.getElementById("modal-accounts").classList.add("open");
+  await renderAccountSlots(key, maxAccounts);
+}
+
+function closeAccountModal() {
+  document.getElementById("modal-accounts").classList.remove("open");
+  currentModalKey = "";
+}
+
+async function renderAccountSlots(key, maxAccountsHint) {
+  const body = document.getElementById("modal-accounts-body");
+  // Always fetch fresh maxAccounts from the licenses table so slot increases are reflected immediately
+  const licRes = await sbReq("GET", "/licenses?license_key=eq." + encodeURIComponent(key) + "&select=max_accounts", null);
+  const maxAccounts = (licRes.ok && licRes.data && licRes.data[0] && licRes.data[0].max_accounts)
+    ? licRes.data[0].max_accounts
+    : (maxAccountsHint || 1);
+
+  // Fetch locked account slots for this license
+  const res = await sbReq("GET", "/license_accounts?license_key=eq." + encodeURIComponent(key) + "&select=*&order=added_at.asc", null);
+  const slots = (res.ok && Array.isArray(res.data)) ? res.data : [];
+
+  let html = '<div style="margin-bottom:14px;font-size:12px;color:var(--text2);">'
+    + slots.length + ' of ' + maxAccounts + ' account slots used. '
+    + 'Unlock lets the user edit that account\'s credentials. Re-locking happens automatically when they save.</div>';
+
+  if (slots.length === 0 && maxAccounts <= 0) {
+    html += '<div style="text-align:center;padding:30px 0;color:var(--text2);font-size:13px">No accounts locked yet.<br>The user will lock slots when they first save credentials.</div>';
+  } else {
+    // Render filled (locked/unlocked) slots
+    html += slots.map((slot, i) => {
+      const isUnlocked = slot.unlocked === true;
+      const lockedAt = slot.added_at ? new Date(slot.added_at).toLocaleDateString() : '—';
+      // Use data attributes instead of inline onclick to avoid hash escaping issues
+      const safeHash = (slot.account_hash||'').replace(/"/g, '&quot;');
+      const safeKey  = key.replace(/"/g, '&quot;');
+      return '<div class="acc-slot">'
+        + '<div style="flex:1;min-width:0">'
+        + '<div class="acc-slot-label">Account Slot ' + (i+1) + '</div>'
+        + '<div class="acc-slot-info" title="' + safeHash + '">Hash: ' + (slot.account_hash||'—').slice(0,16) + '...</div>'
+        + '<div style="font-size:11px;color:var(--text3);margin-top:2px">Locked: ' + lockedAt + '</div>'
+        + '</div>'
+        + (isUnlocked
+            ? '<span class="badge badge-green" style="white-space:nowrap">🔓 Unlocked</span>'
+            : '<span class="badge badge-yellow" style="white-space:nowrap">🔒 Locked</span>')
+        + (isUnlocked
+          ? '<button class="btn btn-ghost btn-sm slot-action-btn" data-action="relock" data-key="' + safeKey + '" data-hash="' + safeHash + '">Re-lock</button>'
+          : '<button class="btn btn-green btn-sm slot-action-btn" data-action="unlock" data-key="' + safeKey + '" data-hash="' + safeHash + '">🔓 Unlock</button>')
+        + '</div>';
+    }).join('');
+
+    // Render empty placeholder slots for unused capacity (so admin can see all available slots)
+    const emptyCount = maxAccounts - slots.length;
+    for (let i = 0; i < emptyCount; i++) {
+      html += '<div class="acc-slot" style="opacity:0.45">'
+        + '<div style="flex:1;min-width:0">'
+        + '<div class="acc-slot-label">Account Slot ' + (slots.length + i + 1) + '</div>'
+        + '<div class="acc-slot-info">Empty — waiting for user credentials</div>'
+        + '</div>'
+        + '<span class="badge badge-gray" style="white-space:nowrap">⬜ Empty</span>'
+        + '</div>';
+    }
+
+    // Show message if all slots are empty
+    if (slots.length === 0) {
+      html += '<div style="text-align:center;padding:16px 0 4px;color:var(--text2);font-size:12px">No accounts locked yet. The user will fill these slots when they save credentials.</div>';
+    }
+  }
+
+  // Add a "Clear all slots" danger action
+  if (slots.length > 0) {
+    html += '<div style="margin-top:20px;padding-top:16px;border-top:1px solid var(--border)">'
+      + '<div style="font-size:12px;color:var(--text2);margin-bottom:10px">Re-lock all accounts immediately — user won\'t be able to edit or delete any account until you unlock them individually.</div>'
+      + '<button class="btn btn-ghost btn-sm" onclick="clearAllSlots(\'' + key + '\')" style="border-color:rgba(255,77,109,.4);color:var(--red)">🔒 Re-lock All Accounts</button>'
+      + '</div>';
+  }
+
+  body.innerHTML = html;
+
+  // Event delegation for slot unlock/relock buttons (avoids inline onclick escaping bugs)
+  body.querySelectorAll('.slot-action-btn').forEach(btn => {
+    btn.addEventListener('click', async () => {
+      const action = btn.dataset.action;
+      const k      = btn.dataset.key;
+      const h      = btn.dataset.hash;
+      if (action === 'unlock') await unlockSlot(k, h);
+      else if (action === 'relock') await relockSlot(k, h);
+    });
+  });
+}
+
+async function unlockSlot(key, hash) {
+  const res = await sbReq("PATCH",
+    "/license_accounts?license_key=eq." + encodeURIComponent(key) + "&account_hash=eq." + encodeURIComponent(hash),
+    { unlocked: true });
+  if (res.ok) { showToast("Account slot unlocked ✓", "success"); await renderAccountSlots(key, null); }
+  else showToast("Error: " + JSON.stringify(res.data), "error");
+}
+
+async function relockSlot(key, hash) {
+  const res = await sbReq("PATCH",
+    "/license_accounts?license_key=eq." + encodeURIComponent(key) + "&account_hash=eq." + encodeURIComponent(hash),
+    { unlocked: false });
+  if (res.ok) { showToast("Account slot re-locked ✓", "success"); await renderAccountSlots(key, null); }
+  else showToast("Error: " + JSON.stringify(res.data), "error");
+}
+
+async function clearAllSlots(key) {
+  if (!confirm("Re-lock ALL account slots for this license?\n\nThis locks all accounts immediately. The user won't be able to edit or delete accounts until you unlock them individually.")) return;
+  // First fetch the existing slots so we can re-insert them as locked
+  const fetchRes = await sbReq("GET", "/license_accounts?license_key=eq." + encodeURIComponent(key) + "&select=account_hash", null);
+  const existingHashes = (fetchRes.ok && Array.isArray(fetchRes.data)) ? fetchRes.data.map(r => r.account_hash).filter(Boolean) : [];
+
+  // Delete all rows
+  const delRes = await sbReq("DELETE", "/license_accounts?license_key=eq." + encodeURIComponent(key), null);
+  if (!delRes.ok) { showToast("Error: " + JSON.stringify(delRes.data), "error"); return; }
+
+  // Re-insert each hash as locked (unlocked: false) so the locked state is explicit
+  for (const hash of existingHashes) {
+    await sbReq("POST", "/license_accounts", { license_key: key, account_hash: hash, unlocked: false });
+  }
+
+  showToast("All accounts re-locked ✓", "success");
+  await renderAccountSlots(key, null);
+  loadLicenses();
+}
+
+async function editMaxAccounts(key, currentMax) {
+  const val = prompt(
+    "Set max account slots for this license (1–15)\nCurrent: " + currentMax,
+    currentMax
+  );
+  if (val === null) return; // cancelled
+  const num = parseInt(val);
+  if (isNaN(num) || num < 1 || num > 15) {
+    alert("Please enter a number between 1 and 15.");
+    return;
+  }
+  const res = await sbReq("PATCH", "/licenses?license_key=eq." + encodeURIComponent(key), { max_accounts: num });
+  if (res.ok) { showToast("Account slots updated to " + num + " ✓", "success"); loadLicenses(); }
+  else showToast("Error: " + JSON.stringify(res.data), "error");
+}
+
+async function quickResetDevice(key) {
+  if (!confirm("Reset device lock?")) return;
+  const res = await sbReq("PATCH", "/licenses?license_key=eq." + encodeURIComponent(key), { device_id: null, activated_at: null });
+  if (res.ok) { showToast("Device reset ✓", "success"); loadLicenses(); }
+  else showToast("Error: " + JSON.stringify(res.data), "error");
+}
+async function quickRevoke(key) {
+  if (!confirm("Revoke this license?")) return;
+  const res = await sbReq("PATCH", "/licenses?license_key=eq." + encodeURIComponent(key), { revoked: true });
+  if (res.ok) { showToast("Revoked", "success"); loadLicenses(); }
+  else showToast("Error: " + JSON.stringify(res.data), "error");
+}
+async function quickUnrevoke(key) {
+  const res = await sbReq("PATCH", "/licenses?license_key=eq." + encodeURIComponent(key), { revoked: false });
+  if (res.ok) { showToast("Restored ✓", "success"); loadLicenses(); }
+  else showToast("Error: " + JSON.stringify(res.data), "error");
+}
+async function quickDelete(key) {
+  if (!confirm("Permanently delete " + key + "?")) return;
+  const res = await sbReq("DELETE", "/licenses?license_key=eq." + encodeURIComponent(key), null);
+  if (res.ok) { showToast("Deleted ✓", "success"); loadLicenses(); loadDashboard(); }
+  else showToast("Error: " + JSON.stringify(res.data), "error");
+}
+
+// KEYGEN
+function randomSegment(len) {
+  const chars = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789";
+  let s = "";
+  for (let i = 0; i < len; i++) s += chars[Math.floor(Math.random() * chars.length)];
+  return s;
+}
+function generateRandomKey() {
+  return "KHOD-" + randomSegment(4) + "-" + randomSegment(4) + "-" + randomSegment(4) + "-" + randomSegment(4);
+}
+let lastGeneratedKey = "";
+async function generateKey() {
+  const name       = document.getElementById("kg-name").value.trim();
+  const expiry     = document.getElementById("kg-expiry").value.trim();
+  const notes      = document.getElementById("kg-notes").value.trim();
+  const maxAcc     = parseInt(document.getElementById("kg-max-accounts").value) || 1;
+  if (!expiry) { showNotice("keygen-notice", "error", "Please select an expiry date."); return; }
+  const key = generateRandomKey();
+  lastGeneratedKey = key;
+  const keyBox = document.getElementById("key-output-box");
+  keyBox.textContent = key; keyBox.style.display = "block";
+  document.getElementById("btn-copy-key").style.display = "inline-flex";
+  if (!SUPABASE_URL) { showNotice("keygen-notice", "warn", "⚠️ Not connected — key generated locally only."); return; }
+  const res = await sbReq("POST", "/licenses", {
+    license_key: key, customer_name: name || null, notes: notes || null,
+    expires_at: expiry, device_id: null, activated_at: null,
+    account_locked: false, account_hash: null, revoked: false, max_accounts: maxAcc,
+  });
+  if (res.ok) {
+    showNotice("keygen-notice", "success", "✅ Saved. Expires: " + expiry + ". Max accounts: " + maxAcc + ".");
+    showToast("Key generated & saved ✓", "success");
+  } else {
+    const msg = res.data?.message || JSON.stringify(res.data) || "";
+    showNotice("keygen-notice", msg.includes("duplicate") ? "warn" : "error",
+      msg.includes("duplicate") ? "⚠️ Duplicate key — try again." : "Save failed: " + msg);
+  }
+}
+function copyKey() { navigator.clipboard.writeText(lastGeneratedKey).then(() => showToast("Copied ✓", "success")); }
+
+// RESET DEVICE
+async function resetDevice() {
+  const key = document.getElementById("dev-key").value.trim().toUpperCase();
+  if (!key) { showNotice("device-notice", "error", "Enter a license key."); return; }
+  if (!SUPABASE_URL) { showNotice("device-notice", "error", "Not connected."); return; }
+  if (!confirm("Reset the device lock?")) return;
+  const res = await sbReq("PATCH", "/licenses?license_key=eq." + encodeURIComponent(key), { device_id: null, activated_at: null });
+  if (res.ok) { showNotice("device-notice", "success", "✅ Device lock reset."); showToast("Device reset ✓", "success"); }
+  else showNotice("device-notice", "error", "Error: " + JSON.stringify(res.data));
+}
+
+// REVOKE
+async function revokeLicense() {
+  const key = document.getElementById("rev-key").value.trim().toUpperCase();
+  if (!key) { showNotice("revoke-notice", "error", "Enter a license key."); return; }
+  if (!SUPABASE_URL) { showNotice("revoke-notice", "error", "Not connected."); return; }
+  if (!confirm("Revoke this license?")) return;
+  const res = await sbReq("PATCH", "/licenses?license_key=eq." + encodeURIComponent(key), { revoked: true });
+  if (res.ok) showNotice("revoke-notice", "success", "✅ Revoked.");
+  else showNotice("revoke-notice", "error", "Error: " + JSON.stringify(res.data));
+}
+async function unrevokeLicense() {
+  const key = document.getElementById("rev-key").value.trim().toUpperCase();
+  if (!key) { showNotice("revoke-notice", "error", "Enter a license key."); return; }
+  if (!SUPABASE_URL) { showNotice("revoke-notice", "error", "Not connected."); return; }
+  const res = await sbReq("PATCH", "/licenses?license_key=eq." + encodeURIComponent(key), { revoked: false });
+  if (res.ok) showNotice("revoke-notice", "success", "✅ Restored.");
+  else showNotice("revoke-notice", "error", "Error: " + JSON.stringify(res.data));
+}
+
+// HELPERS
+function showNotice(id, type, msg) {
+  const el = document.getElementById(id);
+  const map = { success:"notice-success", error:"notice-error", warn:"notice-warn", info:"notice-info" };
+  el.className = "notice " + (map[type] || "notice-info");
+  el.textContent = msg; el.style.display = "flex";
+}
+function showToast(msg, type) {
+  const t = document.createElement("div");
+  t.className = "toast " + (type || "");
+  t.innerHTML = (type === "success" ? "✅ " : type === "error" ? "❌ " : "ℹ️ ") + msg;
+  document.getElementById("toast-container").appendChild(t);
+  setTimeout(() => t.remove(), 3500);
+}
+
+// Close modal on overlay click
+document.getElementById("modal-accounts").addEventListener("click", function(e) {
+  if (e.target === this) closeAccountModal();
+});
+</script>
+</body>
+</html>

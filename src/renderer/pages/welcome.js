@@ -14,8 +14,8 @@ window.renderWelcome = function (onContinue, onNewDate) {
   const todayBtnLabel = typeof todayBtnFn === "function" ? todayBtnFn(todayDisplay) : todayBtnFn;
 
   el.innerHTML = `
-    <div style="min-height:100%;display:flex;justify-content:center;padding:32px 24px 40px;overflow-y:auto;width:100%">
-      <div style="width:520px;max-width:100%">
+    <div class="page-wrap">
+      <div class="page-inner-sm">
 
         <!-- Header -->
         <div style="text-align:center; margin-bottom:32px">
@@ -23,6 +23,9 @@ window.renderWelcome = function (onContinue, onNewDate) {
           <div class="page-title" style="font-size:28px;text-align:center">${t("welcome.app_title")}</div>
           <div class="page-subtitle" style="text-align:center">${t("welcome.app_subtitle")}</div>
         </div>
+
+        <!-- Account Selector (shown only when multiple accounts exist) -->
+        <div id="account-selector-wrap"></div>
 
         <!-- Main actions -->
         <div class="card" style="margin-bottom:16px">
@@ -138,12 +141,98 @@ window.renderWelcome = function (onContinue, onNewDate) {
   // Inject fast calendar styles once
   injectCalendarStyles();
 
-  let selectedMode = "today";
+  // ── Multi-Account Selector ──
+  let _selectedAccountIds = [];
+
+  async function initAccountSelector() {
+    const creds = await window.api.getCredentials();
+    const accounts = creds.accounts || [];
+    if (accounts.length <= 1) return; // hide selector for single-account users
+
+    // Select all by default
+    _selectedAccountIds = accounts.map(a => a.id);
+
+    const container = document.getElementById("account-selector-wrap");
+    if (!container) return;
+
+    container.innerHTML = `
+      <div class="card" style="margin-bottom:16px">
+        <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:14px">
+          <div style="font-size:12px;font-weight:700;color:var(--accent);text-transform:uppercase;letter-spacing:.08em">Select Accounts</div>
+          <div id="acc-sel-count" style="font-size:12px;color:var(--text2)">${accounts.length} selected</div>
+        </div>
+        <div style="display:flex;flex-wrap:wrap;gap:10px" id="acc-chips">
+          ${accounts.map(acc => `
+            <div class="acc-chip selected" data-id="${acc.id}" style="
+              display:flex;align-items:center;gap:8px;
+              background:rgba(124,106,247,0.15);border:1.5px solid #7c6af7;
+              border-radius:10px;padding:8px 14px;cursor:pointer;
+              transition:all .15s;user-select:none;
+            ">
+              <div style="width:26px;height:26px;border-radius:50%;background:linear-gradient(135deg,#7c6af7,#4f8ef7);display:flex;align-items:center;justify-content:center;font-size:11px;font-weight:800;color:#fff;flex-shrink:0">
+                ${(acc.label || "A").charAt(0).toUpperCase()}
+              </div>
+              <div>
+                <div style="font-size:13px;font-weight:700;color:var(--text1)">${esc(acc.label || "Account")}</div>
+                <div style="font-size:11px;color:var(--text2)">${esc(acc.easyEmail || "")}</div>
+              </div>
+              <div class="acc-check" style="width:18px;height:18px;border-radius:50%;background:#7c6af7;display:flex;align-items:center;justify-content:center;margin-left:4px;flex-shrink:0">
+                <svg width="10" height="10" viewBox="0 0 10 10"><path d="M2 5l2.5 2.5L8 3" stroke="#fff" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" fill="none"/></svg>
+              </div>
+            </div>
+          `).join("")}
+        </div>
+        ${accounts.length > 1 ? `
+        <div style="margin-top:10px;font-size:11px;color:var(--text2)">
+          🚀 Selecting multiple accounts will run them <strong style="color:var(--text1)">in parallel</strong>, each in its own Chrome window.
+        </div>` : ""}
+      </div>
+
+      <style>
+        .acc-chip { transition: all .15s; }
+        .acc-chip:not(.selected) {
+          background: var(--bg2) !important;
+          border-color: var(--border) !important;
+          opacity: 0.7;
+        }
+        .acc-chip:not(.selected) .acc-check { background: var(--border) !important; }
+        .acc-chip:hover { transform: translateY(-1px); box-shadow: 0 4px 12px rgba(124,106,247,.2); }
+      </style>
+    `;
+
+    container.querySelectorAll(".acc-chip").forEach(chip => {
+      chip.addEventListener("click", () => {
+        const id = chip.dataset.id;
+        if (_selectedAccountIds.includes(id)) {
+          // Don't deselect the last one
+          if (_selectedAccountIds.length > 1) {
+            _selectedAccountIds = _selectedAccountIds.filter(x => x !== id);
+            chip.classList.remove("selected");
+          }
+        } else {
+          _selectedAccountIds.push(id);
+          chip.classList.add("selected");
+        }
+        const countEl = document.getElementById("acc-sel-count");
+        if (countEl) countEl.textContent = `${_selectedAccountIds.length} selected`;
+      });
+    });
+  }
+
+  function getSelectedAccountIds() {
+    return _selectedAccountIds.length ? _selectedAccountIds : null;
+  }
+
+  function esc(s) {
+    return String(s ?? "").replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/>/g,"&gt;").replace(/"/g,"&quot;");
+  }
+
+  initAccountSelector();
   let dateFrom = todayStr;
   let dateTo   = todayStr;
 
   document.getElementById("btn-today").addEventListener("click", () => {
-    onContinue({ dateFrom: todayStr, dateTo: todayStr });
+    onContinue({ dateFrom: todayStr, dateTo: todayStr, selectedAccountIds: getSelectedAccountIds() });
   });
 
   document.getElementById("btn-pick-date").addEventListener("click", () => {
@@ -224,7 +313,7 @@ window.renderWelcome = function (onContinue, onNewDate) {
   }
 
   document.getElementById("btn-launch").addEventListener("click", () => {
-    onContinue({ dateFrom, dateTo });
+    onContinue({ dateFrom, dateTo, selectedAccountIds: getSelectedAccountIds() });
   });
 
   // ── Launch minimized toggle ──

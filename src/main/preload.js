@@ -11,9 +11,12 @@ contextBridge.exposeInMainWorld("api", {
   submitLicense: (key) => ipcRenderer.invoke("submit-license", key),
 
   // Credentials
-  getCredentials:  () => ipcRenderer.invoke("get-credentials"),
-  saveCredentials: (creds) => ipcRenderer.invoke("save-credentials", creds),
-  clearAllData:    () => ipcRenderer.invoke("clear-all-data"),
+  getCredentials:      () => ipcRenderer.invoke("get-credentials"),
+  saveCredentials:     (creds) => ipcRenderer.invoke("save-credentials", creds),
+  saveAllAccounts:     (accounts) => ipcRenderer.invoke("save-all-accounts", accounts),
+  unlockSingleAccount: (data) => ipcRenderer.invoke("unlock-single-account", data),
+  relockAccount:       (data) => ipcRenderer.invoke("relock-account", data),
+  clearAllData:        () => ipcRenderer.invoke("clear-all-data"),
 
   // Settings
   setAutoRun:         (val)  => ipcRenderer.invoke("set-auto-run", val),

@@ -110,6 +110,78 @@ const _STRINGS = {
     "results.sku":        "SKU",
     "results.phone":      "Phone",
     "results.error":      "Error",
+    // setup page — accounts step
+    "setup.nav_accounts":       "Accounts",
+    "setup.nav_run":            "Run",
+    "setup.sub_title":          "Setup",
+    "setup.reset_creds_btn":    "🔄 Reset Credentials",
+    "setup.manage_title":       "Manage Accounts",
+    "setup.manage_sub":         "Add, edit, or remove your accounts. Selection happens on the next step.",
+    "setup.your_accounts":      "Your Accounts",
+    "setup.your_accounts_desc": "Manage the accounts available for running tasks.",
+    "setup.add_account":        "Add Account",
+    "setup.next_btn":           "Next: Run Setup →",
+    "setup.run_title":          "Run Execution",
+    "setup.run_sub":            "Select users, pick a date, then launch.",
+    "setup.select_users":       "Select Users",
+    "setup.select_users_desc":  "Choose one or more users to run the task.",
+    "setup.all_users":          "All Users",
+    "setup.select_all":         "Select All",
+    "setup.select_date":        "Select Date",
+    "setup.select_date_desc":   "Choose when you want to run the task.",
+    "setup.today_mode":         "📅 Today",
+    "setup.single_mode":        "🗓️ Single",
+    "setup.range_mode":         "📆 Range",
+    "setup.summary":            "Summary",
+    "setup.summary_desc":       "Review your selections before running.",
+    "setup.users_selected":     "Users Selected",
+    "setup.date_range":         "Date Range",
+    "setup.total_days":         "Total Days",
+    "setup.back_btn":           "← Back",
+    "setup.run_btn":            "🚀 Run Execution",
+    "setup.run_security":       "🔒 This action will be executed for the selected users and date range.",
+    "setup.date_label":         "Date",
+    "setup.start_date":         "Start Date",
+    "setup.end_date":           "End Date",
+    "setup.today_running":      (d) => `✅ Running for today — ${d}`,
+    "setup.locked":             "Locked",
+    "setup.active":             "Active",
+    "setup.edit_btn":           "✏️ Edit",
+    "setup.edit_account":       "Edit Account",
+    "setup.new_account":        "New Account",
+    "setup.form_subtitle":      "Fill in credentials for this account.",
+    "setup.keep_pass":          "Leave blank to keep existing",
+    "setup.cancel_btn":         "Cancel",
+    "setup.save_btn2":          "💾 Save",
+    "setup.add_btn":            "➕ Add Account",
+    "setup.saving":             "Saving...",
+    "setup.limit_reached":      "License limit reached — cannot add more accounts.",
+    "setup.save_failed":        "Failed to save.",
+    "setup.remove_confirm":     "Remove this account?",
+    "setup.reset_confirm_title":"Reset All Data?",
+    "setup.reset_confirm_msg":  "This will delete all saved credentials, browser sessions, and cookies. You'll need to enter your login details again.",
+    "setup.reset_confirm_ok":   "Reset Everything",
+    "setup.reset_confirm_cancel":"Cancel",
+    "setup.locked_title":       "Locked by admin — contact support to reset",
+    "setup.license_one":        "License: 1 account only",
+    "setup.license_max":        (n) => `Max ${n} accounts`,
+    "setup.users_count":        (n) => `${n} user${n !== 1 ? "s" : ""}`,
+    "setup.accounts_count":     (n) => `${n} account${n !== 1 ? "s" : ""}`,
+    "setup.days_count":         (n) => `${n} day${n !== 1 ? "s" : ""}`,
+    // run page extra
+    "run.phase_complete":  "Complete ✓",
+    "run.phase_running":   "Running...",
+    "run.stop_title":      "Stop the bot?",
+    "run.stop_msg":        "The current run will be terminated immediately. Any orders not yet uploaded will be lost.",
+    // previously hardcoded strings — now translated
+    "setup.khod_pass_hint":       "Leave blank to keep existing password",
+    "results.run_failed":         "Bot run failed",
+    "results.error_occurred":     "An error occurred. Check the log for details.",
+    "results.multi_all_ok":       "All accounts completed successfully.",
+    "results.multi_some_errors":  "Some accounts had errors. Select an account from the dropdown to see details and download.",
+    "run.all_accounts":           "🌐 All Accounts",
+    "results.all_accounts":       "🌐 All Accounts — Overview",
+    "results.per_account_summary":"📊 Per-Account Summary",
   },
   ar: {
     "topbar.welcome": (n) => n ? `أهلاً، ${n}` : "أهلاً",
@@ -211,6 +283,78 @@ const _STRINGS = {
     "results.sku":        "الكود",
     "results.phone":      "الهاتف",
     "results.error":      "الخطأ",
+    // setup page — accounts step
+    "setup.nav_accounts":       "الحسابات",
+    "setup.nav_run":            "التشغيل",
+    "setup.sub_title":          "الإعداد",
+    "setup.reset_creds_btn":    "🔄 إعادة تعيين بيانات الدخول",
+    "setup.manage_title":       "إدارة الحسابات",
+    "setup.manage_sub":         "أضف، عدّل، أو احذف حساباتك. يتم اختيار الحسابات في الخطوة التالية.",
+    "setup.your_accounts":      "حساباتك",
+    "setup.your_accounts_desc": "إدارة الحسابات المتاحة لتشغيل المهام.",
+    "setup.add_account":        "إضافة حساب",
+    "setup.next_btn":           "التالي: إعداد التشغيل ←",
+    "setup.run_title":          "تنفيذ التشغيل",
+    "setup.run_sub":            "اختر المستخدمين وحدد التاريخ ثم ابدأ.",
+    "setup.select_users":       "اختر المستخدمين",
+    "setup.select_users_desc":  "اختر مستخدماً واحداً أو أكثر لتشغيل المهمة.",
+    "setup.all_users":          "جميع المستخدمين",
+    "setup.select_all":         "تحديد الكل",
+    "setup.select_date":        "اختر التاريخ",
+    "setup.select_date_desc":   "حدد موعد تشغيل المهمة.",
+    "setup.today_mode":         "📅 اليوم",
+    "setup.single_mode":        "🗓️ يوم واحد",
+    "setup.range_mode":         "📆 نطاق",
+    "setup.summary":            "الملخص",
+    "setup.summary_desc":       "راجع اختياراتك قبل التشغيل.",
+    "setup.users_selected":     "المستخدمون المحددون",
+    "setup.date_range":         "نطاق التاريخ",
+    "setup.total_days":         "إجمالي الأيام",
+    "setup.back_btn":           "→ رجوع",
+    "setup.run_btn":            "🚀 تنفيذ التشغيل",
+    "setup.run_security":       "🔒 سيتم تنفيذ هذا الإجراء للمستخدمين المحددين ونطاق التاريخ.",
+    "setup.date_label":         "التاريخ",
+    "setup.start_date":         "تاريخ البداية",
+    "setup.end_date":           "تاريخ النهاية",
+    "setup.today_running":      (d) => `✅ التشغيل لليوم — ${d}`,
+    "setup.locked":             "مقفل",
+    "setup.active":             "نشط",
+    "setup.edit_btn":           "✏️ تعديل",
+    "setup.edit_account":       "تعديل الحساب",
+    "setup.new_account":        "حساب جديد",
+    "setup.form_subtitle":      "أدخل بيانات الاعتماد لهذا الحساب.",
+    "setup.keep_pass":          "اتركه فارغاً للإبقاء على كلمة المرور الحالية",
+    "setup.cancel_btn":         "إلغاء",
+    "setup.save_btn2":          "💾 حفظ",
+    "setup.add_btn":            "➕ إضافة حساب",
+    "setup.saving":             "جارٍ الحفظ...",
+    "setup.limit_reached":      "تم الوصول لحد الترخيص — لا يمكن إضافة المزيد من الحسابات.",
+    "setup.save_failed":        "فشل الحفظ.",
+    "setup.remove_confirm":     "حذف هذا الحساب؟",
+    "setup.reset_confirm_title":"إعادة ضبط جميع البيانات؟",
+    "setup.reset_confirm_msg":  "سيتم حذف جميع بيانات الدخول المحفوظة والجلسات والكوكيز. ستحتاج إلى إعادة إدخال بيانات الدخول.",
+    "setup.reset_confirm_ok":   "إعادة ضبط الكل",
+    "setup.reset_confirm_cancel":"إلغاء",
+    "setup.locked_title":       "مقفل من المشرف — تواصل مع الدعم لإعادة الضبط",
+    "setup.license_one":        "الترخيص: حساب واحد فقط",
+    "setup.license_max":        (n) => `الحد الأقصى ${n} حسابات`,
+    "setup.users_count":        (n) => `${n} ${n === 1 ? "مستخدم" : "مستخدمين"}`,
+    "setup.accounts_count":     (n) => `${n} ${n === 1 ? "حساب" : "حسابات"}`,
+    "setup.days_count":         (n) => `${n} ${n === 1 ? "يوم" : "أيام"}`,
+    // run page extra
+    "run.phase_complete":  "اكتمل ✓",
+    "run.phase_running":   "جارٍ...",
+    "run.stop_title":      "إيقاف البوت؟",
+    "run.stop_msg":        "سيتم إنهاء التشغيل الحالي فوراً. أي طلبات لم يتم رفعها بعد ستُفقد.",
+    // previously hardcoded strings — now translated
+    "setup.khod_pass_hint":       "اتركه فارغاً للإبقاء على كلمة المرور الحالية",
+    "results.run_failed":         "فشل تشغيل البوت",
+    "results.error_occurred":     "حدث خطأ. راجع السجل للتفاصيل.",
+    "results.multi_all_ok":       "اكتملت جميع الحسابات بنجاح.",
+    "results.multi_some_errors":  "بعض الحسابات واجهت أخطاء. اختر حساباً من القائمة لرؤية التفاصيل والتنزيل.",
+    "run.all_accounts":           "🌐 جميع الحسابات",
+    "results.all_accounts":       "🌐 جميع الحسابات — نظرة عامة",
+    "results.per_account_summary":"📊 ملخص لكل حساب",
   },
 };
 
@@ -241,11 +385,12 @@ function applyLang(lang) {
 }
 
 // Cache DOM refs — avoids getElementById on every topbar update
-let _topBarName = null, _topBarDays = null, _topBarAvatar = null;
+let _topBarName = null, _topBarDays = null, _topBarAvatar = null, _topBarAccounts = null;
 function updateTopBarText() {
-  if (!_topBarName)   _topBarName   = document.getElementById("top-bar-name");
-  if (!_topBarDays)   _topBarDays   = document.getElementById("top-bar-days");
-  if (!_topBarAvatar) _topBarAvatar = document.getElementById("top-bar-avatar");
+  if (!_topBarName)     _topBarName     = document.getElementById("top-bar-name");
+  if (!_topBarDays)     _topBarDays     = document.getElementById("top-bar-days");
+  if (!_topBarAvatar)   _topBarAvatar   = document.getElementById("top-bar-avatar");
+  if (!_topBarAccounts) _topBarAccounts = document.getElementById("top-bar-accounts");
   if (!_topBarName) return;
 
   const { customerName, daysLeft } = window._kbotUser;
@@ -254,6 +399,18 @@ function updateTopBarText() {
   const daysFn = window._t("topbar.days");
   _topBarDays.textContent = typeof daysFn === "function" ? daysFn(daysLeft) : "";
   _topBarDays.classList.toggle("warn", daysLeft !== null && daysLeft <= 7);
+
+  // Show accounts badge if license allows more than 1
+  const maxAcc = window._maxAccounts || 1;
+  if (_topBarAccounts) {
+    if (maxAcc > 1) {
+      const licFn = window._t("setup.license_max");
+      _topBarAccounts.textContent = typeof licFn === "function" ? licFn(maxAcc) : (maxAcc + " accounts");
+      _topBarAccounts.style.display = "block";
+    } else {
+      _topBarAccounts.style.display = "none";
+    }
+  }
 
   if (_topBarAvatar && customerName) {
     const parts = customerName.trim().split(" ");
@@ -264,13 +421,29 @@ function updateTopBarText() {
 }
 
 // ── Top bar visibility ──
-const PAGES_WITH_TOPBAR = new Set(["page-setup", "page-welcome", "page-run"]);
+const PAGES_WITH_TOPBAR = new Set(["page-setup", "page-run"]);
+
+// Dismiss the preloader exactly once — on the first showPage() call.
+// At this point a real page has been rendered into the DOM, so there
+// is no black-screen gap between loader exit and content appearing.
+let _preloaderDismissed = false;
+function dismissPreloader() {
+  if (_preloaderDismissed) return;
+  _preloaderDismissed = true;
+  const preloader = document.getElementById("preloader");
+  if (!preloader) return;
+  preloader.style.transition = "opacity 0.25s ease";
+  preloader.style.opacity = "0";
+  setTimeout(() => { if (preloader.parentNode) preloader.remove(); }, 260);
+}
 
 function showPage(id) {
   document.querySelectorAll(".page").forEach((p) => p.classList.remove("active"));
   document.getElementById(id).classList.add("active");
   const centerEl = document.getElementById("top-bar-center");
   if (centerEl) centerEl.classList.toggle("visible", PAGES_WITH_TOPBAR.has(id));
+  // Dismiss preloader now — content is in the DOM
+  dismissPreloader();
 }
 
 // ── Periodic license re-check every 5 minutes ──
@@ -302,16 +475,17 @@ async function init() {
     applyLang("ar");
   }
 
-  document.getElementById("toggle-theme").addEventListener("change", async (e) => {
+  document.getElementById("toggle-theme").addEventListener("change", (e) => {
     const next = e.target.checked ? "light" : "dark";
     applyTheme(next);
-    await window.api.saveSettings({ theme: next });
+    window.api.saveSettings({ theme: next }).catch(() => {});
   });
-  document.getElementById("toggle-lang").addEventListener("change", async (e) => {
+  document.getElementById("toggle-lang").addEventListener("change", (e) => {
     const next = e.target.checked ? "ar" : "en";
     applyLang(next);
-    await window.api.saveSettings({ lang: next });
     reRenderCurrentPage();
+    // Persist in background — don't await so UI is never blocked
+    window.api.saveSettings({ lang: next }).catch(() => {});
   });
 
   // License check + credential check in parallel
@@ -332,6 +506,7 @@ async function init() {
   };
   updateTopBarText();
 
+  window.api.removeAllListeners("license-expired");
   window.api.onLicenseExpired(() => {
     clearInterval(licenseCheckInterval);
     renderLicense(() => afterLicense());
@@ -340,16 +515,19 @@ async function init() {
 
   startPeriodicLicenseCheck();
 
-  // Use already-fetched creds — no second round-trip
-  if (!creds.hasCredentials) {
-    renderSetup(() => goToWelcome());
-    showPage("page-setup");
-  } else {
-    goToWelcome();
-  }
+  // creds already fetched above via Promise.all — reuse it
+  window._maxAccounts = creds.maxAccounts || 1;
+  window._kbotAccounts = creds.accounts || [];
+  updateTopBarText();
+  // Route based on credential state:
+  // - Accounts exist → skip the accounts management step, go straight to run step
+  // - No accounts    → land on accounts step so user can add their first account
+  const hasAccounts = (creds.accounts && creds.accounts.length > 0) || !!creds.easyEmail;
+  goToSetup(hasAccounts ? "run" : "accounts");
 }
 
 async function afterLicense() {
+  window.api.removeAllListeners("license-expired");
   window.api.onLicenseExpired(() => {
     clearInterval(licenseCheckInterval);
     renderLicense(() => afterLicense());
@@ -367,30 +545,29 @@ async function afterLicense() {
   } catch(e) {}
 
   const creds = await window.api.getCredentials();
-  if (!creds.hasCredentials) {
-    renderSetup(() => goToWelcome());
-    showPage("page-setup");
-  } else {
-    goToWelcome();
-  }
+  window._maxAccounts = creds.maxAccounts || 1;
+  window._kbotAccounts = creds.accounts || [];
+  const hasAccounts = (creds.accounts && creds.accounts.length > 0) || !!creds.easyEmail;
+  goToSetup(hasAccounts ? "run" : "accounts");
 }
 
-function goToWelcome() {
-  renderWelcome(
-    ({ dateFrom, dateTo }) => {
-      sessionDate = { dateFrom, dateTo };
-      goToRun(dateFrom, dateTo);
-    },
-    () => {}
-  );
-  showPage("page-welcome");
+function goToSetup(initialStep) {
+  renderSetup((params) => {
+    if (params && params.dateFrom) {
+      sessionDate = { dateFrom: params.dateFrom, dateTo: params.dateTo };
+      goToRun(params.dateFrom, params.dateTo, params.selectedAccountIds);
+    } else {
+      goToSetup("accounts");
+    }
+  }, initialStep || "accounts");
+  showPage("page-setup");
 }
 
-function goToRun(dateFrom, dateTo) {
-  renderRun(dateFrom, dateTo, (resultData) => {
+function goToRun(dateFrom, dateTo, selectedAccountIds) {
+  renderRun(dateFrom, dateTo, selectedAccountIds || [], (resultData) => {
     goToResults(resultData, dateFrom, dateTo);
   }, () => {
-    goToWelcome();
+    goToSetup("run");
   });
   showPage("page-run");
 }
@@ -399,7 +576,7 @@ function goToResults(data, dateFrom, dateTo) {
   renderResults(
     data, dateFrom, dateTo,
     () => { goToRun(dateFrom, dateTo); },
-    () => { sessionDate = null; goToWelcome(); }
+    () => { sessionDate = null; goToSetup("run"); }
   );
   showPage("page-results");
 }
@@ -409,10 +586,14 @@ function reRenderCurrentPage() {
   const active = document.querySelector(".page.active");
   if (!active) return;
   const id = active.id;
-  if (id === "page-welcome") {
-    goToWelcome();
-  } else if (id === "page-setup") {
-    renderSetup(() => goToWelcome());
+  if (id === "page-setup") {
+    // Use in-place re-render if the setup page registered one (preserves step/state).
+    // Fall back to full goToSetup() only when no in-place renderer is registered.
+    if (typeof window._renderSetupInPlace === "function") {
+      window._renderSetupInPlace();
+    } else {
+      goToSetup();
+    }
   } else if (id === "page-run") {
     // Do NOT re-render the run page while the bot is active —
     // tearing down the DOM mid-run destroys all IPC listeners and crashes the UI.

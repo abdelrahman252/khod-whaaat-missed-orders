@@ -79,7 +79,7 @@ window.renderLicense = function (onUnlocked) {
 
         <div style="font-size:11px;color:var(--text2);line-height:1.7">
           Contact support if you need a license key.<br>
-          If you see a "different device" error, your network may have changed — contact support to reset the device lock.
+          If you see a "different device" error, contact support to reset the device lock.
         </div>
 
       </div>
