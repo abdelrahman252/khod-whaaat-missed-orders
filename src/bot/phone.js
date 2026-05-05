@@ -19,10 +19,12 @@ function normalizePhone(phone) {
   if (digits.startsWith("966")) digits = digits.slice(3);
   if (digits.startsWith("0")) digits = digits.slice(1);
 
-  // Strip trailing 0 if crept in (5XXXXXXXX0 → 10 digits)
-  if (digits.length === 10 && digits.endsWith("0")) digits = digits.slice(0, 9);
-
+  // Must start with 5 to be a valid Saudi mobile number
   if (!digits.startsWith("5")) return null;
+
+  // If longer than 9 digits, cut to exactly 9 (handles trailing 0, double 0, +, extra digits, etc.)
+  if (digits.length > 9) digits = digits.slice(0, 9);
+
   if (digits.length !== 9) return null;
 
   return digits;
