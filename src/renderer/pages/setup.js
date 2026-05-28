@@ -17,6 +17,8 @@ window.renderSetup = function (onComplete, initialStep) {
   // Step state: "accounts" | "run"
   // initialStep lets the caller decide the landing step (e.g. skip to "run" if accounts exist)
   let step = (initialStep === "run" || initialStep === "accounts") ? initialStep : "accounts";
+  let runFlowStep = "users"; // "users" | "date"
+  window._setupCurrentStep = step; // exposed so adminRefresh() can re-render at the correct step
 
   // Date state
   const todayStr = (() => {
@@ -42,6 +44,7 @@ window.renderSetup = function (onComplete, initialStep) {
         easyEmail: creds.easyEmail,
         easyStore: creds.easyStore || "",
         khodEmail: creds.khodEmail || "",
+        khodCountry: creds.khodCountry || "sa",
         locked: true,
       }];
     }
@@ -53,7 +56,7 @@ window.renderSetup = function (onComplete, initialStep) {
 
   // ── Label builder: "{CustomerName} 1", "{CustomerName} 2", etc. ──
   function buildLabel(n) {
-    const name = (window._kbotUser && window._kbotUser.customerName) || "Account";
+    const name = (window._kbotUser && window._kbotUser.customerName) || window._t("setup.account_fallback");
     return `${name} ${n}`;
   }
 
@@ -74,103 +77,11 @@ window.renderSetup = function (onComplete, initialStep) {
   function renderShell() {
     el.innerHTML = `
       <style>
-        /* ── Layout ── */
-        .sv3-shell {
-          display: flex;
-          flex: 1;
-          height: 100%;
-          overflow: hidden;
-        }
-
-        /* ── Sidebar ── */
-        .sv3-sidebar {
-          width: 200px;
-          min-width: 200px;
-          background: var(--bg2);
-          border-right: 1px solid var(--border);
-          display: flex;
-          flex-direction: column;
-          padding: 28px 0 20px;
-          gap: 4px;
-        }
-        .sv3-sb-logo {
-          display: flex;
-          align-items: center;
-          gap: 10px;
-          padding: 0 20px 24px;
-          border-bottom: 1px solid var(--border);
-          margin-bottom: 12px;
-        }
-        .sv3-sb-logo-icon {
-          width: 32px;
-          height: 32px;
-          border-radius: 8px;
-          background: linear-gradient(135deg,#7c6af7,#4f8ef7);
-          display: flex;
-          align-items: center;
-          justify-content: center;
-          font-size: 16px;
-          flex-shrink: 0;
-        }
-        .sv3-sb-logo-text {
-          font-size: 12px;
-          font-weight: 800;
-          color: var(--text);
-          letter-spacing: -.2px;
-          line-height: 1.2;
-        }
-        .sv3-sb-logo-sub {
-          font-size: 10px;
-          color: var(--text2);
-        }
-
-        .sv3-nav-item {
-          display: flex;
-          align-items: center;
-          gap: 10px;
-          padding: 10px 20px;
-          cursor: pointer;
-          transition: background .15s, color .15s;
-          border-left: 2px solid transparent;
-          font-size: 13px;
-          color: var(--text2);
-          font-weight: 500;
-          position: relative;
-        }
-        .sv3-nav-item:hover { background: var(--bg3); color: var(--text); }
-        .sv3-nav-item.active {
-          background: rgba(124,106,247,.1);
-          color: #b3a9f9;
-          border-left-color: #7c6af7;
-          font-weight: 700;
-        }
-        .sv3-nav-item.done { color: #00d68f; }
-        .sv3-nav-item.done .sv3-step-num { background: #00d68f; color: #021c12; }
-
-        .sv3-step-num {
-          width: 22px;
-          height: 22px;
-          border-radius: 50%;
-          background: var(--bg3);
-          border: 1px solid var(--border);
-          display: flex;
-          align-items: center;
-          justify-content: center;
-          font-size: 10px;
-          font-weight: 800;
-          flex-shrink: 0;
-          transition: background .2s;
-        }
-        .sv3-nav-item.active .sv3-step-num {
-          background: #7c6af7;
-          border-color: #7c6af7;
-          color: #fff;
-        }
-
-        .sv3-sidebar-footer {
-          margin-top: auto;
-          padding: 16px 20px 0;
-          border-top: 1px solid var(--border);
+        /* ── Entry animation (sidebar + all nav styles come from main.css) ── */
+        .sv3-shell { animation: sv3-shell-enter .48s ease both; }
+        @keyframes sv3-shell-enter {
+          from { opacity: 0; transform: translateY(10px); }
+          to { opacity: 1; transform: translateY(0); }
         }
 
         /* ── Main content ── */
@@ -180,10 +91,25 @@ window.renderSetup = function (onComplete, initialStep) {
           padding: 28px 32px;
           display: flex;
           flex-direction: column;
+          align-items: center;
         }
         /* Inner content uses max-width centering like INSTALL */
         .sv3-main > * {
-          max-width: 860px;
+          width: 100%;
+          max-width: 960px;
+          margin-left: auto;
+          margin-right: auto;
+        }
+
+        .sv3-run-stage {
+          width: 100%;
+          max-width: 1060px;
+          margin: auto;
+          animation: sv3-run-stage-enter .42s ease both;
+        }
+        @keyframes sv3-run-stage-enter {
+          from { opacity: 0; transform: translateY(14px) scale(.99); }
+          to { opacity: 1; transform: translateY(0) scale(1); }
         }
 
         /* ── Phase badge ── */
@@ -206,13 +132,353 @@ window.renderSetup = function (onComplete, initialStep) {
         .sv3-page-title { font-size: 24px; font-weight: 800; color: var(--text); letter-spacing: -.4px; margin-bottom: 4px; }
         .sv3-page-sub   { font-size: 13px; color: var(--text2); margin-bottom: 28px; }
 
+        .sv3-run-title-lockup {
+          display: flex;
+          align-items: center;
+          gap: 18px;
+        }
+        .sv3-run-icon {
+          width: 56px;
+          height: 56px;
+          border-radius: 14px;
+          display: flex;
+          align-items: center;
+          justify-content: center;
+          flex-shrink: 0;
+          background: linear-gradient(135deg, rgba(124,106,247,.55), rgba(79,142,247,.18));
+          border: 1px solid rgba(124,106,247,.28);
+          box-shadow: 0 18px 46px rgba(0,0,0,.28), inset 0 1px 0 rgba(255,255,255,.1);
+          font-size: 24px;
+        }
+        .sv3-run-title-lockup .sv3-page-title {
+          font-size: 30px;
+          line-height: 1.05;
+          margin-bottom: 8px;
+        }
+        .sv3-run-title-lockup .sv3-page-sub {
+          font-size: 15px;
+          margin-bottom: 0;
+        }
+        .sv3-run-hero {
+          display: flex;
+          align-items: center;
+          justify-content: space-between;
+          gap: 40px;
+          margin-bottom: 26px;
+        }
+        .sv3-run-hero-copy { min-width: 240px; }
+        .sv3-flow-stepper {
+          position: relative;
+          display: grid;
+          grid-template-columns: 1fr 1fr;
+          gap: 0;
+          width: min(470px, 100%);
+          padding: 0;
+          background: transparent;
+          border: 0;
+        }
+        .sv3-flow-stepper::before {
+          content: "";
+          position: absolute;
+          top: 27px;
+          left: 52px;
+          right: 76px;
+          height: 2px;
+          background: var(--border);
+        }
+        .sv3-flow-stepper.date-active::before {
+          background: linear-gradient(90deg,#7c6af7,#00d68f);
+        }
+        .sv3-flow-node {
+          position: relative;
+          display: flex;
+          align-items: center;
+          gap: 10px;
+          min-height: 64px;
+          border-radius: 0;
+          padding: 4px 10px;
+          color: var(--text2);
+          overflow: visible;
+          background: transparent;
+        }
+        .sv3-flow-node-num {
+          position: relative;
+          z-index: 1;
+          width: 48px;
+          height: 48px;
+          border-radius: 50%;
+          display: flex;
+          align-items: center;
+          justify-content: center;
+          flex-shrink: 0;
+          background: var(--bg2);
+          border: 1px solid var(--border);
+          color: var(--text);
+          font-size: 16px;
+          font-weight: 800;
+        }
+        .sv3-flow-node.done .sv3-flow-node-num { background: linear-gradient(135deg,#21d892,#09a86d); border-color: rgba(55,239,166,.45); color: #041b13; }
+        .sv3-flow-node.active .sv3-flow-node-num { background: linear-gradient(135deg,#8d63ff,#6847d8); border-color: rgba(167,139,250,.6); color: #fff; box-shadow: 0 0 0 8px rgba(124,106,247,.14), 0 16px 34px rgba(97,70,215,.28); }
+        .sv3-flow-node.active .sv3-flow-node-num::after {
+          content: "";
+          position: absolute;
+          inset: -8px;
+          border-radius: 999px;
+          border: 1px solid rgba(124,106,247,.55);
+          animation: sv3-step-heartbeat 1.45s ease-out infinite;
+          pointer-events: none;
+        }
+        @keyframes sv3-step-heartbeat {
+          0% { opacity: .85; transform: scale(.82); box-shadow: 0 0 0 0 rgba(124,106,247,.3); }
+          55% { opacity: .12; transform: scale(1.45); box-shadow: 0 0 0 12px rgba(124,106,247,0); }
+          100% { opacity: 0; transform: scale(1.55); box-shadow: 0 0 0 16px rgba(124,106,247,0); }
+        }
+        .sv3-flow-node-text {
+          position: relative;
+          display: flex;
+          flex-direction: column;
+          gap: 2px;
+          min-width: 0;
+        }
+        .sv3-flow-node-title { font-size: 14px; font-weight: 800; color: var(--text); }
+        .sv3-flow-node-sub { font-size: 12px; color: var(--text2); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+
+        .sv3-flow-panel {
+          position: relative;
+          overflow: hidden;
+          animation: sv3-panel-enter .34s cubic-bezier(.18,.86,.3,1) both;
+        }
+        .sv3-flow-panel::before {
+          content: none;
+        }
+        @keyframes sv3-panel-enter {
+          from { opacity: 0; transform: translateX(18px) scale(.985); }
+          to { opacity: 1; transform: translateY(0) scale(1); }
+        }
+        @media (prefers-reduced-motion: reduce) {
+          .sv3-shell,
+          .sv3-run-stage,
+          .sv3-flow-panel,
+          .sv3-acc-card { animation: none !important; transition: none !important; }
+        }
+        .sv3-section-top {
+          display: flex;
+          align-items: flex-start;
+          justify-content: space-between;
+          gap: 22px;
+          margin-bottom: 20px;
+        }
+        .sv3-step-heading {
+          display: flex;
+          align-items: flex-start;
+          gap: 12px;
+        }
+        .sv3-step-badge {
+          width: 34px;
+          height: 34px;
+          border-radius: 10px;
+          display: flex;
+          align-items: center;
+          justify-content: center;
+          flex-shrink: 0;
+          background: rgba(124,106,247,.14);
+          border: 1px solid rgba(124,106,247,.3);
+          color: #c5bfff;
+          font-size: 13px;
+          font-weight: 900;
+        }
+        .sv3-step-badge.green {
+          background: rgba(0,214,143,.12);
+          border-color: rgba(0,214,143,.28);
+          color: #45e6b3;
+        }
+        .sv3-section-title-lg { font-size: 16px; font-weight: 800; color: var(--text); margin-bottom: 4px; }
+        .sv3-section-copy { font-size: 12px; color: var(--text2); line-height: 1.45; }
+        .sv3-settings-dock {
+          display: grid;
+          grid-template-columns: repeat(2, minmax(0, 1fr));
+          gap: 22px;
+          min-width: 330px;
+        }
+        .sv3-setting-card {
+          background:
+            radial-gradient(circle at 12% 18%, rgba(79,142,247,.1), transparent 34%),
+            rgba(24,33,50,.7);
+          border: 1px solid rgba(125,148,186,.22);
+          border-radius: 20px;
+          padding: 28px 30px;
+          min-height: 142px;
+          transition: border-color .2s, background .2s;
+          box-shadow: inset 0 1px 0 rgba(255,255,255,.04);
+        }
+        .sv3-setting-card:hover {
+          border-color: rgba(124,106,247,.42);
+          background:
+            radial-gradient(circle at 12% 18%, rgba(79,142,247,.14), transparent 34%),
+            rgba(24,33,50,.82);
+        }
+        .sv3-setting-row {
+          display: flex;
+          align-items: center;
+          justify-content: space-between;
+          gap: 12px;
+        }
+        .sv3-setting-title { font-size: 12px; font-weight: 800; color: var(--text); margin-bottom: 3px; }
+        .sv3-setting-desc { font-size: 10.5px; color: var(--text2); line-height: 1.4; }
+        .sv3-setting-meta { margin-top: 9px; }
+        .sv3-setting-icon {
+          width: 52px;
+          height: 52px;
+          border-radius: 14px;
+          display: flex;
+          align-items: center;
+          justify-content: center;
+          flex-shrink: 0;
+          background: linear-gradient(135deg, rgba(124,106,247,.52), rgba(79,142,247,.14));
+          border: 1px solid rgba(167,139,250,.22);
+          font-size: 24px;
+          box-shadow: inset 0 1px 0 rgba(255,255,255,.08);
+        }
+        .sv3-setting-copy {
+          display: flex;
+          align-items: flex-start;
+          gap: 20px;
+          min-width: 0;
+        }
+        .sv3-toggle-btn {
+          width: 46px;
+          height: 25px;
+          border-radius: 999px;
+          border: none;
+          cursor: pointer;
+          position: relative;
+          transition: background .25s, box-shadow .25s;
+          background: var(--border);
+          flex-shrink: 0;
+        }
+        .sv3-toggle-btn span {
+          position: absolute;
+          top: 3px;
+          left: 3px;
+          width: 19px;
+          height: 19px;
+          border-radius: 50%;
+          background: #fff;
+          transition: transform .25s;
+          box-shadow: 0 2px 8px rgba(0,0,0,.18);
+        }
+        .sv3-toggle-label { font-size: 10px; color: var(--text2); min-width: 24px; font-weight: 700; }
+
         /* ── Section card ── */
         .sv3-section {
           background: var(--bg2);
           border: 1px solid var(--border);
           border-radius: 14px;
-          padding: 22px 24px;
+          padding: 20px 24px;
           margin-bottom: 18px;
+        }
+        .sv3-date-panel {
+          position: relative;
+          border-radius: 24px;
+          padding: 28px 44px 30px;
+          overflow: hidden;
+          background:
+            radial-gradient(circle at 14% 10%, rgba(79,142,247,.16), transparent 32%),
+            radial-gradient(circle at 90% 20%, rgba(124,106,247,.13), transparent 30%),
+            rgba(17,23,36,.86);
+          border: 1px solid rgba(125,148,186,.28);
+          box-shadow: 0 24px 70px rgba(0,0,0,.32), inset 0 1px 0 rgba(255,255,255,.04);
+        }
+        .sv3-date-panel::before {
+          content: "";
+          position: absolute;
+          inset: 0;
+          pointer-events: none;
+          background: linear-gradient(180deg, rgba(255,255,255,.035), transparent 34%);
+        }
+        .sv3-date-panel > * {
+          position: relative;
+        }
+        .sv3-users-panel {
+          position: relative;
+          border-radius: 24px;
+          padding: 34px 38px 30px;
+          overflow: hidden;
+          background:
+            radial-gradient(circle at 12% 20%, rgba(124,106,247,.16), transparent 34%),
+            radial-gradient(circle at 88% 12%, rgba(79,142,247,.12), transparent 30%),
+            rgba(17,23,36,.86);
+          border: 1px solid rgba(125,148,186,.28);
+          box-shadow: 0 24px 70px rgba(0,0,0,.32), inset 0 1px 0 rgba(255,255,255,.04);
+        }
+        .sv3-users-panel::before {
+          content: "";
+          position: absolute;
+          inset: 0;
+          pointer-events: none;
+          background: linear-gradient(180deg, rgba(255,255,255,.035), transparent 34%);
+        }
+        .sv3-users-panel > * {
+          position: relative;
+        }
+        .sv3-users-panel .sv3-section-top {
+          display: block;
+          margin-bottom: 0;
+        }
+        .sv3-users-panel .sv3-step-heading {
+          align-items: center;
+        }
+        .sv3-users-panel .sv3-step-badge,
+        .sv3-date-panel .sv3-step-badge {
+          width: 58px;
+          height: 58px;
+          border-radius: 14px;
+          font-size: 24px;
+          background: linear-gradient(135deg, rgba(124,106,247,.82), rgba(61,38,135,.74));
+          border-color: rgba(167,139,250,.34);
+          box-shadow: 0 14px 32px rgba(80,55,180,.26), inset 0 1px 0 rgba(255,255,255,.08);
+        }
+        .sv3-users-panel .sv3-section-title-lg,
+        .sv3-date-panel .sv3-section-title-lg {
+          font-size: 25px;
+          line-height: 1.1;
+          margin-bottom: 10px;
+        }
+        .sv3-users-panel .sv3-section-copy,
+        .sv3-date-panel .sv3-section-copy {
+          font-size: 16px;
+          color: #aab6ca;
+        }
+        .sv3-users-panel .sv3-settings-dock {
+          margin-top: 34px;
+        }
+        .sv3-users-panel .sv3-setting-row {
+          align-items: flex-start;
+        }
+        .sv3-users-panel .sv3-setting-title {
+          font-size: 19px;
+          margin-bottom: 10px;
+        }
+        .sv3-users-panel .sv3-setting-desc {
+          max-width: 285px;
+          font-size: 15px;
+          line-height: 1.5;
+          color: #aab6ca;
+        }
+        .sv3-users-panel .sv3-toggle-btn {
+          width: 62px;
+          height: 34px;
+          background: rgba(30,41,59,.9);
+          border: 1px solid rgba(125,148,186,.22);
+          box-shadow: inset 0 1px 0 rgba(255,255,255,.06);
+        }
+        .sv3-users-panel .sv3-toggle-btn span {
+          width: 28px;
+          height: 28px;
+        }
+        .sv3-users-panel .sv3-toggle-label {
+          font-size: 13px;
+          min-width: 34px;
         }
         .sv3-section-hd {
           display: flex;
@@ -229,6 +495,89 @@ window.renderSetup = function (onComplete, initialStep) {
           display: flex;
           gap: 12px;
           flex-wrap: wrap;
+        }
+        .sv3-run-accounts {
+          gap: 14px;
+          margin-top: 34px;
+        }
+        .sv3-run-accounts .sv3-acc-card {
+          width: clamp(218px, calc((100% - 28px) / 3), 286px);
+          min-height: 320px;
+          justify-content: center;
+          gap: 12px;
+          padding: 28px 28px 26px;
+          border-radius: 20px;
+          background:
+            radial-gradient(circle at 50% 10%, rgba(79,142,247,.1), transparent 40%),
+            rgba(24,33,50,.66);
+          border: 1px solid rgba(125,148,186,.25);
+          box-shadow: inset 0 1px 0 rgba(255,255,255,.04);
+        }
+        .sv3-run-accounts .sv3-acc-card.selected {
+          border-color: rgba(124,106,247,.7);
+          box-shadow: 0 0 0 1px rgba(124,106,247,.28), 0 20px 50px rgba(70,47,160,.18), inset 0 1px 0 rgba(255,255,255,.06);
+        }
+        .sv3-run-accounts .sv3-check {
+          top: 22px;
+          right: 22px;
+          width: 34px;
+          height: 34px;
+          border-color: rgba(125,148,186,.3);
+          background: rgba(17,23,36,.58);
+        }
+        .sv3-run-accounts .sv3-acc-card.selected .sv3-check {
+          background: linear-gradient(135deg,#8b5cf6,#4f8ef7);
+          border-color: rgba(167,139,250,.7);
+        }
+        .sv3-run-accounts .sv3-avatar {
+          width: 86px;
+          height: 86px;
+          font-size: 40px;
+          margin-top: 10px;
+          box-shadow: 0 18px 36px rgba(0,0,0,.2);
+        }
+        .sv3-run-accounts .sv3-avatar.lk {
+          width: 88px;
+          height: 88px;
+          font-size: 30px;
+          background: rgba(10,16,27,.58);
+          border-color: rgba(125,148,186,.2);
+        }
+        .sv3-run-accounts .sv3-acc-name {
+          max-width: 100%;
+          font-size: 21px;
+          line-height: 1.2;
+          margin-top: 8px;
+        }
+        .sv3-run-accounts .sv3-acc-email {
+          max-width: 100%;
+          font-size: 14px;
+          color: #aab6ca;
+        }
+        .sv3-run-accounts .sv3-status-pill {
+          margin-top: 10px;
+          padding: 11px 28px;
+          font-size: 15px;
+          border-radius: 999px;
+          letter-spacing: .04em;
+        }
+        .sv3-run-accounts .sv3-status-pill.ok {
+          background: rgba(16,185,129,.18);
+          border-color: rgba(45,212,191,.38);
+          color: #38e6a7;
+        }
+        .sv3-run-accounts .sv3-lock-badge {
+          position: absolute;
+          top: 22px;
+          left: 22px;
+          background: rgba(245,158,11,.16);
+          border: 1px solid rgba(245,158,11,.5);
+          border-radius: 999px;
+          padding: 7px 15px;
+          font-size: 14px;
+          font-weight: 800;
+          color: #ffd166;
+          letter-spacing: .01em;
         }
 
         /* Account card */
@@ -248,6 +597,15 @@ window.renderSetup = function (onComplete, initialStep) {
           position: relative;
           text-align: center;
           user-select: none;
+          animation: sv3-card-pop .34s cubic-bezier(.2,.8,.2,1) both;
+        }
+        .sv3-acc-card:nth-child(2) { animation-delay: .04s; }
+        .sv3-acc-card:nth-child(3) { animation-delay: .08s; }
+        .sv3-acc-card:nth-child(4) { animation-delay: .12s; }
+        .sv3-acc-card:nth-child(5) { animation-delay: .16s; }
+        @keyframes sv3-card-pop {
+          from { opacity: 0; transform: translateY(8px) scale(.98); }
+          to { opacity: 1; transform: translateY(0) scale(1); }
         }
         .sv3-acc-card.selected {
           border-color: #7c6af7;
@@ -441,18 +799,20 @@ window.renderSetup = function (onComplete, initialStep) {
         /* Date mode buttons */
         .sv3-date-modes {
           display: flex;
-          gap: 8px;
-          margin-bottom: 16px;
+          gap: 12px;
+          margin: 22px auto 20px;
+          max-width: none;
         }
         .sv3-date-mode-btn {
           flex: 1;
-          padding: 9px 8px;
-          background: var(--bg3);
-          border: 1px solid var(--border);
-          border-radius: 8px;
-          font-size: 11px;
-          font-weight: 600;
-          color: var(--text2);
+          min-height: 48px;
+          padding: 0 16px;
+          background: rgba(16,23,36,.62);
+          border: 1px solid rgba(125,148,186,.22);
+          border-radius: 10px;
+          font-size: 15px;
+          font-weight: 700;
+          color: #a9b5cc;
           cursor: pointer;
           display: flex;
           align-items: center;
@@ -461,9 +821,10 @@ window.renderSetup = function (onComplete, initialStep) {
           transition: all .15s;
         }
         .sv3-date-mode-btn.active {
-          background: rgba(124,106,247,.15);
+          background: linear-gradient(135deg, rgba(124,106,247,.28), rgba(79,142,247,.12));
           border-color: #7c6af7;
-          color: #b3a9f9;
+          color: #efeaff;
+          box-shadow: 0 0 0 1px rgba(124,106,247,.2), 0 14px 32px rgba(87,64,196,.18);
         }
         .sv3-date-mode-btn:hover:not(.active) { border-color: rgba(124,106,247,.4); color: var(--text); }
 
@@ -534,6 +895,163 @@ window.renderSetup = function (onComplete, initialStep) {
         }
 
         /* ── Run button ── */
+        .sv3-run-review {
+          margin-top: 18px;
+          padding: 0;
+          border: 1px solid rgba(125,148,186,.22);
+          border-radius: 16px;
+          background: rgba(16,23,36,.52);
+          overflow: hidden;
+        }
+        .sv3-review-grid {
+          display: grid;
+          grid-template-columns: 1fr 1.25fr .9fr;
+          gap: 0;
+          margin-bottom: 0;
+        }
+        .sv3-review-metric {
+          min-width: 0;
+          display: grid;
+          grid-template-columns: 52px 1fr;
+          align-items: center;
+          column-gap: 14px;
+          background: transparent;
+          border: 0;
+          border-radius: 0;
+          padding: 22px 24px;
+        }
+        .sv3-review-metric + .sv3-review-metric {
+          border-left: 1px solid rgba(125,148,186,.16);
+        }
+        .sv3-review-label {
+          display: flex;
+          align-items: center;
+          gap: 6px;
+          font-size: 11px;
+          color: #9ca8bd;
+          margin-bottom: 6px;
+          text-transform: uppercase;
+          letter-spacing: .06em;
+          font-weight: 800;
+        }
+        .sv3-review-value {
+          font-size: 17px;
+          font-weight: 800;
+          color: var(--text);
+          white-space: nowrap;
+          overflow: hidden;
+          text-overflow: ellipsis;
+        }
+        .sv3-review-value .sv3-mini-avatars { margin-top: 8px; }
+        .sv3-review-icon {
+          width: 48px;
+          height: 48px;
+          border-radius: 999px;
+          display: flex;
+          align-items: center;
+          justify-content: center;
+          font-size: 18px;
+          box-shadow: inset 0 1px 0 rgba(255,255,255,.08);
+        }
+        .sv3-review-icon.users { color:#c78bff; background:rgba(124,58,237,.22); border:1px solid rgba(167,139,250,.28); }
+        .sv3-review-icon.date { color:#56f1d0; background:rgba(20,184,166,.16); border:1px solid rgba(45,212,191,.25); }
+        .sv3-review-icon.days { color:#ffd166; background:rgba(245,158,11,.18); border:1px solid rgba(245,158,11,.28); }
+        .sv3-launch-row {
+          display: grid;
+          grid-template-columns: 300px 1fr;
+          align-items: stretch;
+          gap: 14px;
+          margin-top: 18px;
+        }
+        .sv3-back-ghost {
+          width: 100%;
+          min-width: 0;
+          min-height: 56px;
+          padding: 0 14px;
+          background: rgba(16,23,36,.64);
+          color: #d8deea;
+          box-shadow: none;
+          border: 1px solid rgba(125,148,186,.24);
+        }
+        .sv3-continue-row {
+          display: flex;
+          justify-content: flex-end;
+          gap: 10px;
+          margin-top: 34px;
+          padding: 18px;
+          border-top: 0;
+          border-radius: 22px;
+          background: rgba(10,16,27,.28);
+        }
+        .sv3-continue-btn {
+          width: 100%;
+          min-width: 168px;
+          min-height: 82px;
+          padding: 0 22px;
+          border-radius: 10px;
+          background: linear-gradient(90deg,#7c3aed,#4f8ef7);
+          font-size: 22px;
+        }
+        .sv3-run-primary {
+          flex: 1;
+          min-height: 56px;
+          background: linear-gradient(90deg,#7c3aed,#4f8ef7);
+        }
+        .sv3-dashboard-primary {
+          width: 100%;
+          margin-top: 14px;
+          min-height: 56px;
+          background: rgba(16,23,36,.46);
+          border: 1px solid rgba(125,148,186,.22);
+          color: #f3f6ff;
+          font-size: 16px;
+          padding: 0 18px;
+          box-shadow: none;
+        }
+        .sv3-run-hint {
+          min-height: 18px;
+          margin-top: 18px;
+          text-align: center;
+          font-size: 13px;
+          color: var(--text2);
+          display: flex;
+          align-items: center;
+          justify-content: center;
+          gap: 5px;
+        }
+        .sv3-run-hint.warn { color: var(--warning); }
+        .sv3-date-ready {
+          background: rgba(0,214,143,.08);
+          border: 1px solid rgba(0,214,143,.22);
+          border-radius: 10px;
+          padding: 12px;
+          text-align: center;
+          font-size: 12px;
+          color: #45e6b3;
+          font-weight: 700;
+          max-width: 720px;
+          margin: 0 auto;
+        }
+        .sv3-date-single {
+          max-width: 340px;
+          margin: 0 auto;
+        }
+        .sv3-date-range-grid {
+          display: grid;
+          grid-template-columns: repeat(2, minmax(0, 1fr));
+          gap: 18px;
+          max-width: none;
+          margin: 0 auto;
+        }
+        .sv3-date-field-label {
+          font-size: 12px;
+          font-weight: 800;
+          color: var(--text2);
+          text-transform: uppercase;
+          letter-spacing: .06em;
+          margin: 0 0 10px 26px;
+        }
+
         .sv3-run-btn {
           width: 100%;
           padding: 15px;
@@ -541,7 +1059,7 @@ window.renderSetup = function (onComplete, initialStep) {
           border: none;
           border-radius: 12px;
           color: #fff;
-          font-size: 15px;
+          font-size: 16px;
           font-weight: 700;
           cursor: pointer;
           display: flex;
@@ -555,6 +1073,820 @@ window.renderSetup = function (onComplete, initialStep) {
         .sv3-run-btn:hover:not(:disabled) { opacity: .92; transform: translateY(-1px); }
         .sv3-run-btn:active:not(:disabled) { transform: none; }
         .sv3-run-btn:disabled { opacity: .35; cursor: not-allowed; transform: none; }
+
+        /* Compact premium pass: balanced SaaS density over oversized showcase UI */
+        .sv3-main {
+          padding: 22px 30px;
+        }
+        .sv3-run-stage {
+          max-width: 980px;
+        }
+        .sv3-run-hero {
+          gap: 28px;
+          margin-bottom: 18px;
+        }
+        .sv3-run-icon {
+          width: 46px;
+          height: 46px;
+          border-radius: 12px;
+          font-size: 20px;
+          box-shadow: 0 12px 30px rgba(0,0,0,.24), inset 0 1px 0 rgba(255,255,255,.08);
+        }
+        .sv3-run-title-lockup {
+          gap: 14px;
+        }
+        .sv3-run-title-lockup .sv3-page-title {
+          font-size: 26px;
+          margin-bottom: 5px;
+        }
+        .sv3-run-title-lockup .sv3-page-sub {
+          font-size: 13px;
+        }
+        .sv3-flow-stepper {
+          width: min(410px, 100%);
+        }
+        .sv3-flow-stepper::before {
+          top: 23px;
+          left: 45px;
+          right: 62px;
+        }
+        .sv3-flow-node {
+          min-height: 52px;
+          gap: 9px;
+        }
+        .sv3-flow-node-num {
+          width: 40px;
+          height: 40px;
+          font-size: 14px;
+        }
+        .sv3-flow-node.active .sv3-flow-node-num {
+          box-shadow: 0 0 0 5px rgba(124,106,247,.12), 0 10px 24px rgba(97,70,215,.22);
+        }
+        .sv3-flow-node.active .sv3-flow-node-num::after {
+          inset: -6px;
+          opacity: .72;
+        }
+        .sv3-flow-node-title {
+          font-size: 13px;
+        }
+        .sv3-flow-node-sub {
+          font-size: 11px;
+        }
+        .sv3-users-panel,
+        .sv3-date-panel {
+          border-radius: 20px;
+          padding: 22px 28px 24px;
+          box-shadow: 0 18px 52px rgba(0,0,0,.26), inset 0 1px 0 rgba(255,255,255,.035);
+        }
+        .sv3-users-panel .sv3-step-badge,
+        .sv3-date-panel .sv3-step-badge {
+          width: 44px;
+          height: 44px;
+          border-radius: 12px;
+          font-size: 18px;
+          box-shadow: 0 10px 24px rgba(80,55,180,.2), inset 0 1px 0 rgba(255,255,255,.08);
+        }
+        .sv3-users-panel .sv3-section-title-lg,
+        .sv3-date-panel .sv3-section-title-lg {
+          font-size: 21px;
+          margin-bottom: 5px;
+        }
+        .sv3-users-panel .sv3-section-copy,
+        .sv3-date-panel .sv3-section-copy {
+          font-size: 13px;
+        }
+        .sv3-users-panel .sv3-settings-dock {
+          margin-top: 22px;
+        }
+        .sv3-settings-dock {
+          gap: 14px;
+        }
+        .sv3-setting-card {
+          min-height: 104px;
+          padding: 18px 20px;
+          border-radius: 16px;
+        }
+        .sv3-setting-icon {
+          width: 42px;
+          height: 42px;
+          border-radius: 12px;
+          font-size: 19px;
+        }
+        .sv3-setting-copy {
+          gap: 14px;
+        }
+        .sv3-users-panel .sv3-setting-title {
+          font-size: 16px;
+          margin-bottom: 5px;
+        }
+        .sv3-users-panel .sv3-setting-desc {
+          font-size: 12px;
+          line-height: 1.45;
+          max-width: 250px;
+        }
+        .sv3-users-panel .sv3-toggle-btn {
+          width: 52px;
+          height: 28px;
+        }
+        .sv3-users-panel .sv3-toggle-btn span {
+          width: 22px;
+          height: 22px;
+        }
+        .sv3-users-panel .sv3-toggle-label {
+          font-size: 11px;
+          min-width: 30px;
+        }
+        .sv3-run-accounts {
+          gap: 12px;
+          margin-top: 22px;
+        }
+        .sv3-run-accounts .sv3-acc-card {
+          width: clamp(180px, calc((100% - 24px) / 3), 246px);
+          min-height: 218px;
+          padding: 22px 20px 20px;
+          border-radius: 16px;
+          gap: 8px;
+        }
+        .sv3-run-accounts .sv3-check {
+          top: 14px;
+          right: 14px;
+          width: 28px;
+          height: 28px;
+        }
+        .sv3-run-accounts .sv3-lock-badge {
+          top: 14px;
+          left: 14px;
+          padding: 5px 10px;
+          font-size: 11px;
+        }
+        .sv3-run-accounts .sv3-avatar {
+          width: 68px;
+          height: 68px;
+          font-size: 30px;
+          margin-top: 12px;
+        }
+        .sv3-run-accounts .sv3-avatar.lk {
+          width: 70px;
+          height: 70px;
+          font-size: 24px;
+        }
+        .sv3-run-accounts .sv3-acc-name {
+          font-size: 17px;
+          margin-top: 5px;
+        }
+        .sv3-run-accounts .sv3-acc-email {
+          font-size: 12px;
+        }
+        .sv3-run-accounts .sv3-status-pill {
+          margin-top: 6px;
+          padding: 7px 18px;
+          font-size: 11px;
+        }
+        .sv3-continue-row {
+          margin-top: 22px;
+          padding: 12px;
+          border-radius: 16px;
+        }
+        .sv3-continue-btn {
+          min-height: 52px;
+          font-size: 17px;
+          border-radius: 11px;
+        }
+        .sv3-date-modes {
+          gap: 10px;
+          margin: 18px auto 16px;
+        }
+        .sv3-date-mode-btn {
+          min-height: 42px;
+          font-size: 13px;
+          border-radius: 9px;
+        }
+        .sv3-date-range-grid {
+          gap: 14px;
+          max-width: 780px;
+        }
+        .sv3-date-field-label {
+          margin: 0 0 8px 12px;
+          font-size: 10px;
+        }
+        .sv3-run-review {
+          margin-top: 16px;
+          border-radius: 14px;
+        }
+        .sv3-review-metric {
+          grid-template-columns: 40px 1fr;
+          column-gap: 12px;
+          padding: 14px 18px;
+        }
+        .sv3-review-icon {
+          width: 38px;
+          height: 38px;
+          font-size: 15px;
+        }
+        .sv3-review-label {
+          font-size: 10px;
+          margin-bottom: 4px;
+        }
+        .sv3-review-value {
+          font-size: 14px;
+        }
+        .sv3-mini-av {
+          width: 22px;
+          height: 22px;
+        }
+        .sv3-launch-row {
+          grid-template-columns: 220px 1fr;
+          gap: 12px;
+          margin-top: 14px;
+        }
+        .sv3-back-ghost,
+        .sv3-run-primary,
+        .sv3-dashboard-primary {
+          min-height: 46px;
+          border-radius: 11px;
+          font-size: 14px;
+        }
+        .sv3-dashboard-primary {
+          margin-top: 10px;
+          min-height: 44px;
+          font-size: 14px;
+        }
+        .sv3-run-hint {
+          margin-top: 12px;
+          font-size: 11px;
+        }
+
+        /* SaaS density refinement: keep polish, remove oversized showcase proportions */
+        .sv3-main {
+          padding: 20px 28px;
+        }
+        .sv3-run-stage {
+          max-width: 920px;
+        }
+        .sv3-run-hero {
+          margin-bottom: 14px;
+        }
+        .sv3-run-icon {
+          width: 40px;
+          height: 40px;
+          border-radius: 10px;
+          font-size: 18px;
+          box-shadow: 0 8px 22px rgba(0,0,0,.2), inset 0 1px 0 rgba(255,255,255,.06);
+        }
+        .sv3-run-title-lockup .sv3-page-title {
+          font-size: 24px;
+        }
+        .sv3-run-title-lockup .sv3-page-sub {
+          font-size: 12px;
+        }
+        .sv3-flow-stepper {
+          width: min(380px, 100%);
+        }
+        .sv3-flow-node {
+          min-height: 46px;
+        }
+        .sv3-flow-node-num {
+          width: 34px;
+          height: 34px;
+          font-size: 13px;
+        }
+        .sv3-flow-node.active .sv3-flow-node-num {
+          box-shadow: 0 0 0 4px rgba(124,106,247,.1), 0 8px 18px rgba(97,70,215,.16);
+        }
+        .sv3-flow-stepper::before {
+          top: 20px;
+          left: 40px;
+          right: 58px;
+        }
+        .sv3-flow-node-title {
+          font-size: 12px;
+        }
+        .sv3-flow-node-sub {
+          font-size: 10px;
+        }
+        .sv3-users-panel,
+        .sv3-date-panel {
+          border-radius: 16px;
+          padding: 18px 22px 20px;
+          border-color: rgba(125,148,186,.22);
+          box-shadow: 0 12px 36px rgba(0,0,0,.22), inset 0 1px 0 rgba(255,255,255,.03);
+        }
+        .sv3-users-panel .sv3-step-badge,
+        .sv3-date-panel .sv3-step-badge {
+          width: 38px;
+          height: 38px;
+          border-radius: 10px;
+          font-size: 16px;
+          box-shadow: 0 7px 18px rgba(80,55,180,.16), inset 0 1px 0 rgba(255,255,255,.06);
+        }
+        .sv3-users-panel .sv3-section-title-lg,
+        .sv3-date-panel .sv3-section-title-lg {
+          font-size: 19px;
+          margin-bottom: 4px;
+        }
+        .sv3-users-panel .sv3-section-copy,
+        .sv3-date-panel .sv3-section-copy {
+          font-size: 12px;
+        }
+        .sv3-users-panel .sv3-settings-dock {
+          margin-top: 18px;
+        }
+        .sv3-settings-dock {
+          gap: 10px;
+        }
+        .sv3-setting-card {
+          min-height: 84px;
+          padding: 14px 16px;
+          border-radius: 12px;
+          background: rgba(24,33,50,.58);
+          border-color: rgba(125,148,186,.18);
+        }
+        .sv3-setting-icon {
+          width: 34px;
+          height: 34px;
+          border-radius: 9px;
+          font-size: 16px;
+        }
+        .sv3-setting-copy {
+          gap: 11px;
+        }
+        .sv3-users-panel .sv3-setting-title {
+          font-size: 14px;
+          margin-bottom: 3px;
+        }
+        .sv3-users-panel .sv3-setting-desc {
+          font-size: 11px;
+          line-height: 1.35;
+          max-width: 230px;
+        }
+        .sv3-users-panel .sv3-toggle-btn {
+          width: 46px;
+          height: 24px;
+        }
+        .sv3-users-panel .sv3-toggle-btn span {
+          width: 18px;
+          height: 18px;
+        }
+        .sv3-users-panel .sv3-toggle-label {
+          font-size: 10px;
+          min-width: 26px;
+        }
+        .sv3-run-accounts {
+          gap: 10px;
+          margin-top: 18px;
+        }
+        .sv3-run-accounts .sv3-acc-card {
+          width: clamp(160px, calc((100% - 20px) / 3), 216px);
+          min-height: 176px;
+          padding: 18px 16px 16px;
+          border-radius: 13px;
+          gap: 6px;
+          background: rgba(24,33,50,.56);
+          border-color: rgba(125,148,186,.2);
+        }
+        .sv3-run-accounts .sv3-check {
+          top: 10px;
+          right: 10px;
+          width: 24px;
+          height: 24px;
+        }
+        .sv3-run-accounts .sv3-lock-badge {
+          top: 10px;
+          left: 10px;
+          padding: 4px 8px;
+          font-size: 10px;
+        }
+        .sv3-run-accounts .sv3-avatar {
+          width: 54px;
+          height: 54px;
+          font-size: 24px;
+          margin-top: 8px;
+          box-shadow: 0 10px 22px rgba(0,0,0,.16);
+        }
+        .sv3-run-accounts .sv3-avatar.lk {
+          width: 56px;
+          height: 56px;
+          font-size: 19px;
+        }
+        .sv3-run-accounts .sv3-acc-name {
+          font-size: 14px;
+          margin-top: 3px;
+        }
+        .sv3-run-accounts .sv3-acc-email {
+          font-size: 10px;
+        }
+        .sv3-run-accounts .sv3-status-pill {
+          margin-top: 5px;
+          padding: 5px 13px;
+          font-size: 9px;
+        }
+        .sv3-continue-row {
+          margin-top: 16px;
+          padding: 10px;
+          border-radius: 13px;
+        }
+        .sv3-continue-btn {
+          min-height: 42px;
+          font-size: 15px;
+          border-radius: 9px;
+        }
+        .sv3-date-modes {
+          gap: 8px;
+          margin: 14px auto 12px;
+        }
+        .sv3-date-mode-btn {
+          min-height: 36px;
+          font-size: 12px;
+          border-radius: 8px;
+        }
+        .sv3-date-range-grid {
+          gap: 10px;
+          max-width: 700px;
+        }
+        .sv3-date-field-label {
+          margin: 0 0 6px 8px;
+          font-size: 9px;
+        }
+        .sv3-run-review {
+          margin-top: 12px;
+          border-radius: 12px;
+        }
+        .sv3-review-metric {
+          grid-template-columns: 32px 1fr;
+          column-gap: 10px;
+          padding: 10px 14px;
+        }
+        .sv3-review-icon {
+          width: 30px;
+          height: 30px;
+          font-size: 13px;
+        }
+        .sv3-review-label {
+          font-size: 9px;
+          margin-bottom: 2px;
+        }
+        .sv3-review-value {
+          font-size: 12px;
+        }
+        .sv3-mini-av {
+          width: 18px;
+          height: 18px;
+          font-size: 8px;
+        }
+        .sv3-launch-row {
+          grid-template-columns: 180px 1fr;
+          gap: 10px;
+          margin-top: 12px;
+        }
+        .sv3-back-ghost,
+        .sv3-run-primary,
+        .sv3-dashboard-primary {
+          min-height: 38px;
+          border-radius: 9px;
+          font-size: 13px;
+        }
+        .sv3-dashboard-primary {
+          margin-top: 8px;
+          min-height: 38px;
+          font-size: 13px;
+        }
+        .sv3-run-hint {
+          margin-top: 8px;
+          font-size: 10px;
+        }
+
+        /* Production SaaS layout pass: compact, scalable, desktop-first */
+        .sv3-main {
+          padding: 18px 26px;
+        }
+        .sv3-run-stage {
+          max-width: 980px;
+        }
+        .sv3-run-hero {
+          align-items: flex-start;
+          margin-bottom: 12px;
+        }
+        .sv3-run-title-lockup {
+          gap: 12px;
+        }
+        .sv3-run-icon {
+          width: 36px;
+          height: 36px;
+          border-radius: 9px;
+          font-size: 16px;
+          background: rgba(124,106,247,.22);
+          border-color: rgba(124,106,247,.24);
+          box-shadow: none;
+        }
+        .sv3-run-title-lockup .sv3-page-title {
+          font-size: 22px;
+          margin-bottom: 3px;
+          letter-spacing: -.2px;
+        }
+        .sv3-run-title-lockup .sv3-page-sub {
+          font-size: 12px;
+          color: #9aa7bc;
+        }
+        .sv3-flow-stepper {
+          width: min(360px, 100%);
+        }
+        .sv3-flow-node {
+          min-height: 42px;
+          gap: 8px;
+          padding: 2px 8px;
+        }
+        .sv3-flow-node-num {
+          width: 30px;
+          height: 30px;
+          font-size: 12px;
+        }
+        .sv3-flow-stepper::before {
+          top: 17px;
+          left: 36px;
+          right: 54px;
+          opacity: .75;
+        }
+        .sv3-flow-node-title {
+          font-size: 12px;
+        }
+        .sv3-flow-node-sub {
+          font-size: 10px;
+        }
+        .sv3-flow-node.active .sv3-flow-node-num {
+          box-shadow: 0 0 0 3px rgba(124,106,247,.08);
+        }
+        .sv3-flow-node.active .sv3-flow-node-num::after {
+          animation: none;
+          opacity: 0;
+        }
+        .sv3-users-panel,
+        .sv3-date-panel {
+          border-radius: 14px;
+          padding: 16px 18px 18px;
+          background: rgba(17,23,36,.82);
+          border-color: rgba(125,148,186,.2);
+          box-shadow: 0 10px 30px rgba(0,0,0,.18), inset 0 1px 0 rgba(255,255,255,.025);
+        }
+        .sv3-users-panel::before,
+        .sv3-date-panel::before {
+          opacity: .6;
+        }
+        .sv3-users-panel .sv3-step-badge,
+        .sv3-date-panel .sv3-step-badge {
+          width: 34px;
+          height: 34px;
+          border-radius: 9px;
+          font-size: 14px;
+          background: rgba(124,106,247,.22);
+          box-shadow: none;
+        }
+        .sv3-users-panel .sv3-section-title-lg,
+        .sv3-date-panel .sv3-section-title-lg {
+          font-size: 18px;
+          margin-bottom: 3px;
+        }
+        .sv3-users-panel .sv3-section-copy,
+        .sv3-date-panel .sv3-section-copy {
+          font-size: 12px;
+          color: #9aa7bc;
+        }
+        .sv3-users-panel .sv3-settings-dock {
+          margin-top: 14px;
+        }
+        .sv3-settings-dock {
+          gap: 10px;
+        }
+        .sv3-setting-card {
+          min-height: 72px;
+          padding: 12px 14px;
+          border-radius: 10px;
+          background: rgba(24,33,50,.5);
+          border-color: rgba(125,148,186,.16);
+          box-shadow: none;
+        }
+        .sv3-setting-card:hover {
+          background: rgba(24,33,50,.62);
+          border-color: rgba(124,106,247,.25);
+        }
+        .sv3-setting-copy {
+          gap: 10px;
+        }
+        .sv3-setting-icon {
+          width: 30px;
+          height: 30px;
+          border-radius: 8px;
+          font-size: 14px;
+          background: rgba(124,106,247,.18);
+          box-shadow: none;
+        }
+        .sv3-users-panel .sv3-setting-title {
+          font-size: 13px;
+          margin-bottom: 2px;
+        }
+        .sv3-users-panel .sv3-setting-desc {
+          font-size: 10.5px;
+          line-height: 1.35;
+          max-width: 260px;
+        }
+        .sv3-users-panel .sv3-toggle-btn {
+          width: 42px;
+          height: 22px;
+          border-radius: 999px;
+        }
+        .sv3-users-panel .sv3-toggle-btn span {
+          width: 16px;
+          height: 16px;
+        }
+        .sv3-users-panel .sv3-toggle-label {
+          font-size: 10px;
+          min-width: 24px;
+        }
+        .sv3-run-accounts {
+          display: grid;
+          grid-template-columns: repeat(5, minmax(0, 1fr));
+          gap: 10px;
+          margin-top: 14px;
+        }
+        .sv3-run-accounts .sv3-acc-card {
+          width: 100%;
+          min-height: 124px;
+          padding: 12px 12px 10px;
+          border-radius: 10px;
+          gap: 4px;
+          justify-content: center;
+          background: rgba(24,33,50,.48);
+          border: 1px solid rgba(125,148,186,.16);
+          box-shadow: none;
+        }
+        .sv3-run-accounts .sv3-acc-card:hover:not(.sv3-acc-locked) {
+          border-color: rgba(124,106,247,.34);
+          background: rgba(24,33,50,.6);
+          transform: translateY(-1px);
+        }
+        .sv3-run-accounts .sv3-acc-card.selected {
+          border-color: rgba(124,106,247,.5);
+          box-shadow: 0 0 0 1px rgba(124,106,247,.16);
+        }
+        .sv3-run-accounts .sv3-check {
+          top: 8px;
+          right: 8px;
+          width: 20px;
+          height: 20px;
+          border-width: 1px;
+          background: rgba(17,23,36,.45);
+        }
+        .sv3-run-accounts .sv3-lock-badge {
+          top: 8px;
+          left: 8px;
+          padding: 3px 7px;
+          font-size: 9px;
+          border-radius: 999px;
+        }
+        .sv3-run-accounts .sv3-avatar {
+          width: 40px;
+          height: 40px;
+          font-size: 18px;
+          margin-top: 4px;
+          box-shadow: none;
+        }
+        .sv3-run-accounts .sv3-avatar.lk {
+          width: 42px;
+          height: 42px;
+          font-size: 15px;
+        }
+        .sv3-run-accounts .sv3-acc-name {
+          font-size: 12px;
+          margin-top: 2px;
+        }
+        .sv3-run-accounts .sv3-acc-email {
+          font-size: 9.5px;
+          color: #9aa7bc;
+        }
+        .sv3-run-accounts .sv3-status-pill {
+          margin-top: 4px;
+          padding: 3px 9px;
+          font-size: 8.5px;
+        }
+        .sv3-continue-row {
+          margin-top: 14px;
+          padding: 8px;
+          border-radius: 11px;
+          background: rgba(10,16,27,.2);
+        }
+        .sv3-continue-btn {
+          min-height: 36px;
+          font-size: 13px;
+          border-radius: 8px;
+          box-shadow: 0 6px 16px rgba(79,142,247,.14);
+        }
+        .sv3-date-modes {
+          gap: 8px;
+          margin: 12px auto 12px;
+        }
+        .sv3-date-mode-btn {
+          min-height: 32px;
+          padding: 0 12px;
+          border-radius: 7px;
+          font-size: 11px;
+          background: rgba(24,33,50,.48);
+          border-color: rgba(125,148,186,.16);
+        }
+        .sv3-date-mode-btn.active {
+          background: rgba(124,106,247,.18);
+          box-shadow: none;
+        }
+        .sv3-date-range-grid {
+          gap: 12px;
+          max-width: 760px;
+        }
+        .sv3-date-field-label {
+          margin: 0 0 5px 6px;
+          font-size: 9px;
+          letter-spacing: .05em;
+        }
+        .sv3-date-ready {
+          padding: 9px 10px;
+          border-radius: 8px;
+          font-size: 11px;
+        }
+        .sv3-run-review {
+          margin-top: 12px;
+          border-radius: 10px;
+          background: rgba(16,23,36,.42);
+        }
+        .sv3-review-grid {
+          grid-template-columns: 1fr 1.1fr .8fr;
+        }
+        .sv3-review-metric {
+          grid-template-columns: 28px 1fr;
+          column-gap: 9px;
+          padding: 9px 12px;
+        }
+        .sv3-review-icon {
+          width: 26px;
+          height: 26px;
+          font-size: 11px;
+        }
+        .sv3-review-label {
+          font-size: 8.5px;
+          margin-bottom: 2px;
+        }
+        .sv3-review-value {
+          font-size: 11px;
+        }
+        .sv3-mini-avatars {
+          margin-top: 4px;
+        }
+        .sv3-mini-av {
+          width: 16px;
+          height: 16px;
+          font-size: 7px;
+          border-width: 1px;
+        }
+        .sv3-review-metric {
+          overflow: visible;
+        }
+        .sv3-review-value {
+          overflow: visible;
+          white-space: normal;
+        }
+        .sv3-review-value .sv3-mini-avatars {
+          min-width: max-content;
+          padding-inline: 2px 8px;
+        }
+        [dir="rtl"] .sv3-review-value .sv3-mini-avatars {
+          justify-content: flex-start;
+          padding-inline: 8px 2px;
+        }
+        [dir="rtl"] .sv3-mini-av {
+          margin-right: 0;
+          margin-left: -6px;
+        }
+        [dir="rtl"] .sv3-mini-av:last-child {
+          margin-left: 0;
+        }
+        .sv3-launch-row {
+          grid-template-columns: 150px 1fr;
+          gap: 8px;
+          margin-top: 10px;
+        }
+        .sv3-back-ghost,
+        .sv3-run-primary,
+        .sv3-dashboard-primary {
+          min-height: 34px;
+          border-radius: 8px;
+          font-size: 12px;
+          box-shadow: none;
+        }
+        .sv3-dashboard-primary {
+          margin-top: 8px;
+          min-height: 34px;
+          background: rgba(16,23,36,.38);
+        }
+        .sv3-run-hint {
+          margin-top: 7px;
+          font-size: 10px;
+        }
         .text-sm text-muted mt-12 { text-align: center; font-size: 11px; color: var(--text2); margin-top: 8px; display: flex; align-items: center; justify-content: center; gap: 5px; }
 
         /* ── Form overlay ── */
@@ -582,25 +1914,420 @@ window.renderSetup = function (onComplete, initialStep) {
         }
         @keyframes sv3-slide-up { from { transform: translateY(12px); opacity: 0; } to { transform: none; opacity: 1; } }
 
-        /* ── Reset button ── */
-        .sv3-reset-btn {
-          width: 100%;
-          padding: 9px;
-          background: transparent;
+        @media (max-width: 920px) {
+          .sv3-run-hero,
+          .sv3-section-top {
+            flex-direction: column;
+          }
+          .sv3-settings-dock {
+            width: 100%;
+            min-width: 0;
+          }
+          .sv3-review-grid {
+            grid-template-columns: 1fr;
+          }
+          .sv3-date-range-grid {
+            grid-template-columns: 1fr;
+            max-width: 360px;
+          }
+        }
+        @media (max-width: 620px) {
+          .sv3-settings-dock,
+          .sv3-flow-stepper {
+            grid-template-columns: 1fr;
+          }
+          .sv3-launch-row {
+            grid-template-columns: 1fr;
+          }
+          .sv3-back-ghost {
+            min-height: 44px;
+          }
+        }
+        /* Light mode overrides */
+        [data-theme="light"] .sv3-run-title-lockup .sv3-page-sub,
+        [data-theme="light"] .sv3-users-panel .sv3-section-copy,
+        [data-theme="light"] .sv3-date-panel .sv3-section-copy,
+        [data-theme="light"] .sv3-run-accounts .sv3-acc-email {
+          color: var(--text2);
+        }
+        [data-theme="light"] .sv3-users-panel,
+        [data-theme="light"] .sv3-date-panel {
+          background: var(--bg2);
+          border-color: var(--border);
+          box-shadow: 0 4px 12px rgba(0,0,0,.05);
+        }
+        [data-theme="light"] .sv3-setting-card {
+          background: var(--bg);
+          border-color: var(--border);
+        }
+        [data-theme="light"] .sv3-setting-card:hover {
+          background: var(--bg3);
+          border-color: var(--accent);
+        }
+        [data-theme="light"] .sv3-run-accounts .sv3-acc-card {
+          background: var(--bg);
+          border-color: var(--border);
+        }
+        [data-theme="light"] .sv3-run-accounts .sv3-acc-card:hover:not(.sv3-acc-locked) {
+          background: var(--bg3);
+          border-color: var(--accent);
+        }
+        [data-theme="light"] .sv3-run-accounts .sv3-acc-card.selected {
+          border-color: var(--accent);
+          box-shadow: 0 0 0 1px var(--accent);
+        }
+        [data-theme="light"] .sv3-run-accounts .sv3-check {
+          background: var(--bg2);
+          border-color: var(--border);
+        }
+        [data-theme="light"] .sv3-run-accounts .sv3-run-index-avatar {
+          background: linear-gradient(135deg, #7c6af7, #4f8ef7);
+          border-color: rgba(124,106,247,.35);
+          color: #fff;
+          box-shadow: 0 4px 12px rgba(124,106,247,.25);
+        }
+        [data-theme="light"] .sv3-run-accounts .sv3-acc-card.selected .sv3-run-index-avatar {
+          background: linear-gradient(135deg, #6847d8, #3a72e8);
+          border-color: rgba(104,71,216,.5);
+          box-shadow: 0 0 0 3px rgba(124,106,247,.18), 0 6px 16px rgba(79,142,247,.3);
+        }
+        [data-theme="light"] .sv3-continue-row {
+          background: var(--bg);
+        }
+        [data-theme="light"] .sv3-date-mode-btn {
+          background: var(--bg);
+          border-color: var(--border);
+          color: var(--text);
+        }
+        [data-theme="light"] .sv3-date-mode-btn.active {
+          background: rgba(124,106,247,.12);
+          border-color: var(--accent);
+        }
+        [data-theme="light"] .sv3-run-review {
+          background: var(--bg);
+          border-color: var(--border);
+        }
+        [data-theme="light"] .sv3-dashboard-primary {
+          background: var(--bg3);
+          color: var(--text);
           border: 1px solid var(--border);
-          border-radius: 8px;
-          color: var(--danger);
-          font-size: 12px;
-          font-weight: 600;
-          cursor: pointer;
-          transition: background .15s, border-color .15s;
+        }
+
+        /* Focused run wizard: compact width, top-aligned, and scalable to 10 accounts */
+        .sv3-main {
+          align-items: center;
+        }
+        .sv3-run-stage {
+          max-width: 820px;
+          margin: 58px auto 0;
+        }
+        .sv3-run-hero {
+          align-items: center;
+          gap: 20px;
+          margin-bottom: 12px;
+        }
+        .sv3-flow-stepper {
+          width: min(330px, 100%);
+        }
+        .sv3-users-panel,
+        .sv3-date-panel {
+          border-radius: 12px;
+          padding: 16px 18px 18px;
+        }
+        .sv3-users-panel .sv3-section-top {
+          display: flex;
+          align-items: flex-start;
+          justify-content: space-between;
+          gap: 14px;
+          margin-bottom: 12px;
+        }
+        .sv3-users-panel .sv3-step-heading {
+          align-items: center;
+        }
+        .sv3-users-toolbar {
           display: flex;
           align-items: center;
-          justify-content: center;
-          gap: 6px;
+          justify-content: space-between;
+          gap: 12px;
+          margin-top: 14px;
+          padding-top: 12px;
+          border-top: 1px solid rgba(125,148,186,.14);
         }
-        .sv3-reset-btn:hover:not(:disabled) { background: rgba(255,77,109,.1); border-color: var(--danger); }
-        .sv3-reset-btn:disabled { opacity: .35; cursor: not-allowed; }
+        .sv3-users-count {
+          font-size: 11px;
+          font-weight: 800;
+          color: var(--text2);
+          text-transform: uppercase;
+          letter-spacing: .06em;
+        }
+        .sv3-users-count strong {
+          color: var(--text);
+        }
+        .sv3-users-panel .sv3-settings-dock {
+          width: 100%;
+          min-width: 0;
+          margin-top: 14px;
+          display: grid;
+          grid-template-columns: repeat(2, minmax(0, 1fr));
+          gap: 10px;
+        }
+        .sv3-setting-card {
+          min-height: 66px;
+          padding: 10px 12px;
+          border-radius: 8px;
+        }
+        .sv3-setting-icon {
+          width: 28px;
+          height: 28px;
+          border-radius: 8px;
+          font-size: 13px;
+        }
+        .sv3-users-panel .sv3-setting-title {
+          font-size: 12px;
+        }
+        .sv3-users-panel .sv3-setting-desc {
+          font-size: 10px;
+          line-height: 1.35;
+          max-width: none;
+        }
+        .sv3-run-accounts {
+          display: grid;
+          grid-template-columns: repeat(2, minmax(0, 1fr));
+          gap: 10px;
+          overflow: visible;
+          margin-top: 10px;
+          padding: 2px;
+        }
+        .sv3-run-accounts .sv3-acc-card {
+          width: 100%;
+          min-height: 66px;
+          display: grid;
+          grid-template-columns: 38px minmax(0, 1fr) auto;
+          grid-template-rows: auto auto;
+          align-items: center;
+          column-gap: 12px;
+          row-gap: 2px;
+          justify-content: stretch;
+          text-align: start;
+          padding: 10px 46px 10px 12px;
+          border-radius: 8px;
+        }
+        [dir="rtl"] .sv3-run-accounts .sv3-acc-card {
+          padding: 10px 12px 10px 46px;
+        }
+        .sv3-run-accounts .sv3-check {
+          top: 50%;
+          right: 12px;
+          transform: translateY(-50%);
+          width: 22px;
+          height: 22px;
+        }
+        [dir="rtl"] .sv3-run-accounts .sv3-check {
+          right: auto;
+          left: 12px;
+        }
+        .sv3-run-accounts .sv3-avatar,
+        .sv3-run-accounts .sv3-avatar.lk {
+          grid-column: 1;
+          grid-row: 1 / 3;
+          width: 34px;
+          height: 34px;
+          margin-top: 0 !important;
+          font-size: 15px;
+        }
+        .sv3-run-accounts .sv3-run-index-avatar {
+          background:
+            radial-gradient(circle at 32% 24%, rgba(255,255,255,.16), transparent 34%),
+            linear-gradient(135deg, rgba(124,106,247,.22), rgba(79,142,247,.1));
+          border: 1px solid rgba(125,148,186,.28);
+          color: #d9e2f4;
+          font-size: 13px;
+          font-weight: 900;
+          box-shadow: inset 0 1px 0 rgba(255,255,255,.06), 0 8px 18px rgba(0,0,0,.16);
+        }
+        .sv3-run-accounts .sv3-acc-card.selected .sv3-run-index-avatar {
+          background: linear-gradient(135deg,#8b5cf6,#4f8ef7);
+          border-color: rgba(167,139,250,.62);
+          color: #fff;
+          box-shadow: 0 0 0 3px rgba(124,106,247,.14), 0 10px 22px rgba(79,142,247,.2);
+        }
+        .sv3-run-accounts .sv3-acc-name {
+          grid-column: 2;
+          grid-row: 1;
+          max-width: 100%;
+          margin: 0;
+          font-size: 12px;
+          line-height: 1.25;
+        }
+        .sv3-run-accounts .sv3-acc-email {
+          grid-column: 2;
+          grid-row: 2;
+          max-width: 100%;
+          font-size: 10px;
+        }
+        .sv3-run-accounts .sv3-status-pill {
+          grid-column: 3;
+          grid-row: 1 / 3;
+          margin-top: 0;
+          padding: 4px 9px;
+          font-size: 8.5px;
+          white-space: nowrap;
+        }
+        .sv3-run-acc-lock {
+          grid-column: 3;
+          grid-row: 1 / 3;
+          justify-self: end;
+          border-radius: 999px;
+          padding: 4px 8px;
+          background: rgba(255,201,77,.12);
+          border: 1px solid rgba(255,201,77,.34);
+          color: #ffc94d;
+          font-size: 9px;
+          font-weight: 800;
+          letter-spacing: .04em;
+          white-space: nowrap;
+        }
+        .sv3-run-accounts .sv3-run-acc-card > div[style*="position:absolute"] {
+          position: static !important;
+          grid-column: 3;
+          grid-row: 1 / 3;
+          justify-self: end;
+          border-radius: 999px !important;
+          padding: 4px 8px !important;
+          background: rgba(255,201,77,.12) !important;
+          border: 1px solid rgba(255,201,77,.34) !important;
+          color: #ffc94d !important;
+          font-size: 9px !important;
+          font-weight: 800 !important;
+          letter-spacing: .04em !important;
+          white-space: nowrap;
+        }
+        .sv3-continue-row {
+          margin-top: 12px;
+          padding: 8px;
+          border-radius: 10px;
+        }
+        .sv3-continue-btn {
+          min-height: 42px;
+          font-size: 13px;
+        }
+        .sv3-flow-node {
+          isolation: isolate;
+        }
+        .sv3-flow-node.done .sv3-flow-node-num {
+          box-shadow: 0 0 0 4px rgba(0,214,143,.1), 0 0 20px rgba(0,214,143,.18);
+        }
+        .sv3-flow-node.active .sv3-flow-node-num {
+          position: relative;
+          box-shadow: 0 0 0 5px rgba(124,106,247,.14), 0 0 24px rgba(124,106,247,.32);
+        }
+        .sv3-flow-node.active .sv3-flow-node-num::before,
+        .sv3-flow-node.active .sv3-flow-node-num::after,
+        .sv3-date-panel .sv3-step-badge.green::before {
+          content: "";
+          position: absolute;
+          inset: -8px;
+          border-radius: 999px;
+          border: 1px solid rgba(167,139,250,.55);
+          pointer-events: none;
+          animation: sv3-step-pulse-ring 1.7s ease-out infinite;
+          opacity: 1;
+        }
+        .sv3-flow-node.active .sv3-flow-node-num::after {
+          inset: -14px;
+          animation-delay: .45s;
+          border-color: rgba(79,142,247,.36);
+        }
+        .sv3-date-panel .sv3-step-badge.green {
+          position: relative;
+          box-shadow: 0 0 0 5px rgba(0,214,143,.1), 0 0 22px rgba(0,214,143,.2);
+        }
+        .sv3-date-panel .sv3-step-badge.green::before {
+          inset: -9px;
+          border-color: rgba(0,214,143,.42);
+          animation-duration: 1.9s;
+        }
+        @keyframes sv3-step-pulse-ring {
+          0% {
+            opacity: .78;
+            transform: scale(.72);
+          }
+          70% {
+            opacity: .12;
+            transform: scale(1.45);
+          }
+          100% {
+            opacity: 0;
+            transform: scale(1.62);
+          }
+        }
+        .sv3-run-review {
+          padding-bottom: 12px;
+          box-shadow: inset 0 1px 0 rgba(255,255,255,.035);
+        }
+        .sv3-launch-row {
+          grid-template-columns: 138px minmax(220px, 360px);
+          justify-content: start;
+          gap: 10px;
+          margin: 12px 12px 0;
+          padding: 12px;
+          border-radius: 12px;
+          background: rgba(10,16,27,.24);
+          border: 1px solid rgba(125,148,186,.12);
+        }
+        [dir="rtl"] .sv3-launch-row {
+          justify-content: start;
+        }
+        .sv3-back-ghost,
+        .sv3-run-primary {
+          min-height: 42px;
+          padding: 0 18px;
+          border-radius: 9px;
+          font-size: 12px;
+        }
+        .sv3-run-primary {
+          box-shadow: 0 10px 24px rgba(79,142,247,.18);
+        }
+        .sv3-dashboard-primary {
+          width: auto;
+          min-width: 220px;
+          max-width: 280px;
+          margin: 12px auto 0;
+          min-height: 38px;
+          padding: 0 18px;
+          background: transparent;
+          border-color: transparent;
+          color: var(--text);
+        }
+        .sv3-dashboard-primary:hover:not(:disabled) {
+          background: rgba(79,142,247,.08);
+          border-color: rgba(79,142,247,.22);
+        }
+        .sv3-run-hint {
+          padding: 0 16px;
+        }
+        @media (max-width: 980px) {
+          .sv3-run-stage {
+            max-width: 100%;
+            margin-top: 18px;
+          }
+        }
+        @media (max-width: 760px) {
+          .sv3-run-hero,
+          .sv3-users-panel .sv3-section-top {
+            flex-direction: column;
+            align-items: stretch;
+          }
+          .sv3-run-accounts {
+            grid-template-columns: 1fr;
+          }
+          .sv3-users-panel .sv3-settings-dock {
+            grid-template-columns: 1fr;
+          }
+          .sv3-launch-row {
+            grid-template-columns: 1fr;
+          }
+        }
       </style>
 
       <div class="sv3-shell">
@@ -609,23 +2336,39 @@ window.renderSetup = function (onComplete, initialStep) {
           <div class="sv3-sb-logo">
             <div class="sv3-sb-logo-icon">⚡</div>
             <div>
-              <div class="sv3-sb-logo-text">Khod Bot</div>
+              <div class="sv3-sb-logo-text">Khod Whaat Bot</div>
               <div class="sv3-sb-logo-sub">${t("setup.sub_title")}</div>
             </div>
           </div>
 
           <div class="sv3-nav-item active" id="nav-accounts" data-step="accounts">
-            <div class="sv3-step-num">1</div>
-            ${t("setup.nav_accounts")}
+            <div class="sv3-step-num" style="font-size:14px">👤</div>
+            <span class="sv3-nav-label">${t("setup.nav_accounts")}</span>
           </div>
           <div class="sv3-nav-item" id="nav-run" data-step="run">
-            <div class="sv3-step-num">2</div>
-            ${t("setup.nav_run")}
+            <div class="sv3-step-num" style="font-size:14px">🚀</div>
+            <span class="sv3-nav-label">${t("setup.nav_run")}</span>
+          </div>
+          <div class="sv3-nav-item sv3-nav-page${window._analyticsEnabled === false ? " sv3-nav-preview" : ""}" id="nav-analytics" data-page="analytics">
+            <div class="sv3-step-num" style="background:linear-gradient(135deg,#7c6bff,#4fa8e8)">📊</div>
+            <span class="sv3-nav-label">${t("setup.nav_analytics")}</span>
+            ${window._analyticsEnabled === false ? '<span class="sv3-nav-preview-badge">Preview</span>' : ""}
+          </div>
+          <div class="sv3-nav-item sv3-nav-page${window._operationsEnabled === false ? " sv3-nav-preview" : ""}" id="nav-operations" data-page="operations">
+            <div class="sv3-step-num" style="background:linear-gradient(135deg,#00d4aa,#4fa8e8)">⚙️</div>
+            <span class="sv3-nav-label">${t("setup.nav_operations")}</span>
+            ${window._operationsEnabled === false ? '<span class="sv3-nav-preview-badge">Preview</span>' : ""}
+          </div>
+          <div class="sv3-nav-item sv3-nav-page${window._dashboardEnabled === false ? " sv3-nav-preview" : ""}" id="nav-dashboard" data-page="dashboard">
+            <div class="sv3-step-num" style="background:linear-gradient(135deg,#f59e0b,#ef4444)">📈</div>
+            <span class="sv3-nav-label">${t("setup.nav_dashboard") || "Dashboard"}</span>
+            ${window._dashboardEnabled === false ? '<span class="sv3-nav-preview-badge">Preview</span>' : ""}
           </div>
 
           <div class="sv3-sidebar-footer">
-            <button class="sv3-reset-btn" id="sv3-reset-btn">
-              ${t("setup.reset_creds_btn")}
+            <button class="sv3-update-btn" id="sv3-update-btn" onclick="checkForUpdatesManual()" style="display:flex;align-items:center;justify-content:center;gap:6px">
+              <svg width="13" height="13" viewBox="0 0 16 16" fill="currentColor" style="flex-shrink:0"><path fill-rule="evenodd" d="M8 3a5 5 0 1 0 4.546 2.914.5.5 0 0 1 .908-.417A6 6 0 1 1 8 2v1z"/><path d="M8 4.466V.534a.25.25 0 0 1 .41-.192l2.36 1.966c.12.1.12.284 0 .384L8.41 4.658A.25.25 0 0 1 8 4.466z"/></svg>
+              <span id="sv3-update-btn-label">${t("setup.check_updates_btn")}</span>
             </button>
           </div>
         </div>
@@ -640,41 +2383,26 @@ window.renderSetup = function (onComplete, initialStep) {
     // Sidebar nav
     el.querySelectorAll(".sv3-nav-item").forEach(item => {
       item.addEventListener("click", () => {
+        // Page-level nav (Analytics / Operations)
+        if (item.dataset.page === "analytics")  { goToAnalytics();  return; }
+        if (item.dataset.page === "operations") { goToOperations(); return; }
+        if (item.dataset.page === "dashboard")  { goToDashboard();  return; }
         const targetStep = item.dataset.step;
         // Only allow going to date/review if accounts exist
         if (targetStep !== "accounts" && accounts.length === 0) return;
         step = targetStep;
+        if (step === "run") runFlowStep = "users";
+        window._setupCurrentStep = step;
         renderStep();
         updateNav();
       });
     });
 
-    // Reset button
-    const resetBtn = document.getElementById("sv3-reset-btn");
-    updateResetBtn();
-    resetBtn.addEventListener("click", async () => {
-      if (resetBtn.disabled) return;
-      const confirmed = await showConfirm(
-        t("setup.reset_confirm_title"),
-        t("setup.reset_confirm_msg"),
-        t("setup.reset_confirm_ok"),
-        t("setup.reset_confirm_cancel")
-      );
-      if (confirmed) {
-        await window.api.clearAllData();
-        location.reload();
-      }
-    });
-
     renderStep();
     updateNav();
-  }
-
-  function updateResetBtn() {
-    const btn = document.getElementById("sv3-reset-btn");
-    if (!btn) return;
-    btn.disabled = false;
-    btn.title = "";
+    if (typeof _mountCollapseHandle === 'function') {
+      _mountCollapseHandle(el.querySelector('.sv3-shell'));
+    }
   }
 
   function updateNav() {
@@ -691,11 +2419,11 @@ window.renderSetup = function (onComplete, initialStep) {
     el.querySelectorAll(".sv3-nav-item.done .sv3-step-num").forEach(n => {
       n.textContent = "✓";
     });
-    // Restore numbers for non-done steps
-    [["accounts","1"],["run","2"]].forEach(([s, n]) => {
+    // Restore icons for non-done steps
+    [["accounts","👤"],["run","🚀"]].forEach(([s, icon]) => {
       const item = document.getElementById(`nav-${s}`);
       if (item && !item.classList.contains("done")) {
-        item.querySelector(".sv3-step-num").textContent = n;
+        item.querySelector(".sv3-step-num").textContent = icon;
       }
     });
   }
@@ -732,7 +2460,7 @@ window.renderSetup = function (onComplete, initialStep) {
 
           <!-- Add Account tile -->
           <div class="sv3-add-card ${!canAdd ? "sv3-add-disabled" : ""}" id="sv3-btn-add"
-               title="${!canAdd ? esc(disabledReason) : "Add new account"}">
+               title="${!canAdd ? esc(disabledReason) : t("setup.add_new_account_title")}">
             <div class="sv3-add-circle">+</div>
             <div class="sv3-add-label">${t("setup.add_account")}</div>
             ${!canAdd ? `<div class="sv3-add-warn">⚠️ ${esc(disabledReason)}</div>` : ""}
@@ -759,7 +2487,6 @@ window.renderSetup = function (onComplete, initialStep) {
         selectedIds = selectedIds.filter(x => x !== b.dataset.id);
         await window.api.saveAllAccounts(accounts);
         renderStep();
-        updateResetBtn();
       });
     });
 
@@ -769,20 +2496,21 @@ window.renderSetup = function (onComplete, initialStep) {
 
     document.getElementById("sv3-next-btn")?.addEventListener("click", () => {
       if (accounts.length) {
-        step = "run"; renderStep(); updateNav();
+        step = "run"; runFlowStep = "users"; renderStep(); updateNav();
       }
     });
   }
 
   // Management card (no selection, shows edit/delete hover)
   function accountManageCard(acc) {
-    const initial  = (acc.label || "A").charAt(0).toUpperCase();
+    const label    = accountUiLabel(acc);
+    const initial  = accountInitial(acc);
     const isLocked = !!acc.locked;
     return `
       <div class="sv3-acc-card ${isLocked ? "sv3-acc-locked" : ""}" data-id="${acc.id}">
-        ${isLocked ? `<div style="position:absolute;top:7px;left:8px;background:rgba(255,201,77,.15);border:1px solid rgba(255,201,77,.4);border-radius:99px;padding:2px 7px;font-size:9px;font-weight:700;color:#ffc94d;letter-spacing:.04em">🔒 LOCKED</div>` : ""}
+        ${isLocked ? `<div class="sv3-lock-badge">🔒 ${t("setup.locked")}</div>` : ""}
         <div class="sv3-avatar ${isLocked ? "lk" : ""}" style="margin-top:${isLocked ? "18px" : "8px"}">${isLocked ? "🔒" : initial}</div>
-        <div class="sv3-acc-name">${esc(acc.label || "Account")}</div>
+        <div class="sv3-acc-name" title="${esc(label)}">${esc(label)}</div>
         <div class="sv3-acc-email">${esc(acc.easyEmail || "—")}</div>
         <div class="sv3-status-pill ${isLocked ? "lk" : "ok"}">
           <span class="sv3-dot"></span>${isLocked ? t("setup.locked") : t("setup.active")}
@@ -803,91 +2531,106 @@ window.renderSetup = function (onComplete, initialStep) {
     injectCalendarStyles();
     const totalDays   = daysBetween(dateFrom, dateTo);
     const selAccounts = accounts.filter(a => selectedIds.includes(a.id));
+    const dateComplete = dateMode !== "range" || (!!dateFrom && !!dateTo);
+    const canLaunch = selAccounts.length > 0 && dateComplete && !isDateRangeInvalid();
+    const launchHint = selAccounts.length === 0 ? t("setup.select_user_to_launch") : t("setup.run_security");
+    const onDateStep  = runFlowStep === "date";
+    const rangeLabel  = dateFrom === dateTo ? formatDisplayDate(dateFrom) : `${formatDisplayDate(dateFrom)} – ${formatDisplayDate(dateTo)}`;
 
     content.innerHTML = `
-      <div class="sv3-page-title">${t("setup.run_title")}</div>
-      <div class="sv3-page-sub">${t("setup.run_sub")}</div>
-
-      <!-- Users section: header row (title+desc LEFT, toggles RIGHT) + full-width grid below -->
-      <div class="sv3-section">
-
-        <!-- Header bar: left = icon/title/desc  |  right = Launch Min + Auto-Run toggles -->
-        <div style="display:flex;align-items:flex-start;justify-content:space-between;gap:24px;flex-wrap:wrap;margin-bottom:20px">
-
-          <!-- Left: section title + desc -->
-          <div>
-            <div class="sv3-section-hd" style="margin-bottom:4px">
-              <span class="sv3-section-hd-icon">👥</span>
-              <span class="sv3-section-hd-title">${t("setup.select_users")}</span>
+      <div class="sv3-run-stage">
+      <div class="sv3-run-hero">
+        <div class="sv3-run-title-lockup">
+          <div class="sv3-run-icon">🚀</div>
+          <div class="sv3-run-hero-copy">
+            <div class="sv3-page-title">${t("setup.run_title")}</div>
+            <div class="sv3-page-sub" style="margin-bottom:0">${t("setup.run_sub")}</div>
+          </div>
+        </div>
+        <div class="sv3-flow-stepper ${onDateStep ? "date-active" : ""}" aria-label="Run setup steps">
+          <div class="sv3-flow-node ${onDateStep ? "done" : "active"}">
+            <div class="sv3-flow-node-num">${onDateStep ? "✓" : "1"}</div>
+            <div class="sv3-flow-node-text">
+              <div class="sv3-flow-node-title">${t("setup.select_users")}</div>
+              <div class="sv3-flow-node-sub" id="sv3-stepper-users">${t("setup.users_count")(selAccounts.length)}</div>
             </div>
-            <div class="sv3-section-desc" style="margin-bottom:0;padding-inline-start:28px">${t("setup.select_users_desc")}</div>
+          </div>
+          <div class="sv3-flow-node ${onDateStep ? "active" : ""}">
+            <div class="sv3-flow-node-num">2</div>
+            <div class="sv3-flow-node-text">
+              <div class="sv3-flow-node-title">${t("setup.select_date")}</div>
+              <div class="sv3-flow-node-sub" id="sv3-stepper-date">${rangeLabel}</div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      ${!onDateStep ? `
+      <div class="sv3-section sv3-users-panel sv3-flow-panel" key="users">
+        <div class="sv3-section-top">
+          <div class="sv3-step-heading">
+            <div class="sv3-step-badge">1</div>
+            <div>
+              <div class="sv3-section-title-lg">${t("setup.select_users")}</div>
+              <div class="sv3-section-copy">${t("setup.select_users_desc")}</div>
+            </div>
           </div>
 
-          <!-- Right: two toggles stacked -->
-          <div style="display:flex;flex-direction:column;gap:10px;flex-shrink:0;min-width:220px">
-
-            <!-- Launch Minimized row -->
-            <div style="display:flex;align-items:center;justify-content:space-between;gap:12px;
-                        background:var(--bg3);border:1px solid var(--border);border-radius:10px;padding:10px 14px">
-              <div>
-                <div style="font-size:12px;font-weight:700;margin-bottom:2px">${t("welcome.launch_min")}</div>
-                <div style="font-size:11px;color:var(--text2);line-height:1.4;max-width:160px">${t("welcome.launch_min_desc")}</div>
-              </div>
-              <div style="display:flex;align-items:center;gap:6px;flex-shrink:0">
-                <button id="sv3-btn-launchmin" style="
-                  width:44px;height:24px;border-radius:12px;border:none;cursor:pointer;
-                  position:relative;transition:background 0.25s;background:var(--border);flex-shrink:0;
-                ">
-                  <span id="sv3-launchmin-knob" style="
-                    position:absolute;top:3px;left:3px;
-                    width:18px;height:18px;border-radius:50%;
-                    background:#fff;transition:transform 0.25s;
-                  "></span>
-                </button>
-                <span id="sv3-launchmin-label" style="font-size:11px;color:var(--text2);min-width:28px">${t("welcome.off")}</span>
+          <div class="sv3-settings-dock">
+            <div class="sv3-setting-card">
+              <div class="sv3-setting-row">
+                <div class="sv3-setting-copy">
+                  <div class="sv3-setting-icon">🚀</div>
+                  <div>
+                    <div class="sv3-setting-title">${t("welcome.launch_min")}</div>
+                    <div class="sv3-setting-desc">${t("welcome.launch_min_desc")}</div>
+                  </div>
+                </div>
+                <div style="display:flex;align-items:center;gap:7px;flex-shrink:0">
+                  <button id="sv3-btn-launchmin" class="sv3-toggle-btn">
+                    <span id="sv3-launchmin-knob"></span>
+                  </button>
+                  <span id="sv3-launchmin-label" class="sv3-toggle-label">${t("welcome.off")}</span>
+                </div>
               </div>
             </div>
 
-            <!-- Auto-Run row -->
-            <div style="display:flex;flex-direction:column;
-                        background:var(--bg3);border:1px solid var(--border);border-radius:10px;padding:10px 14px">
-              <div style="display:flex;align-items:center;justify-content:space-between;gap:12px">
-                <div>
-                  <div style="font-size:12px;font-weight:700;margin-bottom:2px">${t("welcome.autorun")}</div>
-                  <div style="font-size:11px;color:var(--text2);line-height:1.4;max-width:160px">${t("welcome.autorun_desc")}</div>
+            <div class="sv3-setting-card">
+              <div class="sv3-setting-row">
+                <div class="sv3-setting-copy">
+                  <div class="sv3-setting-icon">✓</div>
+                  <div>
+                    <div class="sv3-setting-title">${t("welcome.autorun")}</div>
+                    <div class="sv3-setting-desc">${t("welcome.autorun_desc")}</div>
+                  </div>
                 </div>
-                <div style="display:flex;align-items:center;gap:6px;flex-shrink:0">
-                  <button id="sv3-btn-autorun" style="
-                    width:44px;height:24px;border-radius:12px;border:none;cursor:pointer;
-                    position:relative;transition:background 0.25s;background:var(--border);flex-shrink:0;
-                  ">
-                    <span id="sv3-autorun-knob" style="
-                      position:absolute;top:3px;left:3px;
-                      width:18px;height:18px;border-radius:50%;
-                      background:#fff;transition:transform 0.25s;
-                    "></span>
+                <div style="display:flex;align-items:center;gap:7px;flex-shrink:0">
+                  <button id="sv3-btn-autorun" class="sv3-toggle-btn">
+                    <span id="sv3-autorun-knob"></span>
                   </button>
-                  <span id="sv3-autorun-label" style="font-size:11px;color:var(--text2);min-width:28px">${t("welcome.off")}</span>
+                  <span id="sv3-autorun-label" class="sv3-toggle-label">${t("welcome.off")}</span>
                 </div>
               </div>
-              <!-- Interval selector (shown when auto-run is ON) -->
-              <div id="sv3-autorun-interval-row" style="margin-top:10px;display:none">
-                <div style="font-size:10px;font-weight:700;color:var(--text2);text-transform:uppercase;letter-spacing:.06em;margin-bottom:6px">${t("welcome.run_every")}</div>
+              <div id="sv3-autorun-interval-row" class="sv3-setting-meta" style="display:none">
+                <div style="font-size:10px;font-weight:800;color:var(--text2);text-transform:uppercase;letter-spacing:.06em;margin-bottom:6px">${t("welcome.run_every")}</div>
                 <div style="display:flex;gap:6px;flex-wrap:wrap" id="sv3-interval-options">
                   ${[{label:"30 min",mins:30},{label:"1 hr",mins:60},{label:"2 hr",mins:120},{label:"4 hr",mins:240},{label:"6 hr",mins:360}].map(o =>
                     `<button class="btn btn-ghost sv3-interval-opt" data-mins="${o.mins}" style="font-size:11px;padding:4px 10px">${o.label}</button>`
                   ).join("")}
                 </div>
               </div>
-              <div id="sv3-autorun-next" style="margin-top:6px;font-size:11px;color:var(--text2);display:none"></div>
+              <div id="sv3-autorun-next" style="margin-top:7px;font-size:11px;color:var(--text2);display:none"></div>
             </div>
-
           </div>
         </div>
 
-        <!-- Full-width account grid -->
-        <div class="sv3-grid" id="sv3-run-acc-grid">
-          <!-- All Users card -->
+        <div class="sv3-users-toolbar">
+          <div class="sv3-users-count" id="sv3-users-selected-count">
+            <strong>${t("setup.users_count")(selAccounts.length)}</strong> / ${t("setup.accounts_count")(accounts.length)}
+          </div>
+        </div>
+
+        <div class="sv3-grid sv3-run-accounts" id="sv3-run-acc-grid">
           <div class="sv3-acc-card ${accounts.length > 0 && accounts.every(a => selectedIds.includes(a.id)) ? "selected" : ""}" id="sv3-all-card" style="border-style:dashed;cursor:pointer">
             <div class="sv3-check">
               <svg width="10" height="10" viewBox="0 0 10 10"><path d="M2 5l2.5 2.5L8 3" stroke="#fff" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" fill="none"/></svg>
@@ -897,74 +2640,90 @@ window.renderSetup = function (onComplete, initialStep) {
             <div class="sv3-acc-email">${t("setup.accounts_count")(accounts.length)}</div>
             <div class="sv3-status-pill ok"><span class="sv3-dot"></span>${t("setup.select_all")}</div>
           </div>
-          ${accounts.map(acc => accountRunCard(acc)).join("")}
+          ${accounts.map((acc, index) => accountRunCard(acc, index + 1)).join("")}
         </div>
 
+        <div class="sv3-continue-row">
+          <button class="sv3-run-btn sv3-continue-btn" id="sv3-continue-date"
+            ${selAccounts.length === 0 ? "disabled" : ""}
+            data-tooltip="${esc(t("dashboard.fetching_body"))}">
+            ${t("setup.continue_date")}
+          </button>
+        </div>
       </div>
-
-      <!-- Two-column: date + summary -->
-      <div class="sv3-two-col">
-        <!-- Date picker -->
-        <div class="sv3-section">
-          <div class="sv3-section-hd">
-            <span class="sv3-section-hd-icon">📅</span>
-            <span class="sv3-section-hd-title">${t("setup.select_date")}</span>
+      ` : `
+      <div class="sv3-section sv3-date-panel sv3-flow-panel" key="date">
+        <div class="sv3-section-top">
+          <div class="sv3-step-heading">
+            <div class="sv3-step-badge green">2</div>
+            <div>
+              <div class="sv3-section-title-lg">${t("setup.select_date")}</div>
+              <div class="sv3-section-copy">${t("setup.select_date_desc")}</div>
+            </div>
           </div>
-          <div class="sv3-section-desc">${t("setup.select_date_desc")}</div>
-
-          <div class="sv3-date-modes">
-            <button class="sv3-date-mode-btn ${dateMode==="today"?"active":""}" data-mode="today">${t("setup.today_mode")}</button>
-            <button class="sv3-date-mode-btn ${dateMode==="single"?"active":""}" data-mode="single">${t("setup.single_mode")}</button>
-            <button class="sv3-date-mode-btn ${dateMode==="range"?"active":""}" data-mode="range">${t("setup.range_mode")}</button>
-          </div>
-
-          <div id="sv3-date-inputs"></div>
         </div>
 
-        <!-- Summary -->
-        <div class="sv3-section">
-          <div class="sv3-section-hd">
-            <span class="sv3-section-hd-icon">📋</span>
-            <span class="sv3-section-hd-title">${t("setup.summary")}</span>
-          </div>
-          <div class="sv3-section-desc">${t("setup.summary_desc")}</div>
-          <div class="sv3-summary-rows">
-            <div class="sv3-summary-row">
-              <div class="sv3-summary-row-left"><span>👥</span>${t("setup.users_selected")}</div>
-              <div class="sv3-summary-row-right">
-                <div id="sv3-sum-users">${t("setup.users_count")(selAccounts.length)}</div>
-                <div class="sv3-mini-avatars" id="sv3-mini-avs">
-                  ${selAccounts.slice(0,3).map(a => `<div class="sv3-mini-av">${(a.label||"A").charAt(0).toUpperCase()}</div>`).join("")}
-                  ${selAccounts.length > 3 ? `<div class="sv3-mini-av more">+${selAccounts.length-3}</div>` : ""}
+        <div class="sv3-date-modes">
+          <button class="sv3-date-mode-btn ${dateMode==="today"?"active":""}" data-mode="today">${t("setup.today_mode")}</button>
+          <button class="sv3-date-mode-btn ${dateMode==="single"?"active":""}" data-mode="single">${t("setup.single_mode")}</button>
+          <button class="sv3-date-mode-btn ${dateMode==="range"?"active":""}" data-mode="range">${t("setup.range_mode")}</button>
+        </div>
+
+        <div id="sv3-date-inputs"></div>
+
+        <div id="sv3-date-range-err" style="display:none;margin-top:12px;align-items:center;gap:8px;background:rgba(255,77,109,0.1);border:1px solid rgba(255,77,109,0.4);border-radius:8px;padding:10px 14px;font-size:12px;color:var(--danger);font-weight:600">
+          <span style="font-size:16px">⚠️</span>
+          <span>${t("setup.date_range_err")}</span>
+        </div>
+
+        <div class="sv3-run-review">
+          <div class="sv3-review-grid">
+            <div class="sv3-review-metric">
+              <div class="sv3-review-icon users">👥</div>
+              <div>
+                <div class="sv3-review-label">${t("setup.users_selected")}</div>
+                <div class="sv3-review-value">
+                  <div id="sv3-sum-users">${t("setup.users_count")(selAccounts.length)}</div>
+                  <div class="sv3-mini-avatars" id="sv3-mini-avs">
+                    ${selAccounts.slice(0,3).map(a => `<div class="sv3-mini-av">${accountInitial(a)}</div>`).join("")}
+                    ${selAccounts.length > 3 ? `<div class="sv3-mini-av more">+${selAccounts.length-3}</div>` : ""}
+                  </div>
                 </div>
               </div>
             </div>
-            <div class="sv3-summary-row">
-              <div class="sv3-summary-row-left"><span>📅</span>${t("setup.date_range")}</div>
-              <div class="sv3-summary-row-right" id="sv3-sum-range">
-                ${dateFrom === dateTo ? formatDisplayDate(dateFrom) : `${formatDisplayDate(dateFrom)} – ${formatDisplayDate(dateTo)}`}
+            <div class="sv3-review-metric">
+              <div class="sv3-review-icon date">📅</div>
+              <div>
+                <div class="sv3-review-label">${t("setup.date_range")}</div>
+                <div class="sv3-review-value" id="sv3-sum-range">
+                  ${rangeLabel}
+                </div>
               </div>
             </div>
-            <div class="sv3-summary-row">
-              <div class="sv3-summary-row-left"><span>🕐</span>${t("setup.total_days")}</div>
-              <div class="sv3-summary-row-right" id="sv3-sum-days">${t("setup.days_count")(totalDays)}</div>
+            <div class="sv3-review-metric">
+              <div class="sv3-review-icon days">⏱</div>
+              <div>
+                <div class="sv3-review-label">${t("setup.total_days")}</div>
+                <div class="sv3-review-value" id="sv3-sum-days">${t("setup.days_count")(totalDays)}</div>
+              </div>
             </div>
+          </div>
+
+          <div class="sv3-launch-row">
+            <button class="sv3-run-btn sv3-back-ghost" id="sv3-back-btn">
+              ${t("setup.back_btn")}
+            </button>
+            <button class="sv3-run-btn sv3-run-primary" id="sv3-run-final"
+              ${!canLaunch ? "disabled" : ""}>
+              ${t("setup.run_btn")}
+            </button>
+          </div>
+          <div class="sv3-run-hint ${!canLaunch ? "warn" : ""}" id="sv3-run-hint">
+            ${esc(launchHint)}
           </div>
         </div>
       </div>
-
-      <!-- Back + Run button -->
-      <div style="display:flex;gap:12px;align-items:center;margin-bottom:8px">
-        <button class="sv3-run-btn" id="sv3-back-btn" style="width:auto;padding:12px 28px;background:var(--bg3);color:var(--text2);box-shadow:none;border:1px solid var(--border)">
-          ${t("setup.back_btn")}
-        </button>
-        <button class="sv3-run-btn" id="sv3-run-final" style="flex:1;background:linear-gradient(90deg,#ff2d7a,#00d4ff)"
-          ${selAccounts.length === 0 ? "disabled" : ""}>
-          ${t("setup.run_btn")}
-        </button>
-      </div>
-      <div style="text-align:center;font-size:11px;color:var(--text2);display:flex;align-items:center;justify-content:center;gap:5px">
-        ${t("setup.run_security")}
+      `}
       </div>
     `;
 
@@ -978,6 +2737,9 @@ window.renderSetup = function (onComplete, initialStep) {
         selectedIds = [...allIds];
       }
       updateRunCards();
+      if (typeof sv3AutoRunEnabled !== "undefined" && sv3AutoRunEnabled) {
+        window.api.setAutoRunAccounts(selectedIds).catch(() => {});
+      }
     });
 
     content.querySelectorAll(".sv3-run-acc-card").forEach(card => {
@@ -991,7 +2753,17 @@ window.renderSetup = function (onComplete, initialStep) {
           selectedIds.push(id);
         }
         updateRunCards();
+        if (typeof sv3AutoRunEnabled !== "undefined" && sv3AutoRunEnabled) {
+          window.api.setAutoRunAccounts(selectedIds).catch(() => {});
+        }
       });
+    });
+
+    document.getElementById("sv3-continue-date")?.addEventListener("click", () => {
+      const sel = accounts.filter(a => selectedIds.includes(a.id));
+      if (!sel.length) return;
+      runFlowStep = "date";
+      renderStep();
     });
 
     // Date mode buttons
@@ -1008,12 +2780,14 @@ window.renderSetup = function (onComplete, initialStep) {
     renderDateInputs();
 
     document.getElementById("sv3-back-btn")?.addEventListener("click", () => {
-      step = "accounts"; renderStep(); updateNav();
+      runFlowStep = "users";
+      renderStep();
     });
 
     document.getElementById("sv3-run-final")?.addEventListener("click", () => {
       const sel = accounts.filter(a => selectedIds.includes(a.id));
-      if (sel.length) {
+      const dateComplete = dateMode !== "range" || (!!dateFrom && !!dateTo);
+      if (sel.length && dateComplete && !isDateRangeInvalid()) {
         onComplete({ dateFrom, dateTo, selectedAccountIds: selectedIds.length ? selectedIds : null });
       }
     });
@@ -1027,7 +2801,7 @@ window.renderSetup = function (onComplete, initialStep) {
       if (!btn) return;
       if (sv3LaunchMinEnabled) {
         btn.style.background = "var(--accent)";
-        knob.style.transform = "translateX(22px)";
+        knob.style.transform = "translateX(20px)";
         label.textContent = t("welcome.on"); label.style.color = "var(--accent)";
       } else {
         btn.style.background = "var(--border)";
@@ -1057,7 +2831,7 @@ window.renderSetup = function (onComplete, initialStep) {
       if (!btn) return;
       if (sv3AutoRunEnabled) {
         btn.style.background = "var(--warning)";
-        knob.style.transform = "translateX(22px)";
+        knob.style.transform = "translateX(20px)";
         label.textContent = t("welcome.on"); label.style.color = "var(--warning)";
         next.style.display = "block";
         intRow.style.display = "block";
@@ -1116,6 +2890,13 @@ window.renderSetup = function (onComplete, initialStep) {
       sv3AutoRunEnabled = !sv3AutoRunEnabled;
       await window.api.setAutoRun(sv3AutoRunEnabled);
       if (sv3AutoRunEnabled) {
+        const allIds = accounts.map(a => a.id);
+        const autoRunIds = selectedIds.length ? selectedIds : allIds;
+        if (!selectedIds.length && allIds.length) {
+          selectedIds = [...allIds];
+          updateRunCards();
+        }
+        await window.api.setAutoRunAccounts(autoRunIds);
         const prog = await window.api.getAutoRunProgress();
         sv3UpdateAutoRunUI(prog ? prog.remainingMs : undefined);
       } else {
@@ -1136,8 +2917,22 @@ window.renderSetup = function (onComplete, initialStep) {
       sv3LaunchMinEnabled    = creds.launchMinimized || false;
       sv3AutoRunEnabled      = creds.autoRun         || false;
       sv3AutoRunIntervalMins = creds.autoRunInterval  || 30;
+      const savedAutoRunIds = Array.isArray(creds.autoRunAccountIds)
+        ? creds.autoRunAccountIds.filter(id => accounts.some(a => a.id === id))
+        : [];
+      if (sv3AutoRunEnabled && savedAutoRunIds.length) {
+        selectedIds = savedAutoRunIds;
+        updateRunCards();
+      }
       sv3UpdateLaunchMinUI();
       if (sv3AutoRunEnabled) {
+        const allIds = accounts.map(a => a.id);
+        const autoRunIds = selectedIds.length ? selectedIds : allIds;
+        if (!selectedIds.length && allIds.length) {
+          selectedIds = [...allIds];
+          updateRunCards();
+        }
+        await window.api.setAutoRunAccounts(autoRunIds);
         const prog = await window.api.getAutoRunProgress();
         sv3UpdateAutoRunUI(prog ? prog.remainingMs : undefined);
       } else {
@@ -1147,8 +2942,8 @@ window.renderSetup = function (onComplete, initialStep) {
   }
 
   // Run step account card (selectable, no edit/delete)
-  function accountRunCard(acc) {
-    const initial  = (acc.label || "A").charAt(0).toUpperCase();
+  function accountRunCard(acc, index) {
+    const label    = accountUiLabel(acc);
     const isLocked = !!acc.locked;
     const isSel    = selectedIds.includes(acc.id);
     return `
@@ -1156,11 +2951,57 @@ window.renderSetup = function (onComplete, initialStep) {
         <div class="sv3-check">
           <svg width="10" height="10" viewBox="0 0 10 10"><path d="M2 5l2.5 2.5L8 3" stroke="#fff" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" fill="none"/></svg>
         </div>
-        ${isLocked ? `<div style="position:absolute;top:7px;left:8px;background:rgba(255,201,77,.15);border:1px solid rgba(255,201,77,.4);border-radius:99px;padding:2px 7px;font-size:9px;font-weight:700;color:#ffc94d;letter-spacing:.04em">🔒 LOCKED</div>` : ""}
-        <div class="sv3-avatar ${isLocked ? "lk" : ""}" style="margin-top:${isLocked ? "14px" : "8px"}">${isLocked ? "🔒" : initial}</div>
-        <div class="sv3-acc-name">${esc(acc.label || "Account")}</div>
+        ${isLocked ? `<div style="position:absolute;top:7px;left:8px;background:rgba(255,201,77,.15);border:1px solid rgba(255,201,77,.4);border-radius:99px;padding:2px 7px;font-size:9px;font-weight:700;color:#ffc94d;letter-spacing:.04em">🔒 ${t("setup.locked")}</div>` : ""}
+        <div class="sv3-avatar sv3-run-index-avatar" style="margin-top:8px">${index}</div>
+        <div class="sv3-acc-name" title="${esc(label)}">${esc(label)}</div>
         <div class="sv3-acc-email">${esc(acc.easyEmail || "—")}</div>
       </div>`;
+  }
+
+  function updateLaunchState() {
+    const selAccounts = accounts.filter(a => selectedIds.includes(a.id));
+    const invalid = isDateRangeInvalid();
+    const dateComplete = dateMode !== "range" || (!!dateFrom && !!dateTo);
+    const canLaunch = selAccounts.length > 0 && dateComplete && !invalid;
+
+    const runBtn = document.getElementById("sv3-run-final");
+    if (runBtn) runBtn.disabled = !canLaunch;
+    const continueBtn = document.getElementById("sv3-continue-date");
+    if (continueBtn) continueBtn.disabled = selAccounts.length === 0;
+
+    const hint = document.getElementById("sv3-run-hint");
+    if (hint) {
+      hint.classList.toggle("warn", !canLaunch);
+      hint.textContent = selAccounts.length === 0
+        ? t("setup.select_user_to_launch")
+        : !dateComplete
+          ? t("setup.select_date_desc")
+        : invalid
+          ? t("setup.date_range_err")
+          : t("setup.run_security");
+    }
+
+    const stepperUsers = document.getElementById("sv3-stepper-users");
+    if (stepperUsers) stepperUsers.textContent = t("setup.users_count")(selAccounts.length);
+    const stepperDate = document.getElementById("sv3-stepper-date");
+    if (stepperDate) {
+      stepperDate.textContent = invalid
+        ? t("setup.date_before_start")
+        : (dateFrom === dateTo ? formatDisplayDate(dateFrom) : `${formatDisplayDate(dateFrom)} – ${formatDisplayDate(dateTo)}`);
+    }
+
+    const nodes = document.querySelectorAll(".sv3-flow-node");
+    const first = nodes[0];
+    const second = nodes[1];
+    if (first) {
+      first.classList.toggle("done", runFlowStep === "date");
+      first.classList.toggle("active", runFlowStep !== "date");
+      const num = first.querySelector(".sv3-flow-node-num");
+      if (num) num.textContent = runFlowStep === "date" ? "✓" : "1";
+    }
+    if (second) {
+      second.classList.toggle("active", runFlowStep === "date");
+    }
   }
 
   function updateRunCards() {
@@ -1181,14 +3022,17 @@ window.renderSetup = function (onComplete, initialStep) {
     const selAccounts = accounts.filter(a => selectedIds.includes(a.id));
     const usersEl = document.getElementById("sv3-sum-users");
     const avsEl   = document.getElementById("sv3-mini-avs");
+    const selectedCountEl = document.getElementById("sv3-users-selected-count");
+    if (selectedCountEl) {
+      selectedCountEl.innerHTML = `<strong>${t("setup.users_count")(selAccounts.length)}</strong> / ${t("setup.accounts_count")(accounts.length)}`;
+    }
     if (usersEl) usersEl.textContent = `${t("setup.users_count")(selAccounts.length)}`;
     if (avsEl) {
-      avsEl.innerHTML = selAccounts.slice(0,3).map(a => `<div class="sv3-mini-av">${(a.label||"A").charAt(0).toUpperCase()}</div>`).join("")
+      avsEl.innerHTML = selAccounts.slice(0,3).map(a => `<div class="sv3-mini-av">${accountInitial(a)}</div>`).join("")
         + (selAccounts.length > 3 ? `<div class="sv3-mini-av more">+${selAccounts.length-3}</div>` : "");
     }
 
-    const runBtn = document.getElementById("sv3-run-final");
-    if (runBtn) runBtn.disabled = selAccounts.length === 0;
+    updateLaunchState();
   }
 
   function renderDateInputs() {
@@ -1196,16 +3040,16 @@ window.renderSetup = function (onComplete, initialStep) {
     if (!container) return;
     if (dateMode === "today") {
       container.innerHTML = `
-        <div style="background:rgba(0,214,143,.08);border:1px solid rgba(0,214,143,.2);border-radius:8px;padding:12px;text-align:center;font-size:12px;color:#00d68f;font-weight:600">
+        <div class="sv3-date-ready">
           ${t("setup.today_running")(formatDisplayDate(todayStr))}
         </div>`;
       return;
     }
     if (dateMode === "single") {
       container.innerHTML = `
-        <div>
-          <div style="font-size:10px;font-weight:700;color:var(--text2);text-transform:uppercase;letter-spacing:.06em;margin-bottom:6px">${t("setup.date_label")}</div>
-          <div id="sv3-cal-single" class="fast-cal" style="max-width:220px"></div>
+        <div class="sv3-date-single">
+          <div class="sv3-date-field-label">${t("setup.date_label")}</div>
+          <div id="sv3-cal-single" class="fast-cal"></div>
         </div>`;
       buildCalendar(
         document.getElementById("sv3-cal-single"),
@@ -1216,43 +3060,65 @@ window.renderSetup = function (onComplete, initialStep) {
     }
     // range
     container.innerHTML = `
-      <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px">
-        <div>
-          <div style="font-size:10px;font-weight:700;color:var(--text2);text-transform:uppercase;letter-spacing:.06em;margin-bottom:6px">${t("setup.start_date")}</div>
-          <div id="sv3-cal-from" class="fast-cal"></div>
-        </div>
-        <div>
-          <div style="font-size:10px;font-weight:700;color:var(--text2);text-transform:uppercase;letter-spacing:.06em;margin-bottom:6px">${t("setup.end_date")}</div>
-          <div id="sv3-cal-to" class="fast-cal"></div>
-        </div>
+      <div class="sv3-date-range-single">
+        <div id="sv3-cal-range" class="fast-cal"></div>
       </div>`;
-    buildCalendar(
-      document.getElementById("sv3-cal-from"),
-      dateFrom, todayStr,
-      (val) => { dateFrom = val; updateSummary(); }
-    );
-    buildCalendar(
-      document.getElementById("sv3-cal-to"),
-      dateTo, todayStr,
-      (val) => { dateTo = val; updateSummary(); }
+    buildRangeCalendar(
+      document.getElementById("sv3-cal-range"),
+      dateFrom,
+      dateTo,
+      todayStr,
+      (from, to) => {
+        dateFrom = from;
+        dateTo = to;
+        updateSummary();
+      }
     );
   }
 
+  function isDateRangeInvalid() {
+    return dateMode === "range" && !!dateFrom && !!dateTo && dateFrom > dateTo;
+  }
+
   function updateSummary() {
-    const rangeEl = document.getElementById("sv3-sum-range");
-    const daysEl  = document.getElementById("sv3-sum-days");
+    const rangeEl  = document.getElementById("sv3-sum-range");
+    const daysEl   = document.getElementById("sv3-sum-days");
+    const errEl    = document.getElementById("sv3-date-range-err");
     if (!rangeEl || !daysEl) return;
+
+    const invalid = isDateRangeInvalid();
+
+    // Show/hide the inline error banner
+    if (errEl) errEl.style.display = invalid ? "flex" : "none";
+
+    if (dateMode === "range" && (!dateFrom || !dateTo)) {
+      rangeEl.textContent = dateFrom
+        ? `${formatDisplayDate(dateFrom)} – ${t("setup.end_date")}`
+        : "—";
+      daysEl.textContent = "—";
+      updateLaunchState();
+      return;
+    }
+
+    if (invalid) {
+      rangeEl.innerHTML = `<span style="color:var(--danger);font-size:11px">${t("setup.date_before_start")}</span>`;
+      daysEl.innerHTML  = `<span style="color:var(--danger)">—</span>`;
+      updateLaunchState();
+      return;
+    }
+
     const totalDays = daysBetween(dateFrom, dateTo);
     rangeEl.textContent = dateFrom === dateTo
       ? formatDisplayDate(dateFrom)
       : `${formatDisplayDate(dateFrom)} – ${formatDisplayDate(dateTo)}`;
     daysEl.textContent = `${t("setup.days_count")(totalDays)}`;
+    updateLaunchState();
   }
 
   function formatDisplayDate(str) {
     if (!str) return "—";
     const [y, m, d] = str.split("-");
-    const months = ["Jan","Feb","Mar","Apr","May","Jun","Jul","Aug","Sep","Oct","Nov","Dec"];
+    const months = window._t("calendar.months");
     return `${months[parseInt(m)-1]} ${parseInt(d)}, ${y}`;
   }
 
@@ -1278,7 +3144,7 @@ window.renderSetup = function (onComplete, initialStep) {
 
         <div class="form-section-title">${t("setup.easy_section")}</div>
         <div class="form-group">
-          <label>${t("setup.store_label")} <span style="color:var(--text2);font-weight:400;text-transform:none">${t("setup.store_hint")}</span></label>
+          <label>${t("setup.store_label")} <span style="color:#ff6b6b">*</span></label>
           <input type="text" id="sv3-easy-store" placeholder="${t("setup.store_ph")}" value="${esc(acc?.easyStore||"")}" />
         </div>
         <div class="form-group">
@@ -1292,6 +3158,13 @@ window.renderSetup = function (onComplete, initialStep) {
         </div>
 
         <div class="form-section-title">${t("setup.khod_section")}</div>
+        <div class="form-group">
+          <label>${t("setup.country_label")}</label>
+          <select id="sv3-khod-country" disabled style="width:100%;height:42px;background:var(--bg3);border:1px solid var(--border);border-radius:8px;color:var(--text);padding:0 12px">
+            <option value="sa" selected>${t("setup.country_sa")}</option>
+          </select>
+          <div style="font-size:11px;color:var(--text2);margin-top:4px">${t("setup.country_sa_only")}</div>
+        </div>
         <div class="form-group">
           <label>${t("setup.email_label")}</label>
           <input type="email" id="sv3-khod-email" placeholder="${t("setup.khod_email_ph")}" value="${esc(acc?.khodEmail||"")}" autocomplete="off" />
@@ -1308,7 +3181,7 @@ window.renderSetup = function (onComplete, initialStep) {
         </div>
 
         <div class="mt-20" style="display:flex;gap:10px">
-          <button class="btn full-width" id="sv3-form-cancel" style="border:1px solid var(--border);background:var(--bg2);color:var(--text2)">Cancel</button>
+          <button class="btn full-width" id="sv3-form-cancel" style="border:1px solid var(--border);background:var(--bg2);color:var(--text2)">${t("setup.cancel_btn")}</button>
           <button class="btn btn-primary full-width btn-lg" id="sv3-form-save">${isEdit ? t("setup.save_btn2") : t("setup.add_btn")}</button>
         </div>
       </div>
@@ -1327,11 +3200,12 @@ window.renderSetup = function (onComplete, initialStep) {
       const easyStore    = document.getElementById("sv3-easy-store").value.trim();
       const khodEmail    = document.getElementById("sv3-khod-email").value.trim();
       const khodPassword = document.getElementById("sv3-khod-pass").value;
+      const khodCountry  = "sa";
       const errEl        = document.getElementById("sv3-form-err");
       const errText      = document.getElementById("sv3-form-err-text");
       const saveBtn      = document.getElementById("sv3-form-save");
 
-      if (!easyEmail || !khodEmail || (!isEdit && (!easyPassword || !khodPassword))) {
+      if (!easyStore || !easyEmail || !khodEmail || (!isEdit && (!easyPassword || !khodPassword))) {
         errText.innerHTML = t("setup.err_missing");
         errEl.style.display = "flex";
         return;
@@ -1345,7 +3219,11 @@ window.renderSetup = function (onComplete, initialStep) {
         if (idx !== -1) {
           accounts[idx] = {
             ...accounts[idx],
-            easyEmail, easyStore, khodEmail,
+            easyEmail,
+            easyStore,
+            khodEmail,
+            khodCountry,
+            khodAffiliateCode: normalizeEmailForCompare(khodEmail) === normalizeEmailForCompare(accounts[idx].khodEmail) ? accounts[idx].khodAffiliateCode : "",
             ...(easyPassword ? { easyPassword } : {}),
             ...(khodPassword ? { khodPassword } : {}),
           };
@@ -1358,7 +3236,7 @@ window.renderSetup = function (onComplete, initialStep) {
         accounts.push({
           id: newId,
           label: newLabel,
-          easyEmail, easyPassword, easyStore, khodEmail, khodPassword,
+          easyEmail, easyPassword, easyStore, khodEmail, khodPassword, khodCountry, khodAffiliateCode: "",
         });
         selectedIds.push(newId);
       }
@@ -1370,6 +3248,8 @@ window.renderSetup = function (onComplete, initialStep) {
         saveBtn.disabled = false;
         errText.innerHTML = result.reason === "account_locked"
           ? t("setup.err_locked")
+          : result.reason === "easy_store_required"
+          ? t("setup.err_missing")
           : result.reason === "limit_reached"
           ? t("setup.limit_reached")
           : (result.reason || t("setup.save_failed"));
@@ -1390,7 +3270,6 @@ window.renderSetup = function (onComplete, initialStep) {
       accounts    = fresh.accounts || [];
       maxAccounts = fresh.maxAccounts || maxAccounts;
       renderStep();
-      updateResetBtn();
     });
 
     // Enter key support
@@ -1406,7 +3285,36 @@ window.renderSetup = function (onComplete, initialStep) {
     return String(s ?? "").replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/>/g,"&gt;").replace(/"/g,"&quot;");
   }
 
+  function normalizeEmailForCompare(value) {
+    return String(value || "").trim().toLowerCase();
+  }
+
+  function accountUiLabel(acc) {
+    if (!acc) return t("setup.account_fallback");
+    return acc.easyEmail || acc.khodEmail || acc.email || acc.label || acc.easyStore || acc.storeName || acc.name || t("setup.account_fallback");
+  }
+
+  function accountInitial(acc) {
+    const label = accountUiLabel(acc).trim();
+    if (!label) return "A";
+    const words = label.split(/\s+/).filter(Boolean);
+    if (words.length > 1 && /^[A-Za-z]/.test(words[0]) && /^[A-Za-z]/.test(words[1])) {
+      return (words[0][0] + words[1][0]).toUpperCase();
+    }
+    return label.slice(0, 1).toUpperCase();
+  }
+
   function showConfirm(title, message, confirmText, cancelText) {
+    if (window.KhodUI && typeof window.KhodUI.confirm === "function") {
+      return window.KhodUI.confirm({
+        title,
+        message,
+        confirmText,
+        cancelText,
+        danger: true
+      });
+    }
+
     return new Promise((resolve) => {
       const overlay = document.createElement("div");
       overlay.style.cssText = "position:fixed;inset:0;background:rgba(0,0,0,.72);display:flex;align-items:center;justify-content:center;z-index:9999;";
@@ -1450,9 +3358,8 @@ function buildCalendar(container, initial, maxDate, onChange) {
   let viewYear  = selected.getFullYear();
   let viewMonth = selected.getMonth();
 
-  const DAYS   = ["Su","Mo","Tu","We","Th","Fr","Sa"];
-  const MONTHS = ["Jan","Feb","Mar","Apr","May","Jun",
-                  "Jul","Aug","Sep","Oct","Nov","Dec"];
+  const DAYS   = window._t("calendar.days");
+  const MONTHS = window._t("calendar.months");
 
   function render() {
     const selStr    = _formatDateLocal(selected);
@@ -1522,64 +3429,391 @@ function buildCalendar(container, initial, maxDate, onChange) {
   render();
 }
 
+function buildRangeCalendar(container, fromInitial, toInitial, maxDate, onChange) {
+  const parseLocal = (str) => {
+    if (!str) return null;
+    const [y, m, d] = str.split("-").map(Number);
+    if (!y || !m || !d) return null;
+    return new Date(y, m - 1, d);
+  };
+  const label = (key, fallbackEn, fallbackAr) => {
+    const lang = window._kbotLang || document.documentElement.lang || "en";
+    return lang === "ar" ? fallbackAr : fallbackEn;
+  };
+
+  const maxD = parseLocal(maxDate) || new Date();
+  const startD = parseLocal(fromInitial) || maxD;
+  let from = fromInitial || "";
+  let to = toInitial || "";
+  let hovered = "";
+  let hoverTimer = null;
+  let selectingEnd = !!from && !to;
+  let viewYear = startD.getFullYear();
+  let viewMonth = startD.getMonth();
+
+  const DAYS = window._t("calendar.days");
+  const MONTHS = window._t("calendar.months");
+
+  function render() {
+    const maxStr = _formatDateLocal(maxD);
+    const todayStr2 = _formatDateLocal(new Date());
+    const firstDay = new Date(viewYear, viewMonth, 1);
+    const lastDay = new Date(viewYear, viewMonth + 1, 0);
+    const startDow = firstDay.getDay();
+    const totalDays = lastDay.getDate();
+    const maxYear = maxD.getFullYear();
+    const maxMonth = maxD.getMonth();
+    const canNext = viewYear < maxYear || (viewYear === maxYear && viewMonth < maxMonth);
+    const minYear = new Date().getFullYear() - 5;
+    const canPrev = viewYear > minYear || (viewYear === minYear && viewMonth > 0);
+    const previewEnd = hovered || to;
+
+    let cells = "";
+    for (let i = 0; i < startDow; i++) cells += `<button class="fc-cell fc-day fc-empty" disabled></button>`;
+    for (let d = 1; d <= totalDays; d++) {
+      const iso = `${viewYear}-${String(viewMonth + 1).padStart(2, "0")}-${String(d).padStart(2, "0")}`;
+      const selected = iso === from || iso === to;
+      const inRange = from && previewEnd
+        ? (to ? iso > from && iso < to : iso > from && iso <= previewEnd)
+        : false;
+      const disabled = iso > maxStr || (selectingEnd && from && iso < from);
+      let cls = "fc-cell fc-day";
+      if (selected) cls += " fc-selected";
+      if (iso === todayStr2 && !selected) cls += " fc-today";
+      if (inRange && !selected) cls += " fc-in-range";
+      if (iso === from && to) cls += " fc-range-start";
+      if (iso === to) cls += " fc-range-end";
+      if (disabled) cls += " fc-disabled";
+      cells += `<button class="${cls}" data-date="${iso}" ${disabled ? "disabled" : ""}>${d}</button>`;
+    }
+
+    const hint = selectingEnd && from
+      ? label("rangeEnd", "Now click an end date", "اختر تاريخ النهاية")
+      : label("rangeStart", "Click a start date", "اختر تاريخ البداية");
+    const clear = label("rangeClear", "Clear range", "مسح النطاق");
+
+    container.innerHTML = `
+      <div class="fc-range-shell">
+        <div class="fc-range-status">
+          <div class="fc-range-status-part">
+            <span>${window._t("setup.start_date")}</span>
+            <strong class="${from ? "active" : ""}">${from || "—"}</strong>
+          </div>
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <line x1="5" y1="12" x2="19" y2="12"></line>
+            <polyline points="12 5 19 12 12 19"></polyline>
+          </svg>
+          <div class="fc-range-status-part end">
+            <span>${window._t("setup.end_date")}</span>
+            <strong class="${to ? "active" : ""}">${to || "—"}</strong>
+          </div>
+        </div>
+        <div class="fc-range-hint">▸ ${hint}</div>
+        <div class="fc-wrap">
+          <div class="fc-header">
+            <button class="fc-nav" data-dir="-1"${canPrev ? "" : " disabled"}>&#8249;</button>
+            <span class="fc-month-label">${MONTHS[viewMonth]} ${viewYear}</span>
+            <button class="fc-nav" data-dir="1"${canNext ? "" : " disabled"}>&#8250;</button>
+          </div>
+          <div class="fc-grid">
+            ${DAYS.map(d => `<div class="fc-cell fc-weekday">${d}</div>`).join("")}
+            ${cells}
+          </div>
+        </div>
+        ${(from || to) ? `<button class="fc-clear-range" type="button">× ${clear}</button>` : ""}
+      </div>
+    `;
+
+    function selectRangeDate(iso) {
+      if (!iso) return;
+      if (hoverTimer) {
+        clearTimeout(hoverTimer);
+        hoverTimer = null;
+      }
+      if (!from || (from && to)) {
+        from = iso;
+        to = "";
+        selectingEnd = true;
+      } else if (selectingEnd) {
+        if (iso < from) {
+          from = iso;
+          to = "";
+          selectingEnd = true;
+        } else {
+          to = iso;
+          selectingEnd = false;
+        }
+      } else {
+        from = iso;
+        to = "";
+        selectingEnd = true;
+      }
+      hovered = "";
+      onChange(from, to);
+      render();
+    }
+
+    container.querySelector(".fc-grid").addEventListener("pointerdown", (e) => {
+      const cell = e.target.closest(".fc-day");
+      if (!cell || cell.classList.contains("fc-disabled") || cell.classList.contains("fc-empty")) return;
+      e.preventDefault();
+      selectRangeDate(cell.dataset.date);
+    });
+
+    container.querySelector(".fc-grid").addEventListener("mouseover", (e) => {
+      const cell = e.target.closest(".fc-day");
+      if (!cell || cell.classList.contains("fc-disabled") || cell.classList.contains("fc-empty")) return;
+      if (selectingEnd && from && !to) {
+        const nextHover = cell.dataset.date;
+        if (nextHover === hovered) return;
+        if (hoverTimer) clearTimeout(hoverTimer);
+        hoverTimer = setTimeout(() => {
+          hovered = nextHover;
+          hoverTimer = null;
+          render();
+        }, 90);
+      }
+    });
+    container.querySelector(".fc-grid").addEventListener("mouseleave", () => {
+      if (hoverTimer) {
+        clearTimeout(hoverTimer);
+        hoverTimer = null;
+      }
+      if (hovered) {
+        hovered = "";
+        render();
+      }
+    });
+    container.querySelectorAll(".fc-nav").forEach(btn => {
+      btn.addEventListener("click", () => {
+        viewMonth += parseInt(btn.dataset.dir);
+        if (viewMonth > 11) { viewMonth = 0; viewYear++; }
+        if (viewMonth < 0) { viewMonth = 11; viewYear--; }
+        render();
+      });
+    });
+    container.querySelector(".fc-clear-range")?.addEventListener("click", () => {
+      if (hoverTimer) {
+        clearTimeout(hoverTimer);
+        hoverTimer = null;
+      }
+      from = "";
+      to = "";
+      hovered = "";
+      selectingEnd = false;
+      onChange("", "");
+      render();
+    });
+  }
+
+  render();
+}
+
 function injectCalendarStyles() {
   if (document.getElementById("fast-cal-styles")) return;
   const s = document.createElement("style");
   s.id = "fast-cal-styles";
   s.textContent = `
     .fast-cal { width:100%; }
+    .sv3-date-range-single {
+      max-width: 340px;
+      margin: 0 auto;
+    }
     .fc-wrap {
-      background:var(--bg3);
-      border:1px solid var(--border);
-      border-radius:var(--radius-sm);
-      padding:10px;
+      background: rgba(16,23,36,.62);
+      border:1px solid rgba(125,148,186,.2);
+      border-radius:12px;
+      padding:14px 14px 10px;
       user-select:none;
+      box-shadow: inset 0 1px 0 rgba(255,255,255,.04);
+    }
+    .fc-range-shell {
+      display:flex;
+      flex-direction:column;
+      gap:10px;
+    }
+    .fc-range-status {
+      display:flex;
+      align-items:center;
+      gap:10px;
+      padding:8px 12px;
+      background:rgba(16,23,36,.62);
+      border:1px solid rgba(125,148,186,.2);
+      border-radius:8px;
+      color:var(--text3);
+    }
+    .fc-range-status-part {
+      flex:1;
+      min-width:0;
+      display:flex;
+      align-items:center;
+      gap:6px;
+    }
+    .fc-range-status-part.end {
+      justify-content:flex-end;
+    }
+    .fc-range-status-part span {
+      font-size:11px;
+      color:var(--text3);
+      font-weight:700;
+    }
+    .fc-range-status-part strong {
+      min-width:0;
+      overflow:hidden;
+      text-overflow:ellipsis;
+      white-space:nowrap;
+      font-size:13px;
+      color:var(--text3);
+    }
+    .fc-range-status-part strong.active {
+      color:var(--accent);
+    }
+    .fc-range-hint {
+      font-size:11px;
+      color:var(--text3);
+      font-weight:700;
     }
     .fc-header {
       display:flex;
       align-items:center;
       justify-content:space-between;
-      margin-bottom:8px;
+      margin-bottom:12px;
     }
-    .fc-month-label { font-size:13px;font-weight:700;color:var(--text); }
+    .fc-month-label { font-size:14px;font-weight:800;color:var(--text); }
     .fc-nav {
-      background:none;
-      border:1px solid var(--border);
-      border-radius:6px;
-      color:var(--text2);
+      background:rgba(16,23,36,.62);
+      border:1px solid rgba(125,148,186,.2);
+      border-radius:8px;
+      color:#b9c4d8;
       cursor:pointer;
       font-size:18px;
       line-height:1;
-      padding:2px 8px;
+      width:32px;
+      height:32px;
+      padding:0;
       transition:background 0.1s,color 0.1s;
     }
-    .fc-nav:hover:not(:disabled) { background:var(--accent);color:#fff;border-color:var(--accent); }
+    .fc-nav:hover:not(:disabled) { background:rgba(124,106,247,.28);color:#fff;border-color:rgba(167,139,250,.48); }
     .fc-nav:disabled { opacity:0.3;cursor:default; }
     .fc-grid { display:grid;grid-template-columns:repeat(7,1fr);gap:2px; }
     .fc-cell {
       aspect-ratio:1;
+      min-height:32px;
       display:flex;
       align-items:center;
       justify-content:center;
-      font-size:11px;
-      border-radius:4px;
+      font-size:13px;
+      border-radius:8px;
       min-width:0;
     }
-    .fc-weekday { font-size:9px;font-weight:700;color:var(--text2);text-transform:uppercase; }
-    .fc-day { cursor:pointer;color:var(--text);transition:background 0.07s; }
-    .fc-day:hover:not(.fc-disabled) { background:rgba(79,142,247,0.18);color:var(--accent); }
-    .fc-today { background:rgba(79,142,247,0.1);color:var(--accent);font-weight:700; }
-    .fc-selected { background:var(--accent)!important;color:#fff!important;font-weight:700; }
+    .fc-weekday {
+      min-height:22px;
+      aspect-ratio:auto;
+      font-size:10px;
+      font-weight:800;
+      color:#9aa7bc;
+      text-transform:uppercase;
+      letter-spacing:.04em;
+    }
+    .fc-day {
+      cursor:pointer;
+      color:#c3cbdb;
+      transition:background 0.07s, color 0.07s, transform 0.07s;
+      border:0;
+      background:transparent;
+      font-family:inherit;
+      font-weight:600;
+    }
+    .fc-day:hover:not(.fc-disabled):not(.fc-selected):not(.fc-empty) {
+      background:rgba(79,142,247,0.15);
+      color:var(--text);
+      transform:scale(1.05);
+    }
+    .fc-today {
+      color:#8ab8ff;
+      font-weight:800;
+      position:relative;
+    }
+    .fc-today::after {
+      content:"";
+      position:absolute;
+      left:50%;
+      bottom:4px;
+      width:4px;
+      height:4px;
+      border-radius:999px;
+      background:var(--accent);
+      transform:translateX(-50%);
+    }
+    .fc-selected {
+      background:linear-gradient(135deg,#8b5cf6,#4f8ef7)!important;
+      color:#fff!important;
+      font-weight:800;
+      box-shadow:0 2px 10px rgba(99,102,241,.36);
+      transform:scale(1.05);
+    }
+    .fc-in-range:not(.fc-selected) {
+      background:rgba(124,106,247,.18);
+      color:var(--text);
+      border-radius:0;
+    }
+    .fc-range-start:not(.fc-selected) { border-radius:8px 0 0 8px; }
+    .fc-range-end:not(.fc-selected) { border-radius:0 8px 8px 0; }
     .fc-disabled { opacity:0.25;cursor:default; }
     .fc-empty { visibility:hidden; }
+    .fc-clear-range {
+      align-self:flex-start;
+      background:transparent;
+      border:0;
+      color:var(--text3);
+      cursor:pointer;
+      font-size:12px;
+      font-weight:700;
+      padding:2px 0;
+      transition:color .1s;
+    }
+    .fc-clear-range:hover {
+      color:var(--danger);
+    }
     .fc-selected-display {
-      margin-top:8px;
+      margin-top:6px;
       text-align:center;
       font-size:11px;
-      color:var(--text2);
+      color:#99aac5;
       font-variant-numeric:tabular-nums;
-      letter-spacing:0.04em;
+      letter-spacing:0;
     }
+    [data-theme="light"] .fc-wrap {
+      background: var(--bg2);
+      border-color: var(--border);
+      box-shadow: 0 2px 10px rgba(0,0,0,.03);
+    }
+    [data-theme="light"] .fc-range-status {
+      background: var(--bg2);
+      border-color: var(--border);
+    }
+    [data-theme="light"] .fc-nav {
+      background: var(--bg);
+      border-color: var(--border);
+      color: var(--text3);
+    }
+    [data-theme="light"] .fc-nav:hover:not(:disabled) {
+      background: var(--bg3);
+      color: var(--text);
+      border-color: var(--accent);
+    }
+    [data-theme="light"] .fc-month-label { color: var(--text); }
+    [data-theme="light"] .fc-weekday { color: var(--text3); }
+    [data-theme="light"] .fc-day { color: var(--text2); }
+    [data-theme="light"] .fc-day:hover:not(.fc-disabled) {
+      background: rgba(124,106,247,.1);
+      color: var(--accent);
+    }
+    [data-theme="light"] .fc-today {
+      background: rgba(124,106,247,.08);
+      color: var(--accent);
+    }
+    [data-theme="light"] .fc-selected-display { color: var(--text2); }
   `;
   document.head.appendChild(s);
 }

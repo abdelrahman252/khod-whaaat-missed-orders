@@ -1,3 +1,20 @@
+// DOTENV - load .env if present (dev or packaged extraResources)
+(function loadEnv() {
+  const path = require("path");
+  const fs = require("fs");
+  const devLocalPath = path.join(__dirname, "../../.env.local");
+  const devPath = path.join(__dirname, "../../.env");
+  const prodPath = process.resourcesPath ? path.join(process.resourcesPath, ".env") : null;
+  const prodLocalPath = process.resourcesPath ? path.join(process.resourcesPath, ".env.local") : null;
+  const dotenv = require("dotenv");
+  const baseEnvPath = fs.existsSync(devPath)
+    ? devPath
+    : (prodPath && fs.existsSync(prodPath) ? prodPath : null);
+  if (baseEnvPath) dotenv.config({ path: baseEnvPath });
+  if (fs.existsSync(devLocalPath)) dotenv.config({ path: devLocalPath, override: true });
+  else if (prodLocalPath && fs.existsSync(prodLocalPath)) dotenv.config({ path: prodLocalPath, override: true });
+})();
+
 const { app, BrowserWindow, ipcMain, dialog, shell, Tray, Menu, nativeImage } = require("electron");
 const path = require("path");
 const Store = require("electron-store");
@@ -5,6 +22,36 @@ const fs = require("fs");
 const crypto = require("crypto");
 const os = require("os");
 const https = require("https");
+const log = require("electron-log");
+const { autoUpdater } = require("electron-updater");
+const monitoring = require("../monitoring/sentry.main");
+const { normalizePhone } = require("../bot/phone");
+const XLSX = require("xlsx");
+const {
+  askDashboardAi,
+  getAiGatewayState,
+  getAiAdminAnalytics,
+  configureAiGateway,
+  validateDashboardAiPayload,
+  debugGeminiPing,
+} = require("./dashboard-ai-service");
+
+monitoring.initMainMonitoring();
+monitoring.patchIpcMonitoring();
+monitoring.registerRendererMonitoringBridge();
+
+// ════════════════════════════════════════
+// [KHOD AI DEBUG] — remove once AI is confirmed working
+setTimeout(function () {
+  const keyLoaded = process.env.GEMINI_API_KEY;
+  log.info("[KhodAI-Debug] Gemini config:", {
+    keyPresent: !!keyLoaded,
+    keyLength: keyLoaded ? keyLoaded.length : 0,
+    forcedOff: String(process.env.KHOD_AI_FORCE_GEMINI_OFF || "") === "1",
+    freeTierHint: "Check getAiAdminAnalytics().gemini for attempts, successes, failures, and fallback reasons.",
+  });
+}, 0);
+// ════════════════════════════════════════
 
 // ════════════════════════════════════════
 // STARTUP PERFORMANCE FLAGS
@@ -21,14 +68,39 @@ app.commandLine.appendSwitch("renderer-process-limit", "1");
 // V8 code cache: reuse compiled JS across launches (saves 20–60 ms per launch)
 app.commandLine.appendSwitch("js-flags", "--max-old-space-size=256");
 
+autoUpdater.autoDownload = false;
+autoUpdater.autoInstallOnAppQuit = true;
+try {
+  autoUpdater.verifyUpdateCodeSignature = false;
+} catch (_) {}
+autoUpdater.logger = {
+  info:  (...a) => log.info("[AutoUpdate]", ...a),
+  warn:  (...a) => log.warn("[AutoUpdate]", ...a),
+  error: (...a) => log.error("[AutoUpdate]", ...a),
+  debug: (...a) => log.debug("[AutoUpdate]", ...a),
+};
+
 // ══════════════════════════════════════════════════════
-// SUPABASE CONFIG  — replace with your project values
+// SUPABASE CONFIG
+// Primary source: .env file (dev) or extraResources/.env (packaged).
+// No hardcoded fallback — missing config produces a clear warning rather than
+// silently using stale credentials baked into the source.
 // ══════════════════════════════════════════════════════
-const SUPABASE_URL = "https://lkzmvtrwqgspbbbjyijj.supabase.co";
-const SUPABASE_PUBLISHABLE_KEY = "sb_publishable_hg-XZyOtPfn6bc3gJYCNDw_3aG1njOM";
+const SUPABASE_URL             = process.env.SUPABASE_URL             || "";
+const SUPABASE_PUBLISHABLE_KEY = process.env.SUPABASE_PUBLISHABLE_KEY || "";
+
+if (!SUPABASE_URL || !SUPABASE_PUBLISHABLE_KEY) {
+  log.warn("[App] Supabase config missing — license checks will fail until .env is configured.");
+}
+
+const SUPABASE_TIMEOUT_MS = 180_000; // 180 s (3 minutes) — enough for slow connections and multi-account syncs
 
 function supabaseRequest(method, endpoint, body) {
   return new Promise((resolve, reject) => {
+    if (!SUPABASE_URL || !SUPABASE_PUBLISHABLE_KEY) {
+      reject(new Error("supabase_config_missing"));
+      return;
+    }
     const baseUrl = SUPABASE_URL.replace(/\/+$/, "");
     const url = new URL(baseUrl + endpoint);
     const bodyStr = body ? JSON.stringify(body) : null;
@@ -37,19 +109,82 @@ function supabaseRequest(method, endpoint, body) {
       "Authorization": "Bearer " + SUPABASE_PUBLISHABLE_KEY,
       "Prefer": method === "POST" ? "return=representation" : "",
     };
-    headers["apikey"] = SUPABASE_PUBLISHABLE_KEY; // required for both sb_publishable_ and eyJ key types
-    const options = { hostname: url.hostname, path: url.pathname + url.search, method, headers };
+    headers["apikey"] = SUPABASE_PUBLISHABLE_KEY;
+    const options = {
+      hostname: url.hostname, path: url.pathname + url.search, method, headers,
+      timeout: SUPABASE_TIMEOUT_MS,
+    };
     if (bodyStr) options.headers["Content-Length"] = Buffer.byteLength(bodyStr);
+    let settled = false;
+    const settle = (fn, val) => { if (!settled) { settled = true; fn(val); } };
     const req = https.request(options, (res) => {
       let data = "";
       res.on("data", (chunk) => { data += chunk; });
       res.on("end", () => {
-        try { resolve({ status: res.statusCode, data: JSON.parse(data) }); }
-        catch { resolve({ status: res.statusCode, data }); }
+        try { settle(resolve, { status: res.statusCode, data: JSON.parse(data) }); }
+        catch { settle(resolve, { status: res.statusCode, data }); }
       });
     });
-    req.on("error", reject);
+    req.on("timeout", () => { req.destroy(); settle(reject, new Error("supabase_timeout")); });
+    req.on("error", (e) => settle(reject, e));
     if (bodyStr) req.write(bodyStr);
+    req.end();
+  });
+}
+
+async function supabaseRpc(fn, body) {
+  const res = await supabaseRequest("POST", `/rest/v1/rpc/${fn}`, body || {});
+  if (res.status >= 400) {
+    const msg = typeof res.data === "string" ? res.data : JSON.stringify(res.data);
+    throw new Error(`supabase_rpc_${fn}_failed_${res.status}: ${msg}`);
+  }
+  return res.data;
+}
+
+function supabaseFunctionRequest(fn, body) {
+  return new Promise((resolve, reject) => {
+    if (!SUPABASE_URL || !SUPABASE_PUBLISHABLE_KEY) {
+      reject(new Error("supabase_config_missing"));
+      return;
+    }
+    const baseUrl = SUPABASE_URL.replace(/\/+$/, "");
+    const url = new URL(`${baseUrl}/functions/v1/${fn}`);
+    const bodyStr = JSON.stringify(body || {});
+    const options = {
+      hostname: url.hostname,
+      path: url.pathname + url.search,
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        "Content-Length": Buffer.byteLength(bodyStr),
+        "Authorization": "Bearer " + SUPABASE_PUBLISHABLE_KEY,
+        "apikey": SUPABASE_PUBLISHABLE_KEY,
+      },
+      timeout: SUPABASE_TIMEOUT_MS,
+    };
+    let settled = false;
+    const settle = (fnSettle, value) => {
+      if (!settled) {
+        settled = true;
+        fnSettle(value);
+      }
+    };
+    const req = https.request(options, (res) => {
+      let data = "";
+      res.on("data", (chunk) => { data += chunk; });
+      res.on("end", () => {
+        let parsed = null;
+        try { parsed = data ? JSON.parse(data) : {}; } catch { parsed = { error: data || "invalid_function_response" }; }
+        if (res.statusCode >= 400) {
+          settle(reject, new Error(parsed.error || parsed.message || `function_${fn}_failed_${res.statusCode}`));
+          return;
+        }
+        settle(resolve, parsed);
+      });
+    });
+    req.on("timeout", () => { req.destroy(); settle(reject, new Error("supabase_function_timeout")); });
+    req.on("error", (error) => settle(reject, error));
+    req.write(bodyStr);
     req.end();
   });
 }
@@ -66,27 +201,133 @@ function getIconPath() {
   return path.join(base, "icon.png");
 }
 
-const store = new Store({ encryptionKey: "taager-bot-secure-key-2024", name: "credentials" });
-const licenseStore = new Store({ encryptionKey: "khod-bot-license-2024-secure", name: "license" });
+// ══════════════════════════════════════════════════════
+// STORE ENCRYPTION KEYS
+// Derived at runtime from a stable machine UUID so each machine gets a unique
+// key — a static hardcoded string is trivially reversible once someone has the
+// source. Two salts produce different keys for the two stores.
+// NOTE: deriveStoreKey() reads the raw license.json file directly (before the
+// Store objects exist) to recover the UUID on subsequent launches.
+// ══════════════════════════════════════════════════════
+function deriveStoreKey(salt) {
+  try {
+    let uuid = "";
+    try {
+      const lsPath = require("path").join(app.getPath("userData"), "license.json");
+      if (require("fs").existsSync(lsPath)) {
+        const raw = JSON.parse(require("fs").readFileSync(lsPath, "utf8"));
+        uuid = (raw.__internal__ && raw.__internal__.machineUUID) ? raw.__internal__.machineUUID : "";
+      }
+    } catch (_) {}
+    const base = uuid || (require("os").hostname() + require("os").cpus()[0].model);
+    return require("crypto").createHash("sha256").update(salt + "::" + base).digest("hex").slice(0, 32);
+  } catch {
+    return salt.length > 8 ? salt : salt + "-khod-bot-2025-fallback";
+  }
+}
+
+function createStore(options) {
+  try {
+    return new Store(options);
+  } catch (e) {
+    // Corrupted store file — wipe it and recreate clean
+    try {
+      const filePath = path.join(app.getPath("userData"), options.name + ".json");
+      if (fs.existsSync(filePath)) fs.unlinkSync(filePath);
+      log.warn(`[store] Corrupted store "${options.name}" deleted and recreated.`);
+    } catch (_) {}
+    return new Store(options);
+  }
+}
+
+const store          = createStore({ encryptionKey: deriveStoreKey("khod-creds-v1"),   name: "credentials" });
+const licenseStore   = createStore({ encryptionKey: deriveStoreKey("khod-license-v1"), name: "license" });
+const analyticsStore = createStore({ name: "analytics" }); // unencrypted — run history only
+const dashboardStore = createStore({ name: "dashboard" }); // unencrypted — monthly snapshots
+let analyticsRunsCache = null;
+let analyticsRunsCacheDirty = true;
+let analyticsSnapshotSyncCacheKey = "";
+
+function invalidateAnalyticsRunsCache() {
+  analyticsRunsCache = null;
+  analyticsRunsCacheDirty = true;
+}
+
+configureAiGateway({
+  loadState: () => dashboardStore.get("aiGatewayState", {}),
+  saveState: (state) => dashboardStore.set("aiGatewayState", state || {}),
+  logEvent: (event) => log.info("[KhodAI-Event]", JSON.stringify(event)),
+});
 
 let mainWindow, tray, autoRunTimer = null, autoRunEnabled = false, botRunning = false;
+let lastExportTimestamp = 0;
+
+// ── Chrome path cache — resolved once at startup so dashboard fetch skips discovery ──
+let _cachedChromePath = null;
+function getCachedChromePath() {
+  if (_cachedChromePath) return _cachedChromePath;
+  const { execSync } = require("child_process");
+  try {
+    if (process.platform === "win32") {
+      const candidates = [
+        "C:\\Program Files\\Google\\Chrome\\Application\\chrome.exe",
+        "C:\\Program Files (x86)\\Google\\Chrome\\Application\\chrome.exe",
+        process.env.LOCALAPPDATA && path.join(process.env.LOCALAPPDATA, "Google\\Chrome\\Application\\chrome.exe"),
+        process.env.PROGRAMFILES && path.join(process.env.PROGRAMFILES, "Google\\Chrome\\Application\\chrome.exe"),
+      ].filter(Boolean);
+      for (const p of candidates) { if (fs.existsSync(p)) { _cachedChromePath = p; return p; } }
+      try {
+        const reg = execSync('reg query "HKLM\\SOFTWARE\\Microsoft\\Windows\\CurrentVersion\\App Paths\\chrome.exe" /ve', { encoding: "utf8", timeout: 2000 });
+        const m = reg.match(/REG_SZ\s+(.+)/);
+        if (m && fs.existsSync(m[1].trim())) { _cachedChromePath = m[1].trim(); return _cachedChromePath; }
+      } catch {}
+    } else if (process.platform === "darwin") {
+      const p = "/Applications/Google Chrome.app/Contents/MacOS/Google Chrome";
+      if (fs.existsSync(p)) { _cachedChromePath = p; return p; }
+    } else {
+      const p = execSync("which google-chrome || which chromium-browser || which chromium", { encoding: "utf8", timeout: 2000 }).trim().split("\n")[0];
+      if (p) { _cachedChromePath = p; return p; }
+    }
+  } catch {}
+  return null; // dashboard-fetch will fall back to its own findChrome()
+}
+// Warm up the cache immediately on process start (non-blocking)
+setImmediate(() => { try { getCachedChromePath(); } catch {} });
 
 // ══════════════════════════════════════════════════════
-// DEVICE FINGERPRINT — stable across network/VPN changes
-// Uses: hostname + CPU model + platform + arch + RAM
-// None of these change when switching WiFi/Ethernet/VPN
+// DEVICE FINGERPRINT — stable across reboots, updates, VPN, network changes
+// Uses: CPU model + platform/arch + CPU count + RAM bucket (rounded to 4 GB)
+//
+// WHY hostname was REMOVED:
+//   macOS silently renames the host after system updates or Bonjour conflicts
+//   Windows may rename after domain join/leave or certain Windows Update passes
+//   That was the #1 cause of unexpected "different device" kicks on Mac/Windows
 // ══════════════════════════════════════════════════════
+function _getOrCreateMachineUUID() {
+  let uuid = licenseStore.get("machineUUID", "");
+  if (!uuid) {
+    uuid = crypto.randomUUID ? crypto.randomUUID() : crypto.randomBytes(16).toString("hex");
+    licenseStore.set("machineUUID", uuid);
+  }
+  return uuid;
+}
+
 function getDeviceFingerprint() {
   try {
-    const hostname = os.hostname().toLowerCase().trim();
-    const cpus = os.cpus();
-    const cpuModel = cpus && cpus.length ? cpus[0].model.trim() : "unknown-cpu";
-    const platform = `${process.platform}-${process.arch}`;
-    const memGB = Math.round(os.totalmem() / (1024 * 1024 * 1024));
-    const raw = `${hostname}::${cpuModel}::${platform}::${memGB}GB`;
+    const cpus      = os.cpus();
+    const cpuModel  = cpus && cpus.length ? cpus[0].model.trim() : "unknown-cpu";
+    const platform  = `${process.platform}-${process.arch}`;
+    const cpuCount  = String(cpus && cpus.length ? cpus.length : 1);
+    // Math.max(1, ...) guards against <4 GB machines producing "0GB"
+    const rawGB     = os.totalmem() / (4 * 1024 * 1024 * 1024);
+    const memBucket = String(Math.max(1, Math.round(rawGB)) * 4) + "GB";
+    const raw = `${cpuModel}::${platform}::${cpuCount}::${memBucket}`;
     return crypto.createHash("sha256").update(raw).digest("hex").toUpperCase().slice(0, 16);
   } catch {
-    return crypto.createHash("sha256").update(os.hostname()).digest("hex").toUpperCase().slice(0, 16);
+    // Last-resort: use the stable machine UUID so the fingerprint survives
+    // corrupted os.cpus() calls (rare but seen on some VMs)
+    const uuid = _getOrCreateMachineUUID();
+    return crypto.createHash("sha256").update(uuid).digest("hex").toUpperCase().slice(0, 16);
   }
 }
 
@@ -99,10 +340,310 @@ function accountHash(acc) {
   return crypto.createHash("sha256").update(`${id}|${easy}|${khod}`).digest("hex");
 }
 
+function _buildAccountIdents() {
+  try {
+    const accounts = store.get("accounts", []);
+    return accounts.map(a => ({
+      easy_email: (a.easyEmail || "").toLowerCase().trim(),
+      khod_email: (a.khodEmail || "").toLowerCase().trim(),
+    })).filter(x => x.easy_email || x.khod_email);
+  } catch { return []; }
+}
+
+function looksLikeEmail(value) {
+  return typeof value === "string" && /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(value.trim());
+}
+
+function getStoredAccountById(accountId) {
+  if (!accountId || accountId === "__single__" || accountId === "legacy") {
+    const easyEmail = store.get("easyEmail", "");
+    return easyEmail ? {
+      id: accountId || "__single__",
+      label: "Account 1",
+      easyEmail,
+    } : null;
+  }
+  const accounts = store.get("accounts", []) || [];
+  return accounts.find(a => a.id === accountId) || null;
+}
+
+function getStoredAccountsMap() {
+  const accounts = store.get("accounts", []) || [];
+  return new Map(accounts.map(a => [a.id, a]));
+}
+
+function normalizeAnalyticsRun(run, accountsById) {
+  const accountId = run.accountId || "__single__";
+  const storedAccount = (accountId === "__single__" || accountId === "legacy")
+    ? getStoredAccountById(accountId)
+    : accountsById?.get(accountId);
+  const storedEmail = (storedAccount?.easyEmail || "").trim();
+  const payloadEmail = (run.accountEmail || "").trim();
+  const payloadLabel = (run.accountLabel || "").trim();
+  const email = storedEmail || (looksLikeEmail(payloadEmail) ? payloadEmail : "") || (looksLikeEmail(payloadLabel) ? payloadLabel : "") || payloadEmail;
+  const label = email || payloadLabel || storedAccount?.label || payloadEmail || "";
+
+  return {
+    ...run,
+    accountId,
+    accountEmail: email,
+    accountLabel: label,
+  };
+}
+
+function parseOrderRowsFromOutputBuffer(bufferLike) {
+  try {
+    if (!bufferLike) return [];
+    const buffer = Buffer.isBuffer(bufferLike)
+      ? bufferLike
+      : Buffer.from(bufferLike instanceof ArrayBuffer ? new Uint8Array(bufferLike) : bufferLike);
+    if (!buffer.length) return [];
+
+    const wb = XLSX.read(buffer, { type: "buffer" });
+    const ws = wb.Sheets.Orders || wb.Sheets[wb.SheetNames[0]];
+    if (!ws) return [];
+    const rows = XLSX.utils.sheet_to_json(ws, { header: 1, defval: "" }).slice(1);
+
+    return rows
+      .filter(row => row && row.some(cell => String(cell || "").trim()))
+      .map(row => ({
+        qty: Number(row[0]) || 1,
+        productName: String(row[1] || ""),
+        sku: "",
+        unitPrice: "",
+        subtotal: Number(row[2]) || 0,
+        date: String(row[3] || ""),
+        city: String(row[4] || ""),
+        region: String(row[5] || ""),
+        address: String(row[6] || ""),
+        name: String(row[7] || ""),
+        phone: String(row[8] || ""),
+        source: "real",
+        orderStatus: "Under processing",
+        amountDue: 0,
+        marketerCommission: 0,
+        khodOrderNumber: "",
+      }));
+  } catch (err) {
+    console.warn("[Analytics] Failed to parse order rows from output buffer:", err.message);
+    return [];
+  }
+}
+
+function khodRowKey(row) {
+  const sku = (row?.sku || "").toString().trim();
+  if (!sku) return null;
+  const phone = normalizePhone(row.phone) || normalizePhone(row.phone1) || normalizePhone(row.phone2);
+  return phone ? `${phone}|${sku}` : null;
+}
+
+function analyticsOrderKey(order) {
+  const sku = (order?.sku || "").toString().trim();
+  if (!sku) return null;
+  const phone = normalizePhone(order.phone || order.rawPhone || order.normPhone || "");
+  return phone ? `${phone}|${sku}` : null;
+}
+
+function mergeKhodRowIntoOrder(order, khodRow) {
+  if (!khodRow) return order;
+  const next = { ...order };
+  if (khodRow.orderStatus) next.orderStatus = khodRow.orderStatus;
+  if (khodRow.khodOrderNumber) next.khodOrderNumber = khodRow.khodOrderNumber;
+  if (Number(khodRow.amountDue) > 0) next.amountDue = Number(khodRow.amountDue);
+  if (Number(khodRow.marketerCommission) > 0) next.marketerCommission = Number(khodRow.marketerCommission);
+  if (Number(khodRow.totalPrice) > 0) next.subtotal = Number(khodRow.totalPrice);
+  if (khodRow.city && !next.city) next.city = khodRow.city;
+  if (khodRow.createdAt && !next.date) next.date = khodRow.createdAt;
+  return next;
+}
+
+function dashboardRowKey(row) {
+  if (!row) return null;
+  const direct = row.khodOrderNumber || row.orderNumber || row.orderId || row.id;
+  if (direct) return `id:${String(direct).trim()}`;
+  const sku = (row.sku || row.productSku || "").toString().trim();
+  const phone = normalizePhone(row.phone || row.phone1 || row.phone2 || row.rawPhone || "");
+  const date = (row.createdAt || row.date || row.lastUpdatedAt || "").toString().slice(0, 10);
+  if (phone || sku || date) return `sig:${phone}|${sku}|${date}`;
+  return null;
+}
+
+function normalizeDashboardDateKey(value) {
+  if (!value) return "";
+  if (value instanceof Date && !isNaN(value.getTime())) {
+    return `${value.getFullYear()}-${String(value.getMonth() + 1).padStart(2, "0")}-${String(value.getDate()).padStart(2, "0")}`;
+  }
+  const text = String(value).trim();
+  if (/^\d{4}-\d{2}-\d{2}/.test(text)) return text.slice(0, 10);
+  const parsed = new Date(text);
+  return isNaN(parsed.getTime()) ? "" : parsed.toISOString().slice(0, 10);
+}
+
+function dashboardRowDateKey(row) {
+  if (!row) return "";
+  return normalizeDashboardDateKey(row.dashboardDate || row.createdAt || row.date || row.lastUpdatedAt || row.updatedAt);
+}
+
+function mergeDashboardRows(existingRows, incomingRows) {
+  const merged = [];
+  const index = new Map();
+  const addOrReplace = (row) => {
+    if (!row) return;
+    const key = dashboardRowKey(row) || `row:${merged.length}`;
+    const prevIndex = index.get(key);
+    if (prevIndex == null) {
+      index.set(key, merged.length);
+      merged.push(row);
+      return;
+    }
+    merged[prevIndex] = { ...merged[prevIndex], ...row };
+  };
+  (Array.isArray(existingRows) ? existingRows : []).forEach(addOrReplace);
+  (Array.isArray(incomingRows) ? incomingRows : []).forEach(addOrReplace);
+  return merged;
+}
+
+function replaceDashboardRowsInRange(existingRows, incomingRows, dateFrom, dateTo) {
+  const from = normalizeDashboardDateKey(dateFrom);
+  const to = normalizeDashboardDateKey(dateTo);
+  if (!from || !to) return mergeDashboardRows(existingRows, incomingRows);
+
+  const outsideFetchedWindow = (Array.isArray(existingRows) ? existingRows : []).filter((row) => {
+    const key = dashboardRowDateKey(row);
+    return !key || key < from || key > to;
+  });
+  return mergeDashboardRows(outsideFetchedWindow, incomingRows);
+}
+
+function enrichAnalyticsRunsFromKhodRows(accountId, rows) {
+  if (!Array.isArray(rows) || rows.length === 0) return 0;
+
+  const khodMap = new Map();
+  for (const row of rows) {
+    const key = khodRowKey(row);
+    if (key) khodMap.set(key, row);
+  }
+  if (khodMap.size === 0) return 0;
+
+  const storedRuns = analyticsStore.get("runs", []);
+  let changed = 0;
+  const accountsById = getStoredAccountsMap();
+  const runs = storedRuns.map(run => normalizeAnalyticsRun(run, accountsById)).map((run) => {
+    if (accountId && run.accountId !== accountId) return run;
+    if (!Array.isArray(run.orders) || run.orders.length === 0) return run;
+
+    let runChanged = false;
+    const orders = run.orders.map((order) => {
+      const khodRow = khodMap.get(analyticsOrderKey(order));
+      if (!khodRow) return order;
+      const merged = mergeKhodRowIntoOrder(order, khodRow);
+      if (JSON.stringify(merged) !== JSON.stringify(order)) {
+        runChanged = true;
+        changed++;
+      }
+      return merged;
+    });
+
+    return runChanged ? { ...run, orders } : run;
+  });
+
+  if (changed > 0) {
+    analyticsStore.set("runs", runs);
+    invalidateAnalyticsRunsCache();
+  }
+  return changed;
+}
+
+function normalizeKhodSnapshotEntries(entries) {
+  if (!Array.isArray(entries) || entries.length === 0) return [];
+  return entries.map((entry) => {
+    if (!Array.isArray(entry) || entry.length < 2) return null;
+    const key = String(entry[0] || "");
+    const parts = key.split("|");
+    const row = entry[1] || {};
+    return {
+      ...row,
+      phone: parts[0] || row.phone || row.phone1 || row.phone2 || "",
+      sku: parts[1] || row.sku || row.productSku || "",
+    };
+  }).filter(Boolean);
+}
+
+function enrichOrdersFromKhodRows(orders, khodRows) {
+  if (!Array.isArray(orders) || orders.length === 0 || !Array.isArray(khodRows) || khodRows.length === 0) {
+    return { orders: Array.isArray(orders) ? orders : [], changed: 0 };
+  }
+  const khodMap = new Map();
+  for (const row of khodRows) {
+    const key = khodRowKey(row);
+    if (key) khodMap.set(key, row);
+  }
+  if (khodMap.size === 0) return { orders, changed: 0 };
+
+  let changed = 0;
+  const enriched = orders.map((order) => {
+    const khodRow = khodMap.get(analyticsOrderKey(order));
+    if (!khodRow) return order;
+    const merged = mergeKhodRowIntoOrder(order, khodRow);
+    if (JSON.stringify(merged) !== JSON.stringify(order)) changed++;
+    return merged;
+  });
+  return { orders: enriched, changed };
+}
+
+function isOperationsSuiteEnabled() {
+  return licenseStore.get("analyticsEnabled", true) !== false ||
+    licenseStore.get("operationsEnabled", true) !== false;
+}
+
+function isReportingDataEnabled() {
+  return isOperationsSuiteEnabled() || licenseStore.get("dashboardEnabled", false) === true;
+}
+
+function saveDashboardSnapshotRows(accountId, data, source) {
+  if (!accountId || !data || !Array.isArray(data.snapshot)) return 0;
+  const rows = data.snapshot || [];
+  const accounts = dashboardStore.get("accounts", {});
+  if (!accounts[accountId]) accounts[accountId] = {};
+  const rangeFrom = data.dateFrom || "";
+  const rangeTo = data.dateTo || "";
+  accounts[accountId].snapshot = replaceDashboardRowsInRange(accounts[accountId].snapshot, rows, rangeFrom, rangeTo);
+  accounts[accountId].snapshotMonth = data.snapshotMonth || "";
+  accounts[accountId].lastFetchRange = { dateFrom: rangeFrom, dateTo: rangeTo, rows: rows.length, source: source || "bot" };
+  accounts[accountId].botSnapshotTimestamp = Date.now();
+  dashboardStore.set("accounts", accounts);
+  analyticsSnapshotSyncCacheKey = "";
+  return rows.length;
+}
+
+function syncAnalyticsFromDashboardSnapshots() {
+  const accounts = dashboardStore.get("accounts", {});
+  const cacheKey = JSON.stringify(Object.entries(accounts || {}).map(([accountId, snap]) => [
+    accountId,
+    Array.isArray(snap?.snapshot) ? snap.snapshot.length : 0,
+    snap?.updatedAt || snap?.lastUpdatedAt || snap?.timestamp || "",
+  ]));
+  if (cacheKey && cacheKey === analyticsSnapshotSyncCacheKey) return 0;
+  let total = 0;
+  for (const [accountId, snap] of Object.entries(accounts || {})) {
+    total += enrichAnalyticsRunsFromKhodRows(accountId, snap?.snapshot || []);
+  }
+  analyticsSnapshotSyncCacheKey = cacheKey;
+  if (total > 0) console.log(`[Analytics] Synced ${total} stored orders from dashboard snapshots`);
+  return total;
+}
+
 // ══════════════════════════════════════════════════════
 // LICENSE — server-only, random key, auto device lock
 // Format: KHOD-XXXX-XXXX-XXXX-XXXX
 // ══════════════════════════════════════════════════════
+// Short-lived in-memory cache — shared by isLicenseValid() (auto-run timer)
+// and the check-license IPC handler to prevent redundant Supabase calls.
+// Busted by submit-license and clear-reset-flag.
+let _licenseCache = null;
+let _licenseCacheAt = 0;
+const LICENSE_CACHE_TTL_MS = 60 * 1000; // 60 seconds
+
 function isValidKeyFormat(key) {
   return /^KHOD-[A-Z0-9]{4}-[A-Z0-9]{4}-[A-Z0-9]{4}-[A-Z0-9]{4}$/.test(key.trim().toUpperCase());
 }
@@ -110,16 +651,23 @@ function isValidKeyFormat(key) {
 async function isLicenseValid() {
   const key = licenseStore.get("licenseKey", "");
   if (!key) return false;
+  if (_licenseCache && (Date.now() - _licenseCacheAt) < LICENSE_CACHE_TTL_MS) {
+    return _licenseCache.valid === true;
+  }
   try {
-    const res = await supabaseRequest("GET",
-      `/rest/v1/licenses?license_key=eq.${encodeURIComponent(key)}&select=revoked,device_id,expires_at`, null);
-    if (!res.data || !Array.isArray(res.data) || !res.data.length) return false;
-    const r = res.data[0];
-    if (r.revoked) return false;
-    if (r.expires_at && new Date(r.expires_at) < new Date()) return false;
-    if (r.device_id && r.device_id !== getDeviceFingerprint()) return false;
+    const r = await supabaseRpc("khod_check_license_with_identity", {
+      p_license_key:    key,
+      p_machine_uuid:   _getOrCreateMachineUUID(),
+      p_device_id:      getDeviceFingerprint(),
+      p_account_idents: _buildAccountIdents(),
+    });
+    if (!r || !r.valid) return false;
+    if (r.force_flush) _handleForceFlush();
+    _saveLastValidResult({ valid: true, key });
     return true;
-  } catch { return !!key; } // offline: trust local
+  } catch {
+    return !!_getOfflineGraceResult();
+  }
 }
 
 // ════════════════════════════════════════
@@ -163,7 +711,7 @@ function createWindow() {
   const bgColor = savedTheme === "light" ? "#f0f2f7" : "#0f1117";
 
   mainWindow = new BrowserWindow({
-    width: 1100, height: 750, minWidth: 900, minHeight: 600,
+    width: 1100, height: 750, minWidth: 760, minHeight: 560,
     frame: false, titleBarStyle: "hidden",
     webPreferences: {
       preload: path.join(__dirname, "preload.js"),
@@ -176,8 +724,16 @@ function createWindow() {
     },
     backgroundColor: bgColor, icon: getIconPath(), show: false,
   });
+  monitoring.monitorWindow(mainWindow, "main");
+  mainWindow.webContents.on("preload-error", (_event, preloadPath, error) => {
+    log.error("[Preload] preload-error:", preloadPath, error && error.stack ? error.stack : error);
+    monitoring.captureException(error, { operation: "preload.error", extra: { preloadPath } });
+  });
   mainWindow.loadFile(path.join(__dirname, "../renderer/index.html"));
   mainWindow.once("ready-to-show", () => {
+    if (!store.get("autoRun", false)) {
+      mainWindow.maximize();
+    }
     mainWindow.show();
     if (store.get("autoRun", false)) setTimeout(() => mainWindow.minimize(), 150);
     else mainWindow.focus();
@@ -254,9 +810,118 @@ function clearAutoRun() {
   updateTrayMenu();
 }
 
-app.whenReady().then(() => { createWindow(); createTray(); autoRunEnabled = store.get("autoRun", false); if (autoRunEnabled) scheduleAutoRun(); });
+// ── Analytics: auto-purge old runs on startup ──────────────────────────────
+function purgeOldAnalyticsRuns(daysToKeep = 30) {
+  const runs = analyticsStore.get("runs", []);
+  const cutoff = Date.now() - (daysToKeep * 24 * 60 * 60 * 1000);
+  const filtered = runs.filter(r => r.runTimestamp >= cutoff);
+  if (filtered.length < runs.length) {
+    analyticsStore.set("runs", filtered);
+    invalidateAnalyticsRunsCache();
+    log.info(`[Analytics] Purged ${runs.length - filtered.length} old runs (>${daysToKeep}d)`);
+  }
+}
+
+app.whenReady().then(() => {
+  createWindow();
+  createTray();
+  autoRunEnabled = store.get("autoRun", false);
+  if (autoRunEnabled) scheduleAutoRun();
+  purgeOldAnalyticsRuns(store.get("analyticsPurgeDays", 30));
+
+  if (app.isPackaged) {
+    setTimeout(() => {
+      log.info("[AutoUpdate] Startup auto-update check triggered (3s delay)");
+      autoUpdater.checkForUpdates().catch(err => {
+        log.error("[AutoUpdate] Startup checkForUpdates failed:", err.message);
+        monitoring.captureException(err, { operation: "autoUpdater.startupCheck" });
+      });
+    }, 3000);
+  } else {
+    log.info("[AutoUpdate] Skipping startup update check - app is not packaged");
+  }
+});
 app.on("before-quit", () => { app.isQuitting = true; });
+app.on("will-quit", (event) => {
+  if (app.__sentryFlushed) return;
+  event.preventDefault();
+  app.__sentryFlushed = true;
+  monitoring.flushMainMonitoring(2000).finally(() => app.quit());
+});
 app.on("window-all-closed", () => {});
+
+autoUpdater.on("checking-for-update", () => {
+  log.info("[AutoUpdate] Checking for update...");
+});
+
+autoUpdater.on("update-available", (info) => {
+  log.info(`[AutoUpdate] Update available - version=${info.version} releaseDate=${info.releaseDate}`);
+  if (mainWindow && !mainWindow.isDestroyed()) {
+    mainWindow.webContents.send("update-available", { version: info.version });
+  }
+});
+
+autoUpdater.on("update-not-available", (info) => {
+  log.info(`[AutoUpdate] No update available - latestVersion=${info?.version}`);
+  if (mainWindow && !mainWindow.isDestroyed()) {
+    mainWindow.webContents.send("update-not-available");
+  }
+});
+
+autoUpdater.on("download-progress", (progress) => {
+  log.info(`[AutoUpdate] Download progress - ${Math.round(progress.percent)}%`);
+  if (mainWindow && !mainWindow.isDestroyed()) {
+    mainWindow.webContents.send("update-progress", {
+      percent: Math.round(progress.percent),
+      transferred: progress.transferred,
+      total: progress.total,
+    });
+  }
+});
+
+autoUpdater.on("update-downloaded", (info) => {
+  log.info(`[AutoUpdate] Update downloaded - version=${info.version}`);
+  if (mainWindow && !mainWindow.isDestroyed()) {
+    mainWindow.webContents.send("update-downloaded");
+  }
+});
+
+autoUpdater.on("error", (err) => {
+  log.error(`[AutoUpdate] AutoUpdater error: ${err.message}`, err.stack || "");
+  monitoring.captureException(err, { operation: "autoUpdater.error" });
+  if (mainWindow && !mainWindow.isDestroyed()) {
+    mainWindow.webContents.send("update-error", { message: err.message });
+  }
+});
+
+ipcMain.handle("check-for-updates", async () => {
+  log.info("[AutoUpdate] IPC check-for-updates received");
+  if (!app.isPackaged) {
+    log.warn("[AutoUpdate] App is not packaged - skipping update check");
+    return { dev: true };
+  }
+  try {
+    await autoUpdater.checkForUpdates();
+    return { ok: true };
+  } catch (e) {
+    log.error(`[AutoUpdate] autoUpdater.checkForUpdates() threw: ${e.message}`, e.stack || "");
+    monitoring.captureException(e, { operation: "autoUpdater.manualCheck" });
+    return { ok: false, error: e.message };
+  }
+});
+
+ipcMain.handle("download-update", () => {
+  log.info("[AutoUpdate] IPC download-update received - starting download");
+  autoUpdater.downloadUpdate();
+  return { ok: true };
+});
+
+ipcMain.handle("install-update", () => {
+  log.info("[AutoUpdate] IPC install-update received - calling quitAndInstall");
+  autoUpdater.quitAndInstall(false, true);
+});
+
+ipcMain.handle("get-app-version", () => app.getVersion());
 
 // ════════════════════════════════════════
 // IPC — Window
@@ -267,88 +932,151 @@ ipcMain.on("window-close", () => mainWindow.hide());
 
 // ════════════════════════════════════════
 // IPC — License (server-based, auto device lock)
+// Handlers registered below after _checkLicenseImpl is defined.
 // ════════════════════════════════════════
 
-// Short-lived in-memory cache: prevents redundant Supabase network requests
-// when check-license is called multiple times within the same session startup.
-// The periodic 5-minute recheck and submit-license both bust this cache.
-let _licenseCache = null;
-let _licenseCacheAt = 0;
-const LICENSE_CACHE_TTL_MS = 60 * 1000; // 60 seconds
+// ════════════════════════════════════════
+// IPC — Credentials — Multi-Account Edition
+// ════════════════════════════════════════
 
-ipcMain.handle("check-license", async () => {
+const OFFLINE_GRACE_MS = 48 * 60 * 60 * 1000;
+
+function _saveLastValidResult(result) {
+  licenseStore.set("lastValidResult", result);
+  licenseStore.set("lastValidAt", Date.now());
+}
+
+function _getOfflineGraceResult() {
+  const lastValidAt = licenseStore.get("lastValidAt", 0);
+  const lastResult  = licenseStore.get("lastValidResult", null);
+  if (!lastResult || !lastResult.valid) return null;
+  const age = Date.now() - lastValidAt;
+  if (age > OFFLINE_GRACE_MS) return null;
+  const hoursLeft = Math.ceil((OFFLINE_GRACE_MS - age) / 3600000);
+  log.warn(`[License] Offline grace active - last valid ${Math.round(age / 60000)} min ago, ${hoursLeft}h left`);
+  return { ...lastResult, offline: true };
+}
+
+function _handleForceFlush() {
+  log.warn("[License] Force flush received — wiping all local data per admin request.");
+  try { store.clear(); } catch (_) {}
+  try { analyticsStore.clear(); } catch (_) {}
+  try { dashboardStore.clear(); } catch (_) {}
+  // licenseStore intentionally NOT cleared — customer can re-enter their existing key
+  // Bust in-memory caches
+  _licenseCache = null; _licenseCacheAt = 0;
+  _credCache = null; _credCacheAt = 0;
+  // Wipe bot profiles
+  const userData = app.getPath("userData");
+  try {
+    const legacy = path.join(userData, "bot-profile");
+    if (fs.existsSync(legacy)) fs.rmSync(legacy, { recursive: true, force: true });
+  } catch (_) {}
+  try {
+    fs.readdirSync(userData)
+      .filter(f => f.startsWith("bot-profile-"))
+      .forEach(f => { try { fs.rmSync(path.join(userData, f), { recursive: true, force: true }); } catch (_) {} });
+  } catch (_) {}
+  // Notify renderer — it handles navigation to the license screen
+  if (mainWindow && !mainWindow.isDestroyed()) {
+    mainWindow.webContents.send("force-flush");
+  }
+}
+
+async function _checkLicenseImpl(bustCache) {
   const key = licenseStore.get("licenseKey", "");
   if (!key) return { valid: false, reason: "No license key." };
-
-  // Serve from cache if fresh
-  if (_licenseCache && (Date.now() - _licenseCacheAt) < LICENSE_CACHE_TTL_MS) {
-    return _licenseCache;
+  if (!bustCache && _licenseCache && (Date.now() - _licenseCacheAt) < LICENSE_CACHE_TTL_MS) return _licenseCache;
+  if (bustCache) {
+    _licenseCache = null;
+    _licenseCacheAt = 0;
+    _credCache = null;
+    _credCacheAt = 0;
   }
 
-  const deviceId = getDeviceFingerprint();
   try {
-    const res = await supabaseRequest("GET",
-      `/rest/v1/licenses?license_key=eq.${encodeURIComponent(key)}&select=revoked,device_id,expires_at,customer_name`, null);
-    if (!res.data || !Array.isArray(res.data) || !res.data.length) return { valid: false, reason: "License not found on server." };
-    const r = res.data[0];
-    if (r.revoked) return { valid: false, reason: "Your license has been revoked. Contact support." };
-    if (r.expires_at && new Date(r.expires_at) < new Date()) return { valid: false, reason: `License expired on ${new Date(r.expires_at).toLocaleDateString()}. Please renew.` };
-    if (r.device_id && r.device_id !== deviceId) return { valid: false, reason: "License is linked to a different device. This can happen if you reinstalled Windows or replaced hardware. Contact support to reset the device lock." };
+    const r = await supabaseRpc("khod_check_license_with_identity", {
+      p_license_key:    key,
+      p_machine_uuid:   _getOrCreateMachineUUID(),
+      p_device_id:      getDeviceFingerprint(),
+      p_account_idents: _buildAccountIdents(),
+    });
+    if (!r || !r.valid) return { valid: false, reason: r?.reason || "License not found on server." };
+
+    // Handle force flush: wipe local data and notify renderer.
+    // Return valid:true here so the IPC caller doesn't also trigger the expired overlay —
+    // the renderer navigates to the license screen exclusively via the force-flush event.
+    if (r.force_flush) {
+      _handleForceFlush();
+      return { valid: true, forceFlush: true };
+    }
+
     const daysLeft = r.expires_at ? Math.max(0, Math.ceil((new Date(r.expires_at) - new Date()) / 86400000)) : null;
     const customerName = r.customer_name || null;
     if (customerName) licenseStore.set("customerName", customerName);
     if (daysLeft !== null) licenseStore.set("daysLeft", daysLeft);
-    const result = { valid: true, key, daysLeft, customerName };
+    licenseStore.set("allowReset", false);
+    if (r.max_accounts) licenseStore.set("maxAccounts", r.max_accounts);
+    const operationsSuiteEnabled = r.analytics_enabled !== false || r.operations_enabled !== false;
+    licenseStore.set("analyticsEnabled",  operationsSuiteEnabled);
+    licenseStore.set("operationsEnabled", operationsSuiteEnabled);
+    licenseStore.set("dashboardEnabled",  r.dashboard_enabled  === true);
+    const result = {
+      valid: true, key, daysLeft, customerName, allowReset: false,
+      analyticsEnabled:  operationsSuiteEnabled,
+      operationsEnabled: operationsSuiteEnabled,
+      dashboardEnabled:  r.dashboard_enabled  === true,
+    };
     _licenseCache = result;
     _licenseCacheAt = Date.now();
+    _saveLastValidResult(result);
     return result;
-  } catch {
-    // Offline: return cached local values — don't overwrite the in-memory cache
-    return { valid: true, key, daysLeft: licenseStore.get("daysLeft", null), customerName: licenseStore.get("customerName", null), offline: true };
+  } catch (e) {
+    log.warn("[License] License check failed:", e.message);
+    const grace = _getOfflineGraceResult();
+    if (grace) return grace;
+    return { valid: false, reason: "Cannot reach license server. Check your internet connection." };
   }
-});
+}
 
+ipcMain.handle("check-license", async () => _checkLicenseImpl(false));
+ipcMain.handle("check-license-nocache", async () => _checkLicenseImpl(true));
 ipcMain.handle("submit-license", async (_, key) => {
   const clean = key.trim().toUpperCase();
   if (!isValidKeyFormat(clean)) return { success: false, reason: "Invalid format. Keys look like: KHOD-XXXX-XXXX-XXXX-XXXX" };
-  const deviceId = getDeviceFingerprint();
   try {
-    const res = await supabaseRequest("GET",
-      `/rest/v1/licenses?license_key=eq.${encodeURIComponent(clean)}&select=license_key,revoked,device_id,expires_at`, null);
-    if (!res.data || !Array.isArray(res.data) || !res.data.length) return { success: false, reason: "License key not found. Contact support." };
-    const r = res.data[0];
-    if (r.revoked) return { success: false, reason: "This license has been revoked. Contact support." };
-    if (r.expires_at && new Date(r.expires_at) < new Date()) return { success: false, reason: `This license expired on ${new Date(r.expires_at).toLocaleDateString()}. Please renew.` };
-    if (r.device_id && r.device_id !== deviceId) return { success: false, reason: "This license is already activated on a different device. This can happen if you reinstalled Windows or replaced hardware. Contact support to reset the device lock." };
-    if (!r.device_id) {
-      await supabaseRequest("PATCH", `/rest/v1/licenses?license_key=eq.${encodeURIComponent(clean)}`,
-        { device_id: deviceId, activated_at: new Date().toISOString() });
-    }
+    const r = await supabaseRpc("khod_check_license_with_identity", {
+      p_license_key:    clean,
+      p_machine_uuid:   _getOrCreateMachineUUID(),
+      p_device_id:      getDeviceFingerprint(),
+      p_account_idents: _buildAccountIdents(),
+    });
+    if (!r || !r.valid) return { success: false, reason: r?.reason || "License key not found. Contact support." };
     const daysLeft = r.expires_at ? Math.max(0, Math.ceil((new Date(r.expires_at) - new Date()) / 86400000)) : null;
     const customerName = r.customer_name || null;
     licenseStore.set("licenseKey", clean);
     if (customerName) licenseStore.set("customerName", customerName);
     if (daysLeft !== null) licenseStore.set("daysLeft", daysLeft);
-    // Bust the in-memory cache so the next check-license hits the server fresh
+    if (r.max_accounts) licenseStore.set("maxAccounts", r.max_accounts);
+    const operationsSuiteEnabled = r.analytics_enabled !== false || r.operations_enabled !== false;
+    licenseStore.set("analyticsEnabled",  operationsSuiteEnabled);
+    licenseStore.set("operationsEnabled", operationsSuiteEnabled);
+    licenseStore.set("dashboardEnabled",  r.dashboard_enabled  === true);
     _licenseCache = null;
     _licenseCacheAt = 0;
     return { success: true, daysLeft, customerName };
-  } catch { return { success: false, reason: "Cannot reach server. Check your internet connection." }; }
+  } catch {
+    return { success: false, reason: "Cannot reach server. Check your internet connection." };
+  }
 });
-
-// ════════════════════════════════════════
-// IPC — Credentials — Multi-Account Edition
-// ════════════════════════════════════════
 
 // Helper: get max accounts allowed by this license
 async function getMaxAccounts() {
   const key = licenseStore.get("licenseKey", "");
   if (!key) return 1;
   try {
-    const res = await supabaseRequest("GET",
-      `/rest/v1/licenses?license_key=eq.${encodeURIComponent(key)}&select=max_accounts`, null);
-    if (res.data && res.data[0] && res.data[0].max_accounts)
-      return res.data[0].max_accounts;
+    const res = await supabaseRpc("khod_get_max_accounts", { p_license_key: key });
+    if (res && res.max_accounts) return res.max_accounts;
   } catch {}
   return licenseStore.get("maxAccounts", 1);
 }
@@ -376,12 +1104,11 @@ ipcMain.handle("get-credentials", async () => {
   const licKey = licenseStore.get("licenseKey", "");
   if (licKey) {
     try {
-      const res = await supabaseRequest("GET",
-        `/rest/v1/license_accounts?license_key=eq.${encodeURIComponent(licKey)}&select=account_hash,unlocked`, null);
-      if (res.data && Array.isArray(res.data)) {
-        lockedHashes = res.data.filter(r => !r.unlocked).map(r => r.account_hash);
+      const rows = await supabaseRpc("khod_get_license_accounts", { p_license_key: licKey });
+      if (Array.isArray(rows)) {
+        lockedHashes = rows.filter(r => !r.unlocked).map(r => r.account_hash);
         // Update local cache of unlocked accounts
-        const serverUnlocked = res.data.filter(r => r.unlocked).map(r => r.account_hash);
+        const serverUnlocked = rows.filter(r => r.unlocked).map(r => r.account_hash);
         unlockedAccountIds = accounts
           .filter(a => serverUnlocked.includes(accountHash(a)))
           .map(a => a.id);
@@ -390,7 +1117,7 @@ ipcMain.handle("get-credentials", async () => {
         // If DB returned zero rows but local accounts exist with credentials,
         // it means admin used "Clear All Slots" — treat all existing accounts as locked
         // so they can't be edited until admin explicitly unlocks them.
-        if (res.data.length === 0 && accounts.length > 0) {
+        if (rows.length === 0 && accounts.length > 0) {
           lockedHashes = accounts.map(a => accountHash(a));
           unlockedAccountIds = [];
           store.set("unlockedAccountIds", []);
@@ -410,15 +1137,20 @@ ipcMain.handle("get-credentials", async () => {
   });
 
   const result = {
-    hasCredentials:  accountsWithStatus.length > 0 || !!legacyEmail,
-    accounts:        accountsWithStatus,
+    hasCredentials:   accountsWithStatus.length > 0 || !!legacyEmail,
+    accounts:         accountsWithStatus,
     maxAccounts,
-    easyEmail:       store.get("easyEmail",       ""),
-    easyStore:       store.get("easyStore",       ""),
-    khodEmail:       store.get("khodEmail",       ""),
-    autoRun:         store.get("autoRun",         false),
-    autoRunInterval: store.get("autoRunInterval", 30),
-    launchMinimized: store.get("launchMinimized", false),
+    analyticsEnabled:  licenseStore.get("analyticsEnabled",  true),
+    operationsEnabled: licenseStore.get("operationsEnabled", true),
+    dashboardEnabled:  licenseStore.get("dashboardEnabled",  false),
+    easyEmail:        store.get("easyEmail",       ""),
+    easyStore:        store.get("easyStore",       ""),
+    khodEmail:        store.get("khodEmail",       ""),
+    khodCountry:      store.get("khodCountry",     "sa"),
+    autoRun:          store.get("autoRun",         false),
+    autoRunInterval:  store.get("autoRunInterval", 30),
+    autoRunAccountIds: store.get("autoRunAccountIds", []),
+    launchMinimized:  store.get("launchMinimized", false),
   };
   _credCache = result;
   _credCacheAt = Date.now();
@@ -432,6 +1164,8 @@ ipcMain.handle("save-credentials", async (_, creds) => {
   store.set("easyStore",    creds.easyStore    || "");
   store.set("khodEmail",    creds.khodEmail    || "");
   store.set("khodPassword", creds.khodPassword || "");
+  store.set("khodCountry",  creds.khodCountry  || "sa");
+  invalidateAnalyticsRunsCache();
   return { success: true };
 });
 
@@ -443,12 +1177,14 @@ ipcMain.handle("save-all-accounts", async (_, accounts) => {
   if (accounts.length > maxAccounts)
     return { success: false, reason: "limit_reached" };
 
+  if (accounts.some(a => !(a.easyStore || "").trim())) {
+    return { success: false, reason: "easy_store_required" };
+  }
+
   // ── Per-account lock check via license_accounts table ──
   if (licKey) {
     try {
-      const res = await supabaseRequest("GET",
-        `/rest/v1/license_accounts?license_key=eq.${encodeURIComponent(licKey)}&select=account_hash,unlocked`, null);
-      const dbRows      = res.data || [];
+      const dbRows      = await supabaseRpc("khod_get_license_accounts", { p_license_key: licKey }) || [];
       const dbHashes    = dbRows.map(r => r.account_hash);
 
       // Build a map of accountId → old hash using the CURRENTLY stored accounts
@@ -474,11 +1210,16 @@ ipcMain.handle("save-all-accounts", async (_, accounts) => {
           // Server-side guard: reject the edit if the account is still locked
           if (!wasUnlocked) return { success: false, reason: "account_locked" };
           // Delete old hash row
-          await supabaseRequest("DELETE",
-            `/rest/v1/license_accounts?license_key=eq.${encodeURIComponent(licKey)}&account_hash=eq.${encodeURIComponent(oldH)}`, null);
+          await supabaseRpc("khod_delete_license_account", { p_license_key: licKey, p_account_hash: oldH });
           // Insert new hash row (keep unlocked state so admin unlock survives email edits)
-          await supabaseRequest("POST", `/rest/v1/license_accounts`,
-            { license_key: licKey, account_hash: newH, unlocked: wasUnlocked });
+          const newAccObj = accounts.find(a => accountHash(a) === newH);
+          await supabaseRpc("khod_insert_license_account", {
+            p_license_key:  licKey,
+            p_account_hash: newH,
+            p_easy_email:   (newAccObj?.easyEmail || "").toLowerCase().trim() || null,
+            p_khod_email:   (newAccObj?.khodEmail || "").toLowerCase().trim() || null,
+            p_unlocked:     wasUnlocked,
+          });
           continue;
         }
 
@@ -491,8 +1232,14 @@ ipcMain.handle("save-all-accounts", async (_, accounts) => {
           const genuinelyNew = newHashes.filter(h => !dbHashes.includes(h) && !alreadyKnownOrSwapped.includes(h));
           if (dbHashes.length + genuinelyNew.length > maxAccounts)
             return { success: false, reason: "limit_reached" };
-          await supabaseRequest("POST", `/rest/v1/license_accounts`,
-            { license_key: licKey, account_hash: newH, unlocked: false });
+          const newAccForInsert = accounts.find(a => accountHash(a) === newH);
+          await supabaseRpc("khod_insert_license_account", {
+            p_license_key:  licKey,
+            p_account_hash: newH,
+            p_easy_email:   (newAccForInsert?.easyEmail || "").toLowerCase().trim() || null,
+            p_khod_email:   (newAccForInsert?.khodEmail || "").toLowerCase().trim() || null,
+            p_unlocked:     false,
+          });
         }
       }
 
@@ -506,8 +1253,7 @@ ipcMain.handle("save-all-accounts", async (_, accounts) => {
         const row = dbRows.find(r => r.account_hash === h);
         if (row && !row.unlocked) return { success: false, reason: "account_locked" };
         try {
-          await supabaseRequest("DELETE",
-            `/rest/v1/license_accounts?license_key=eq.${encodeURIComponent(licKey)}&account_hash=eq.${encodeURIComponent(h)}`, null);
+          await supabaseRpc("khod_delete_license_account", { p_license_key: licKey, p_account_hash: h });
         } catch {}
       }
     } catch {
@@ -522,11 +1268,17 @@ ipcMain.handle("save-all-accounts", async (_, accounts) => {
     easyEmail:  a.easyEmail,
     easyStore:  a.easyStore  || "",
     khodEmail:  a.khodEmail,
+    khodAffiliateCode: a.khodAffiliateCode || "",
+    khodCountry: a.khodCountry || "sa",
   }));
   store.set("accounts", safeAccounts);
 
   // Prune local unlockedAccountIds cache — remove IDs that no longer exist
   const remainingIds = accounts.map(a => a.id);
+  const savedAutoRunIds = store.get("autoRunAccountIds", []);
+  if (Array.isArray(savedAutoRunIds)) {
+    store.set("autoRunAccountIds", savedAutoRunIds.filter(id => remainingIds.includes(id)));
+  }
   const cachedUnlocked = store.get("unlockedAccountIds", []).filter(id => remainingIds.includes(id));
   store.set("unlockedAccountIds", cachedUnlocked);
 
@@ -543,12 +1295,14 @@ ipcMain.handle("save-all-accounts", async (_, accounts) => {
     store.set("easyStore",    accounts[0].easyStore    || "");
     store.set("khodEmail",    accounts[0].khodEmail    || "");
     store.set("khodPassword", accounts[0].khodPassword || store.get(`pwd_khod_${accounts[0].id}`, ""));
+    store.set("khodCountry",  accounts[0].khodCountry  || "sa");
   }
   // Cache maxAccounts locally
   licenseStore.set("maxAccounts", maxAccounts);
   // Bust credentials cache so next get-credentials reflects the new accounts
   _credCache = null;
   _credCacheAt = 0;
+  invalidateAnalyticsRunsCache();
   return { success: true };
 });
 
@@ -557,21 +1311,7 @@ ipcMain.handle("save-all-accounts", async (_, accounts) => {
 // The app polls this on startup — when admin sets unlocked=true in DB,
 // unlockedAccountIds is updated locally so UI re-enables edit button.
 ipcMain.handle("unlock-single-account", async (_, { accountId }) => {
-  const accounts = store.get("accounts", []);
-  const acc = accounts.find(a => a.id === accountId);
-  if (!acc) return { success: false, reason: "account_not_found" };
-  const licKey = licenseStore.get("licenseKey", "");
-  const hash = accountHash(acc);
-  if (licKey) {
-    try {
-      await supabaseRequest("PATCH",
-        `/rest/v1/license_accounts?license_key=eq.${encodeURIComponent(licKey)}&account_hash=eq.${encodeURIComponent(hash)}`,
-        { unlocked: true });
-    } catch {}
-  }
-  const unlocked = store.get("unlockedAccountIds", []);
-  if (!unlocked.includes(accountId)) store.set("unlockedAccountIds", [...unlocked, accountId]);
-  return { success: true };
+  return { success: false, reason: "admin_only" };
 });
 
 // ── Re-lock after user saves new credentials for an account ──
@@ -583,15 +1323,32 @@ ipcMain.handle("relock-account", async (_, { accountId }) => {
   const hash = accountHash(acc);
   if (licKey) {
     try {
-      await supabaseRequest("PATCH",
-        `/rest/v1/license_accounts?license_key=eq.${encodeURIComponent(licKey)}&account_hash=eq.${encodeURIComponent(hash)}`,
-        { unlocked: false });
+      await supabaseRpc("khod_set_license_account_unlocked", {
+        p_license_key: licKey,
+        p_account_hash: hash,
+        p_unlocked: false,
+      });
     } catch {}
   }
   const unlocked = store.get("unlockedAccountIds", []).filter(id => id !== accountId);
   store.set("unlockedAccountIds", unlocked);
   return { success: true };
 });
+
+function bindKhodAffiliateCode(accountId, code) {
+  const cleanCode = String(code || "").trim();
+  if (!accountId || !cleanCode || accountId === "__single__" || accountId === "legacy") return;
+  const accounts = store.get("accounts", []) || [];
+  const idx = accounts.findIndex(a => a.id === accountId);
+  if (idx < 0) return;
+  const current = String(accounts[idx].khodAffiliateCode || "").trim();
+  if (current && current === cleanCode) return;
+  if (current && current !== cleanCode) return;
+  accounts[idx] = { ...accounts[idx], khodAffiliateCode: cleanCode };
+  store.set("accounts", accounts);
+  _credCache = null;
+  _credCacheAt = 0;
+}
 ipcMain.handle("get-settings", () => ({
   theme: store.get("theme", "dark"),
   lang:  store.get("lang",  "ar"),
@@ -605,6 +1362,13 @@ ipcMain.handle("save-settings", (_, { theme, lang }) => {
 ipcMain.handle("open-folder", (_, p) => { shell.openPath(p); return true; });
 ipcMain.handle("set-auto-run", (_, v) => { autoRunEnabled = v; store.set("autoRun", v); if (v) scheduleAutoRun(); else clearAutoRun(); return true; });
 ipcMain.handle("set-auto-run-interval", (_, m) => { store.set("autoRunInterval", m); if (autoRunEnabled) scheduleAutoRun(); return true; });
+ipcMain.handle("set-auto-run-accounts", (_, ids) => {
+  const accounts = store.get("accounts", []) || [];
+  const validIds = accounts.map(a => a.id);
+  const selected = Array.isArray(ids) ? ids.filter(id => validIds.includes(id)) : [];
+  store.set("autoRunAccountIds", selected);
+  return selected;
+});
 ipcMain.handle("get-auto-run-progress", () => getAutoRunProgress());
 ipcMain.handle("set-launch-minimized", (_, v) => { store.set("launchMinimized", v); return true; });
 
@@ -617,12 +1381,718 @@ ipcMain.on("kill-bot", () => {
   currentBotChild = null; botChildren = []; botRunning = false;
 });
 
+// ── Analytics IPC Handlers ─────────────────────────────────────────────────
+
+ipcMain.handle("save-run-analytics", async (_, payload) => {
+  try {
+    // Extract khodSnapshot before storing (don't persist it — it's only for enrichment)
+    const { khodSnapshot, khodDashboardSnapshot, buffer, ...rawRunData } = payload;
+    if ((!Array.isArray(rawRunData.orders) || rawRunData.orders.length === 0) && buffer) {
+      rawRunData.orders = parseOrderRowsFromOutputBuffer(buffer);
+    }
+    const runData = normalizeAnalyticsRun(rawRunData);
+
+    const dashboardRowsSaved = licenseStore.get("dashboardEnabled", false) === true
+      ? saveDashboardSnapshotRows(runData.accountId, khodDashboardSnapshot, "bot-run")
+      : 0;
+    const runs = analyticsStore.get("runs", []);
+    const alreadyExists = runs.some(r => r.runId === runData.runId);
+    if (alreadyExists) return { ok: true, duplicate: true, dashboardRowsSaved };
+
+    // ── Enrichment pass: update previous stored runs with current Khod statuses ──
+    // On every new bot run, we get a fresh Khod export. Any order from a previous run
+    // whose phone+SKU now appears in the Khod sheet gets its status/amounts updated.
+    // This is how "Under processing" → "Delivered" / "Failed" transitions happen.
+    let enrichedCount = 0;
+    const khodRows = normalizeKhodSnapshotEntries(khodSnapshot?.entries);
+    if (khodRows.length) {
+      const currentRunMerge = enrichOrdersFromKhodRows(runData.orders, khodRows);
+      runData.orders = currentRunMerge.orders;
+      enrichedCount += currentRunMerge.changed;
+
+      for (const run of runs) {
+        if (runData.accountId && run.accountId && run.accountId !== runData.accountId) continue;
+        if (!Array.isArray(run.orders)) continue;
+        const merged = enrichOrdersFromKhodRows(run.orders, khodRows);
+        if (merged.changed > 0) {
+          run.orders = merged.orders;
+          enrichedCount += merged.changed;
+        }
+      }
+      if (enrichedCount > 0) {
+        console.log(`[Analytics] Enriched ${enrichedCount} orders from Khod snapshot`);
+      }
+    }
+
+    runs.push(runData);
+    analyticsStore.set("runs", runs);
+    invalidateAnalyticsRunsCache();
+    return { ok: true, enrichedCount, dashboardRowsSaved };
+  } catch (err) {
+    console.error("[Analytics] save-run-analytics error:", err.message);
+    monitoring.captureException(err, { operation: "analytics.saveRun", extra: { runId: payload && payload.runId } });
+    return { ok: false, error: err.message };
+  }
+});
+
+ipcMain.handle("get-analytics-runs", async (_, { dateFrom, dateTo, accountId } = {}) => {
+  try {
+    syncAnalyticsFromDashboardSnapshots();
+    if (!analyticsRunsCache || analyticsRunsCacheDirty) {
+      const storedRuns = analyticsStore.get("runs", []);
+      const accountsById = getStoredAccountsMap();
+      let dirty = false;
+      analyticsRunsCache = storedRuns.map(run => {
+        const n = normalizeAnalyticsRun(run, accountsById);
+        if (n.accountId !== run.accountId || n.accountEmail !== run.accountEmail || n.accountLabel !== run.accountLabel) dirty = true;
+        return n;
+      });
+      analyticsRunsCacheDirty = false;
+      if (dirty) analyticsStore.set("runs", analyticsRunsCache);
+    }
+    let runs = analyticsRunsCache;
+    if (dateFrom) {
+      const from = new Date(dateFrom).getTime();
+      runs = runs.filter(r => r.runTimestamp >= from);
+    }
+    if (dateTo) {
+      const to = new Date(dateTo).getTime() + (86400000 - 1);
+      runs = runs.filter(r => r.runTimestamp <= to);
+    }
+    if (accountId && accountId !== "__all__") {
+      runs = runs.filter(r => r.accountId === accountId || r.accountEmail === accountId);
+    }
+    return { ok: true, runs };
+  } catch (err) {
+    monitoring.captureException(err, { operation: "analytics.getRuns" });
+    return { ok: false, runs: [], error: err.message };
+  }
+});
+
+ipcMain.handle("clear-analytics-data", async () => {
+  try {
+    analyticsStore.set("runs", []);
+    invalidateAnalyticsRunsCache();
+    return { ok: true };
+  } catch (err) {
+    monitoring.captureException(err, { operation: "analytics.clear" });
+    return { ok: false, error: err.message };
+  }
+});
+
+ipcMain.handle("get-analytics-settings", async () => ({
+  minutesPerOrder: store.get("analyticsMinutesPerOrder", 5),
+  purgeDays:       store.get("analyticsPurgeDays",       30),
+  defaultDate:     store.get("analyticsDefaultDate",     "today"),
+  defaultAccount:  store.get("analyticsDefaultAccount",  ""),
+  showMissed:      store.get("analyticsShowMissed",      true),
+  showInsights:    store.get("analyticsShowInsights",    true),
+}));
+
+ipcMain.handle("save-analytics-settings", async (_, { minutesPerOrder, purgeDays, defaultDate, defaultAccount, showMissed, showInsights }) => {
+  if (minutesPerOrder != null) store.set("analyticsMinutesPerOrder", minutesPerOrder);
+  if (purgeDays       != null) store.set("analyticsPurgeDays",       purgeDays);
+  if (defaultDate     != null) store.set("analyticsDefaultDate",     defaultDate);
+  if (defaultAccount  != null) store.set("analyticsDefaultAccount",  defaultAccount);
+  if (showMissed      != null) store.set("analyticsShowMissed",      showMissed);
+  if (showInsights    != null) store.set("analyticsShowInsights",    showInsights);
+  return { ok: true };
+});
+
+// ── Dashboard Fetch — spawn dashboard-fetch.js (Khod-only, no Easy-Orders) ──
+ipcMain.handle("run-dashboard-fetch", async (_, { accountId, dateFrom, dateTo } = {}) => {
+  if (!(await isLicenseValid())) return { success: false, error: "LICENSE_INVALID" };
+  if (!licenseStore.get("dashboardEnabled", false)) return { success: false, error: "DASHBOARD_NOT_ENABLED" };
+
+  const { fork } = require("child_process");
+  const allAccounts = store.get("accounts", null);
+  const legacyEmail = store.get("easyEmail", "");
+
+  let acc;
+  if (allAccounts && allAccounts.length > 0) {
+    if (accountId) {
+      acc = allAccounts.find(a => a.id === accountId);
+      if (!acc) return { success: false, error: `Dashboard account not found: ${accountId}` };
+    } else {
+      acc = allAccounts[0];
+    }
+  } else {
+    acc = {
+      easyEmail:    legacyEmail,
+      easyPassword: store.get("easyPassword", ""),
+      khodEmail:    store.get("khodEmail", ""),
+      khodPassword: store.get("khodPassword", ""),
+      easyStore:    store.get("easyStore", ""),
+    };
+  }
+
+  if (!acc) return { success: false, error: "No account found" };
+
+  const userData = app.getPath("userData");
+  const dashboardAccountId = accountId || acc.id || "__single__";
+  const khodEmail = acc.khodEmail || store.get("khodEmail", "");
+  const khodPassword = acc.khodPassword || (acc.id ? store.get(`pwd_khod_${acc.id}`, "") : "") || store.get("khodPassword", "");
+  if (!khodEmail || !khodPassword) {
+    const label = acc.easyEmail || acc.label || dashboardAccountId;
+    return { success: false, error: `Khod credentials missing for ${label}. Re-save this account, then retry dashboard update.` };
+  }
+  const profilePath = path.join(userData, `bot-profile${acc.id ? `-${acc.id}` : ""}`);
+  if (!fs.existsSync(profilePath)) fs.mkdirSync(profilePath, { recursive: true });
+
+  const creds = {
+    ...acc,
+    profilePath,
+    launchMinimized: store.get("launchMinimized", false),
+    khodEmail,
+    khodPassword,
+    dashboardDateFrom: dateFrom || "",
+    dashboardDateTo: dateTo || "",
+    chromePath: getCachedChromePath() || undefined,
+  };
+
+  return new Promise((resolve) => {
+    const child = fork(path.join(__dirname, "../bot/dashboard-fetch.js"), [], {
+      env: { ...process.env, BOT_CONFIG: JSON.stringify(creds) },
+      silent: true,
+      execArgv: ["--max-old-space-size=256"],
+    });
+
+    const accountLabel = acc.easyEmail || acc.label || dashboardAccountId;
+
+    child.stdout.on("data", (d) => {
+      const text = d.toString();
+      mainWindow.webContents.send("bot-log", `[Dashboard:${accountLabel}] ${text}`);
+    });
+    child.stderr.on("data", (d) => {
+      mainWindow.webContents.send("bot-log", `[Dashboard:${accountLabel}][ERR] ` + d.toString());
+    });
+
+    let resolved = false;
+    const safeResolve = (v) => { if (!resolved) { resolved = true; resolve(v); } };
+
+    child.on("message", async (msg) => {
+      if (msg.type === "dashboard-result") {
+        // Save snapshot to dashboardStore
+        const rows = msg.rows || [];
+        try {
+          const accounts = dashboardStore.get("accounts", {});
+          if (!accounts[dashboardAccountId]) accounts[dashboardAccountId] = {};
+          const rangeFrom = msg.dateFrom || dateFrom || "";
+          const rangeTo = msg.dateTo || dateTo || "";
+          const mergedRows = replaceDashboardRowsInRange(accounts[dashboardAccountId].snapshot, rows, rangeFrom, rangeTo);
+          accounts[dashboardAccountId].snapshot      = mergedRows;
+          accounts[dashboardAccountId].snapshotMonth = msg.snapshotMonth || "";
+          accounts[dashboardAccountId].lastFetchRange = { dateFrom: rangeFrom, dateTo: rangeTo, rows: rows.length };
+          accounts[dashboardAccountId].autoFetchTimestamp = Date.now();
+          dashboardStore.set("accounts", accounts);
+          console.log(`[Dashboard] Snapshot replaced ${rangeFrom || "?"}..${rangeTo || "?"} for ${dashboardAccountId}: ${rows.length} fetched, ${mergedRows.length} stored`);
+          const enriched = enrichAnalyticsRunsFromKhodRows(dashboardAccountId, rows);
+          if (enriched > 0) console.log(`[Analytics] Enriched ${enriched} stored orders from dashboard fetch`);
+        } catch (e) {
+          console.error("[Dashboard] Failed to save snapshot:", e.message);
+          monitoring.captureException(e, { operation: "dashboard.fetch.saveSnapshot", extra: { accountId: dashboardAccountId } });
+        }
+        safeResolve({ success: true, rows: rows.length, snapshotMonth: msg.snapshotMonth });
+      } else if (msg.type === "error") {
+        safeResolve({ success: false, error: msg.error });
+      } else if (msg.type === "export-timestamp") {
+        lastExportTimestamp = msg.timestamp || Date.now();
+      } else if (msg.type === "khod-restart") {
+        mainWindow.webContents.send("bot-log", `[Dashboard:${accountLabel}] Restarting export after ${msg.waitSeconds}s. Reason: ${msg.reason || "export retry"}`);
+        mainWindow.webContents.send("bot-khod-restart", { ...msg, accountId: dashboardAccountId, accountLabel });
+      } else if (msg.type === "cooldown") {
+        mainWindow.webContents.send("bot-log", `[Dashboard:${accountLabel}] Waiting for Khod export file. Attempt ${msg.attempt}/${msg.maxAttempts}.`);
+        mainWindow.webContents.send("bot-cooldown", { ...msg, accountId: dashboardAccountId, accountLabel });
+      } else if (msg.type === "session-event") {
+        if (msg.site === "khod" && msg.event === "identity-verified") {
+          bindKhodAffiliateCode(dashboardAccountId, msg.affiliateCode);
+        }
+        mainWindow.webContents.send("bot-session-event", { ...msg, accountId: dashboardAccountId, accountLabel });
+      }
+    });
+
+    child.on("error", (err) => {
+      monitoring.captureException(err, { operation: "dashboard.fetch.childProcess", extra: { accountId: dashboardAccountId } });
+      safeResolve({ success: false, error: err.message });
+    });
+    child.on("exit", (code) => {
+      if (!resolved) safeResolve({ success: false, error: `Process exited with code ${code}` });
+    });
+  });
+});
+
+// ── Dashboard IPC Handlers ─────────────────────────────────────────────────
+
+ipcMain.handle("save-dashboard-snapshot", async (_, accountId, data) => {
+  try {
+    const rows = data.snapshot || [];
+    const accounts = dashboardStore.get("accounts", {});
+    if (!accounts[accountId]) accounts[accountId] = {};
+    const rangeFrom = data.dateFrom || "";
+    const rangeTo = data.dateTo || "";
+    accounts[accountId].snapshot          = replaceDashboardRowsInRange(accounts[accountId].snapshot, rows, rangeFrom, rangeTo);
+    accounts[accountId].snapshotMonth     = data.snapshotMonth     || "";
+    accounts[accountId].lastFetchRange    = { dateFrom: rangeFrom, dateTo: rangeTo, rows: rows.length };
+    accounts[accountId].manualFetchTimestamp = Date.now();
+    dashboardStore.set("accounts", accounts);
+    analyticsSnapshotSyncCacheKey = "";
+    const enriched = enrichAnalyticsRunsFromKhodRows(accountId, rows);
+    return { ok: true, enriched };
+  } catch (err) {
+    console.error("[Dashboard] save-dashboard-snapshot error:", err.message);
+    monitoring.captureException(err, { operation: "dashboard.saveSnapshot", extra: { accountId } });
+    return { ok: false, error: err.message };
+  }
+});
+
+ipcMain.handle("get-dashboard-snapshot", async (_, accountId) => {
+  try {
+    const accounts = dashboardStore.get("accounts", {});
+    if (accountId && accountId !== "__all__") {
+      return { ok: true, data: accounts[accountId] || null };
+    }
+    const allowedIds = (store.get("accounts", []) || []).map((account) => account && account.id).filter(Boolean);
+    if (allowedIds.length) {
+      const filtered = {};
+      allowedIds.forEach((id) => {
+        if (accounts[id]) filtered[id] = accounts[id];
+      });
+      return { ok: true, data: filtered };
+    }
+    // Return all accounts
+    return { ok: true, data: accounts };
+  } catch (err) {
+    monitoring.captureException(err, { operation: "dashboard.getSnapshot", extra: { accountId } });
+    return { ok: false, data: null, error: err.message };
+  }
+});
+
+ipcMain.handle("get-dashboard-auto-ts", async (_, accountId) => {
+  try {
+    const accounts = dashboardStore.get("accounts", {});
+    const ts = accounts[accountId]?.autoFetchTimestamp || null;
+    return { ok: true, ts };
+  } catch (err) {
+    monitoring.captureException(err, { operation: "dashboard.getAutoTimestamp", extra: { accountId } });
+    return { ok: false, ts: null, error: err.message };
+  }
+});
+
+ipcMain.handle("set-dashboard-auto-ts", async (_, accountId, ts) => {
+  try {
+    const accounts = dashboardStore.get("accounts", {});
+    if (!accounts[accountId]) accounts[accountId] = {};
+    accounts[accountId].autoFetchTimestamp = ts;
+    dashboardStore.set("accounts", accounts);
+    return { ok: true };
+  } catch (err) {
+    monitoring.captureException(err, { operation: "dashboard.setAutoTimestamp", extra: { accountId } });
+    return { ok: false, error: err.message };
+  }
+});
+
+ipcMain.handle("clear-dashboard-data", async () => {
+  try {
+    dashboardStore.set("accounts", {});
+    analyticsSnapshotSyncCacheKey = "";
+    return { ok: true };
+  } catch (err) {
+    monitoring.captureException(err, { operation: "dashboard.clear" });
+    return { ok: false, error: err.message };
+  }
+});
+
+ipcMain.handle("get-dashboard-enabled", async () => {
+  return licenseStore.get("dashboardEnabled", false);
+});
+
+function marketingAccountKey(accountId, allowAll = false) {
+  const clean = String(accountId || "").trim();
+  return clean && (allowAll || clean !== "__all__") ? clean : "";
+}
+
+function marketingStableAccountKey(accountId) {
+  const clean = String(accountId || "").trim();
+  if (!clean || clean === "__all__") return clean;
+  const account = getStoredAccountById(clean);
+  const stable = account && (account.khodEmail || account.easyEmail || account.label || "");
+  return String(stable || clean).trim().toLowerCase();
+}
+
+function getCachedMarketingStatus(accountId, platform) {
+  const accounts = dashboardStore.get("accounts", {});
+  if (accountId === "__all__") {
+    const individualStatuses = Object.keys(accounts)
+      .filter((id) => id !== "__all__" && id !== "__connection__")
+      .map((id) => accounts[id]?.marketing?.[platform])
+      .filter(Boolean);
+
+    if (individualStatuses.length === 0) return null;
+
+    const connectedStatuses = individualStatuses.filter((s) => s.status === "connected");
+    if (connectedStatuses.length === 0) {
+      return {
+        platform,
+        status: "disconnected",
+        lastSyncAt: null,
+        summary: null,
+        linkedAccounts: [],
+        mappings: {},
+      };
+    }
+
+    const allSummary = connectedStatuses.reduce((summary, s) => {
+      const source = s.summary || {};
+      summary.adSpend += Number(source.adSpend || 0);
+      summary.impressions += Number(source.impressions || 0);
+      summary.clicks += Number(source.clicks || 0);
+      summary.campaignCount += Number(source.campaignCount || 0);
+      summary.rowCount += Number(source.rowCount || 0);
+      summary.sourceBreakdown = summary.sourceBreakdown.concat(Array.isArray(source.sourceBreakdown) ? source.sourceBreakdown : []);
+      summary.campaignBreakdown = summary.campaignBreakdown.concat(Array.isArray(source.campaignBreakdown) ? source.campaignBreakdown : []);
+      return summary;
+    }, {
+      adSpend: 0,
+      currency: "SAR",
+      impressions: 0,
+      clicks: 0,
+      campaignCount: 0,
+      rowCount: 0,
+      dateFrom: "",
+      dateTo: "",
+      sourceBreakdown: [],
+      campaignBreakdown: [],
+    });
+
+    allSummary.adSpend = Number(allSummary.adSpend.toFixed(2));
+
+    let latestSyncAt = null;
+    let minDateFrom = "";
+    let maxDateTo = "";
+    connectedStatuses.forEach((s) => {
+      if (s.lastSyncAt) {
+        if (!latestSyncAt || new Date(s.lastSyncAt) > new Date(latestSyncAt)) {
+          latestSyncAt = s.lastSyncAt;
+        }
+      }
+      const source = s.summary || {};
+      if (source.dateFrom) {
+        if (!minDateFrom || new Date(source.dateFrom) < new Date(minDateFrom)) {
+          minDateFrom = source.dateFrom;
+        }
+      }
+      if (source.dateTo) {
+        if (!maxDateTo || new Date(source.dateTo) > new Date(maxDateTo)) {
+          maxDateTo = source.dateTo;
+        }
+      }
+    });
+
+    allSummary.dateFrom = minDateFrom;
+    allSummary.dateTo = maxDateTo;
+
+    const linkedAccountsMap = new Map();
+    const combinedMappings = {};
+    individualStatuses.forEach((s) => {
+      if (Array.isArray(s.linkedAccounts)) {
+        s.linkedAccounts.forEach((acc) => {
+          if (acc && acc.id) linkedAccountsMap.set(acc.id, acc);
+        });
+      }
+      if (s.mappings) {
+        Object.assign(combinedMappings, s.mappings);
+      }
+    });
+
+    return {
+      platform,
+      status: "connected",
+      lastSyncAt: latestSyncAt,
+      summary: allSummary,
+      sourceAccountName: `${connectedStatuses.length} synced accounts`,
+      sourceAccountId: "",
+      linkedAccounts: Array.from(linkedAccountsMap.values()),
+      mappings: combinedMappings,
+    };
+  }
+
+  const account = accounts[accountId] || {};
+  const marketing = account.marketing || {};
+  return marketing[platform] || null;
+}
+
+function saveCachedMarketingStatus(accountId, platform, status) {
+  if (!accountId || !status) return;
+  const accounts = dashboardStore.get("accounts", {});
+  if (!accounts[accountId]) accounts[accountId] = {};
+  if (!accounts[accountId].marketing) accounts[accountId].marketing = {};
+  accounts[accountId].marketing[platform] = {
+    platform,
+    status: status.status || "disconnected",
+    lastSyncAt: status.lastSyncAt || null,
+    summary: status.summary || null,
+    sourceAccountName: status.sourceAccountName || "",
+    sourceAccountId: status.sourceAccountId || "",
+    linkedAccounts: Array.isArray(status.linkedAccounts) ? status.linkedAccounts : [],
+    diagnostics: status.diagnostics || null,
+    reconnectRequired: !!status.reconnectRequired,
+    error: status.error || "",
+    mappings: status.mappings || {},
+  };
+  dashboardStore.set("accounts", accounts);
+}
+
+async function callMarketingBackend(action, accountId, platform, range) {
+  const dashboardAccountId = marketingAccountKey(accountId, action !== "sync");
+  if (!dashboardAccountId) return { ok: false, error: "SELECT_SINGLE_ACCOUNT" };
+  if (platform !== "tiktok") return { ok: false, error: "PLATFORM_NOT_AVAILABLE" };
+  if (!(await isLicenseValid())) return { ok: false, error: "LICENSE_INVALID" };
+
+  const licenseKey = licenseStore.get("licenseKey", "");
+  const account = getStoredAccountById(dashboardAccountId);
+  const dashboardAccountKey = marketingStableAccountKey(dashboardAccountId);
+  log.info("[Marketing][Main] request", {
+    action,
+    platform,
+    dashboardAccountId,
+    dashboardAccountKey,
+    sourceAccountId: range && range.sourceAccountId ? range.sourceAccountId : "",
+    sourceAccountIds: range && Array.isArray(range.sourceAccountIds) ? range.sourceAccountIds : [],
+    sourceAccounts: range && Array.isArray(range.sourceAccounts) ? range.sourceAccounts : [],
+    mappings: range && Array.isArray(range.mappings) ? range.mappings : [],
+    targetCurrency: range && range.targetCurrency ? range.targetCurrency : "",
+    egpRate: range && range.egpRate ? range.egpRate : null,
+    accountSettings: range && Array.isArray(range.accountSettings) ? range.accountSettings : [],
+    dateFrom: range && range.dateFrom ? range.dateFrom : "",
+    dateTo: range && range.dateTo ? range.dateTo : "",
+  });
+  const result = await supabaseFunctionRequest("windsor-marketing", {
+    action,
+    platform,
+    dashboardAccountId,
+    dashboardAccountKey,
+    dashboardAccountLabel: account ? (account.easyEmail || account.label || dashboardAccountId) : dashboardAccountId,
+    sourceAccountId: range && range.sourceAccountId ? range.sourceAccountId : "",
+    sourceAccountIds: range && Array.isArray(range.sourceAccountIds) ? range.sourceAccountIds : [],
+    sourceAccounts: range && Array.isArray(range.sourceAccounts) ? range.sourceAccounts : [],
+    mappings: range && Array.isArray(range.mappings) ? range.mappings : [],
+    targetCurrency: range && range.targetCurrency ? range.targetCurrency : "",
+    egpRate: range && range.egpRate ? range.egpRate : null,
+    accountSettings: range && Array.isArray(range.accountSettings) ? range.accountSettings : [],
+    dateFrom: range && range.dateFrom ? range.dateFrom : "",
+    dateTo: range && range.dateTo ? range.dateTo : "",
+    identity: {
+      licenseKey,
+      machineUuid: _getOrCreateMachineUUID(),
+      deviceId: getDeviceFingerprint(),
+      accountIdents: _buildAccountIdents(),
+    },
+  });
+  log.info("[Marketing][Main] response", {
+    action,
+    ok: !!(result && result.ok),
+    status: result && result.status || "",
+    error: result && result.error || "",
+    linkedAccountCount: result && result.linkedAccountCount || 0,
+    claimableAccountCount: result && Array.isArray(result.claimableAccounts) ? result.claimableAccounts.length : 0,
+    diagnostics: result && result.diagnostics || null,
+    summary: result && result.summary || null,
+  });
+  return result;
+}
+
+ipcMain.handle("get-marketing-status", async (_, accountId, platform = "tiktok") => {
+  const dashboardAccountId = marketingAccountKey(accountId, true);
+  if (!dashboardAccountId) return { ok: false, error: "SELECT_ACCOUNT" };
+  try {
+    const result = await callMarketingBackend("status", dashboardAccountId, platform);
+    if (result && result.ok) {
+      saveCachedMarketingStatus(dashboardAccountId, platform, result);
+    } else if (result && result.reconnectRequired) {
+      return result;
+    } else {
+      const cached = getCachedMarketingStatus(dashboardAccountId, platform);
+      if (cached) return { ok: true, ...cached, offline: true, error: result && result.error || "STATUS_UNAVAILABLE" };
+    }
+    return result;
+  } catch (error) {
+    log.error("[Marketing][Main] status failed", { accountId: dashboardAccountId, platform, error: error.message });
+    const cached = getCachedMarketingStatus(dashboardAccountId, platform);
+    if (cached) return { ok: true, ...cached, offline: true, error: error.message };
+    return { ok: false, error: error.message };
+  }
+});
+
+ipcMain.handle("connect-marketing-platform", async (_, accountId, platform = "tiktok") => {
+  try {
+    return await callMarketingBackend("connect", accountId, platform);
+  } catch (error) {
+    log.error("[Marketing][Main] connect failed", { accountId, platform, error: error.message });
+    return { ok: false, error: error.message };
+  }
+});
+
+ipcMain.handle("save-marketing-mapping", async (_, accountId, platform = "tiktok", sourceAccountIds = []) => {
+  const dashboardAccountId = marketingAccountKey(accountId);
+  if (!dashboardAccountId) return { ok: false, error: "SELECT_ACCOUNT_TO_MAP" };
+  try {
+    const sourceAccounts = Array.isArray(sourceAccountIds) ? sourceAccountIds.map((source) =>
+      typeof source === "string" ? { id: source } : source) : [];
+    const result = await callMarketingBackend("save_mapping", dashboardAccountId, platform, { sourceAccounts });
+    if (result && result.ok) saveCachedMarketingStatus(dashboardAccountId, platform, result);
+    return result;
+  } catch (error) {
+    log.error("[Marketing][Main] mapping save failed", { accountId: dashboardAccountId, platform, error: error.message });
+    return { ok: false, error: error.message };
+  }
+});
+
+ipcMain.handle("save-all-marketing-mappings", async (_, platform = "tiktok", mappings = []) => {
+  try {
+    return await callMarketingBackend("save_mappings", "__all__", platform, { mappings });
+  } catch (error) {
+    log.error("[Marketing][Main] all mappings save failed", { platform, error: error.message });
+    return { ok: false, error: error.message };
+  }
+});
+
+ipcMain.handle("sync-marketing-data", async (_, accountId, platform = "tiktok", range = {}) => {
+  const dashboardAccountId = marketingAccountKey(accountId);
+  if (!dashboardAccountId) return { ok: false, error: "SELECT_SINGLE_ACCOUNT" };
+  try {
+    const result = await callMarketingBackend("sync", dashboardAccountId, platform, range);
+    if (result && result.ok) saveCachedMarketingStatus(dashboardAccountId, platform, result);
+    else if (result && result.reconnectRequired) return result;
+    else {
+      const cached = getCachedMarketingStatus(dashboardAccountId, platform);
+      if (cached) return { ok: false, ...cached, error: result && result.error || "SYNC_FAILED" };
+    }
+    return result;
+  } catch (error) {
+    log.error("[Marketing][Main] sync failed", { accountId: dashboardAccountId, platform, error: error.message });
+    return { ok: false, error: error.message };
+  }
+});
+
+ipcMain.handle("sync-all-marketing-data", async (_, platform = "tiktok", range = {}) => {
+  try {
+    const result = await callMarketingBackend("sync_all", "__all__", platform, range);
+    if (result && result.ok && result.accountStatuses) {
+      Object.keys(result.accountStatuses).forEach((accountId) => {
+        saveCachedMarketingStatus(accountId, platform, result.accountStatuses[accountId]);
+      });
+      saveCachedMarketingStatus("__all__", platform, result);
+    }
+    return result;
+  } catch (error) {
+    log.error("[Marketing][Main] sync all failed", { platform, error: error.message });
+    return { ok: false, error: error.message };
+  }
+});
+
+ipcMain.handle("open-external-url", async (_, externalUrl) => {
+  try {
+    const parsed = new URL(String(externalUrl || ""));
+    if (parsed.protocol !== "https:" || parsed.hostname !== "onboard.windsor.ai") {
+      return { ok: false, error: "URL_NOT_ALLOWED" };
+    }
+    await shell.openExternal(parsed.toString());
+    return { ok: true };
+  } catch (error) {
+    return { ok: false, error: error.message };
+  }
+});
+
+ipcMain.handle("dashboard-ai-query", async (_, payload) => {
+  // [KHOD AI DEBUG] ────────────────────────────────────────────────
+  const _cmd = payload && payload.command ? String(payload.command).slice(0, 80) : "(no command)";
+  const _ctxBytes = payload && payload.context ? Buffer.byteLength(JSON.stringify(payload.context), "utf8") : 0;
+  log.info("[KhodAI] gateway state:", getAiGatewayState());
+  const _ctxKB    = (_ctxBytes / 1024).toFixed(1);
+  log.info("[KhodAI-Debug] dashboard-ai-query → command:", _cmd);
+  log.info("[KhodAI-Debug] context payload size:", _ctxKB + " KB (" + _ctxBytes + " bytes)");
+  if (_ctxBytes > 150000) {
+    log.warn("[KhodAI-Debug] ⚠️  Context is VERY LARGE (" + _ctxKB + " KB) — likely to hit Gemini input token limit!");
+  }
+  // ─────────────────────────────────────────────────────────────────
+  try {
+    const validation = validateDashboardAiPayload(payload || {});
+    if (!validation.ok) {
+      return {
+        message: validation.message || "Invalid AI request.",
+        insights: [],
+        recommendations: [],
+        forecasts: [],
+        alerts: [],
+        actions: [],
+        meta: { source: "local-guard", blocked: true, code: validation.code },
+      };
+    }
+    const _result = await askDashboardAi(payload || {});
+    // [KHOD AI DEBUG]
+    log.info("[KhodAI-Debug] AI response message:", _result && _result.message ? _result.message.slice(0, 120) : "(empty)");
+    log.info("[KhodAI-Debug] AI insights count:", _result && _result.insights ? _result.insights.length : 0);
+    if (_result && _result.insights && _result.insights.length > 0) {
+      log.info("[KhodAI-Debug] First insight:", JSON.stringify(_result.insights[0]).slice(0, 200));
+    }
+    return _result;
+  } catch (err) {
+    log.error("[KhodAI-Debug] dashboard-ai-query THREW unexpectedly:", err && err.message ? err.message : String(err));
+    monitoring.captureException(err, { operation: "dashboard.aiQuery", extra: { command: _cmd, contextBytes: _ctxBytes } });
+    return {
+      message: "AI service failed.",
+      insights: [err && err.message ? err.message : String(err)],
+      actions: [],
+    };
+  }
+});
+
+ipcMain.handle("get-ai-admin-analytics", async () => {
+  return getAiAdminAnalytics();
+});
+
+ipcMain.handle("debug-gemini-ping", async () => {
+  return debugGeminiPing();
+});
+
+// ───────────────────────────────────────────────────────────────────────────
+
+if (!app.isPackaged || process.env.SENTRY_ENABLE_TESTS === "1") {
+  ipcMain.handle("sentry-test-main-error", async () => {
+    throw new Error("SENTRY_TEST_MAIN_ERROR");
+  });
+  ipcMain.handle("sentry-test-async-rejection", async () => {
+    await Promise.reject(new Error("SENTRY_TEST_MAIN_ASYNC_REJECTION"));
+  });
+}
+
 ipcMain.handle("clear-all-data", () => {
   store.clear(); clearAutoRun();
   // licenseStore NOT cleared — device lock and key survive reset
-  const p = path.join(app.getPath("userData"), "bot-profile");
-  if (fs.existsSync(p)) fs.rmSync(p, { recursive: true, force: true });
+  // Clear all bot profiles (single legacy + all per-account profiles)
+  const userData = app.getPath("userData");
+  const legacy = path.join(userData, "bot-profile");
+  if (fs.existsSync(legacy)) fs.rmSync(legacy, { recursive: true, force: true });
+  // Also delete any per-account profiles: bot-profile-<id>
+  try {
+    fs.readdirSync(userData)
+      .filter(f => f.startsWith("bot-profile-"))
+      .forEach(f => fs.rmSync(path.join(userData, f), { recursive: true, force: true }));
+  } catch(e) {}
   return true;
+});
+
+// After a successful reset, admin must flip allow_reset back to false so the button re-locks
+ipcMain.handle("clear-reset-flag", async () => {
+  const key = licenseStore.get("licenseKey", "");
+  if (!key) return { success: false };
+  try {
+    await supabaseRpc("khod_clear_reset_flag", { p_license_key: key });
+    licenseStore.set("allowReset", false);
+    // Bust cache so next check-license reflects the change
+    _licenseCache = null; _licenseCacheAt = 0;
+    return { success: true };
+  } catch { return { success: false }; }
 });
 ipcMain.handle("get-profile-path", () => path.join(app.getPath("userData"), "bot-profile"));
 ipcMain.handle("save-output-file", async (_, { buffer, filename }) => {
@@ -647,8 +2117,33 @@ function spawnBotChild(creds) {
 
 let botChildren = []; // track all running children
 
+// ── Helper: auto-save failed orders xlsx to %APPDATA%/khod-order-bot/failed-orders/{easyEmail}/ ──
+function saveFailedOrdersFile(easyEmail, buffer) {
+  try {
+    // Sanitise the email so it's safe as a folder name (replace @ and special chars)
+    const safeEmail = (easyEmail || "unknown").replace(/[<>:"/\\|?*\x00-\x1F]/g, "_");
+    // Build timestamp: YYYY-MM-DD_HH-MM-SS (local time)
+    const now = new Date();
+    const pad = (n) => String(n).padStart(2, "0");
+    const ts = `${now.getFullYear()}-${pad(now.getMonth() + 1)}-${pad(now.getDate())}_${pad(now.getHours())}-${pad(now.getMinutes())}-${pad(now.getSeconds())}`;
+    // %APPDATA% on Windows; fallback to userData on other platforms
+    const appdata = process.env.APPDATA || app.getPath("userData");
+    const dir = path.join(appdata, "khod-order-bot", "failed-orders", safeEmail);
+    fs.mkdirSync(dir, { recursive: true });
+    const filePath = path.join(dir, `failed-${ts}.xlsx`);
+    fs.writeFileSync(filePath, Buffer.from(buffer));
+    return { dir, filePath };
+  } catch (e) {
+    console.error("[saveFailedOrdersFile] error:", e.message);
+    return { dir: "", filePath: "" };
+  }
+}
+
 ipcMain.handle("run-bot", async (_, { dateFrom, dateTo, accountIds }) => {
   if (!(await isLicenseValid())) return { success: false, error: "LICENSE_INVALID" };
+  const operationsSuiteEnabled = isOperationsSuiteEnabled();
+  const dashboardEnabled = licenseStore.get("dashboardEnabled", false) === true;
+  const reportingDataEnabled = operationsSuiteEnabled || dashboardEnabled;
 
   // ── Build account list to run ──
   const allAccounts = store.get("accounts", null);
@@ -676,6 +2171,7 @@ ipcMain.handle("run-bot", async (_, { dateFrom, dateTo, accountIds }) => {
       easyStore:    store.get("easyStore",    ""),
       khodEmail:    store.get("khodEmail",    ""),
       khodPassword: store.get("khodPassword", ""),
+      khodCountry:  store.get("khodCountry",  "sa"),
     }];
   }
 
@@ -685,8 +2181,23 @@ ipcMain.handle("run-bot", async (_, { dateFrom, dateTo, accountIds }) => {
     const profilePath = path.join(app.getPath("userData"), `bot-profile-${acc.id}`);
     if (!fs.existsSync(profilePath)) fs.mkdirSync(profilePath, { recursive: true });
 
-    const creds = { ...acc, profilePath, dateFrom, dateTo, launchMinimized: store.get("launchMinimized", false) };
+    const creds = {
+      ...acc,
+      profilePath,
+      dateFrom,
+      dateTo,
+      launchMinimized: store.get("launchMinimized", false),
+      needsSnapshot: false,
+      operationsSuiteEnabled,
+      dashboardEnabled,
+      reportingDataEnabled,
+    };
     return new Promise((resolve) => {
+      const runStartedAt = Date.now();
+      const finishTiming = () => {
+        const runEndedAt = Date.now();
+        return { runStartedAt, runEndedAt, runtimeMs: Math.max(0, runEndedAt - runStartedAt) };
+      };
       const child = spawnBotChild(creds);
       currentBotChild = child;
       botChildren = [child];
@@ -702,73 +2213,246 @@ ipcMain.handle("run-bot", async (_, { dateFrom, dateTo, accountIds }) => {
         } else { mainWindow.webContents.send("bot-log", "ERR: " + m); }
       });
       child.on("message", (msg) => {
-        if (msg.type === "result")         safeResolve({ success: true, data: msg.data });
-        if (msg.type === "error")          safeResolve({ success: false, error: msg.error });
+        if (msg.type === "result") {
+          // Auto-save failed orders to per-email folder before resolving
+          const data = msg.data || {};
+          if (data.failedOrders?.buffer && data.failedOrders.buffer.length > 0) {
+            const email = acc.easyEmail || "unknown";
+            const { dir, filePath } = saveFailedOrdersFile(email, data.failedOrders.buffer);
+            data.failedOrders.failedDir  = dir;
+            data.failedOrders.failedPath = filePath;
+          }
+          mainWindow.webContents.send("bot-run-complete");
+          safeResolve({
+            success: true,
+            data,
+            ...finishTiming(),
+            accountId: acc.id || "__single__",
+            accountEmail: acc.easyEmail || "",
+            accountLabel: acc.easyEmail || acc.label || "Account 1",
+          });
+        }
+        if (msg.type === "error") {
+          mainWindow.webContents.send("bot-run-complete");
+          safeResolve({
+            success: false,
+            error: msg.error,
+            ...finishTiming(),
+            accountId: acc.id || "__single__",
+            accountEmail: acc.easyEmail || "",
+            accountLabel: acc.easyEmail || acc.label || "Account 1",
+          });
+        }
+        if (msg.type === "export-timestamp") {
+          lastExportTimestamp = msg.timestamp;
+        }
         if (msg.type === "2fa-needed")     mainWindow.webContents.send("bot-2fa-needed");
         if (msg.type === "needs-confirm")  mainWindow.webContents.send("bot-needs-confirm");
         if (msg.type === "cooldown")       mainWindow.webContents.send("bot-cooldown", msg);
         if (msg.type === "preview")        mainWindow.webContents.send("bot-preview", msg);
-        if (msg.type === "order-progress") mainWindow.webContents.send("bot-order-progress", msg);
+        if (msg.type === "order-progress") {
+          mainWindow.webContents.send("bot-order-progress", {
+            ...msg,
+            accountId: acc.id || "__single__",
+            accountEmail: acc.easyEmail || "",
+            accountLabel: acc.easyEmail || acc.label || "Account 1",
+            accountIdx: 0,
+            totalAccounts: 1,
+          });
+        }
         if (msg.type === "khod-restart")   mainWindow.webContents.send("bot-khod-restart", msg);
+        if (msg.type === "session-event") {
+          if (msg.site === "khod" && msg.event === "identity-verified") {
+            bindKhodAffiliateCode(acc.id || "__single__", msg.affiliateCode);
+          }
+          mainWindow.webContents.send("bot-session-event", msg);
+        }
       });
-      child.on("exit", (code) => safeResolve({ success: code === 0, error: code !== 0 ? "Bot exited with code " + code : null, logs }));
+      child.on("error", (err) => {
+        monitoring.captureException(err, { operation: "bot.childProcess", extra: { accountId: acc.id || "__single__" } });
+        mainWindow.webContents.send("bot-run-complete");
+        safeResolve({
+          success: false,
+          error: err.message,
+          logs,
+          ...finishTiming(),
+          accountId: acc.id || "__single__",
+          accountEmail: acc.easyEmail || "",
+          accountLabel: acc.easyEmail || acc.label || "Account 1",
+        });
+      });
+      child.on("exit", (code) => {
+        mainWindow.webContents.send("bot-run-complete");
+        safeResolve({
+          success: code === 0,
+          error: code !== 0 ? "Bot exited with code " + code : null,
+          logs,
+          ...finishTiming(),
+          accountId: acc.id || "__single__",
+          accountEmail: acc.easyEmail || "",
+          accountLabel: acc.easyEmail || acc.label || "Account 1",
+        });
+      });
     });
   }
 
-  // ── Multiple accounts: run in PARALLEL, each with its own Chrome profile ──
-  mainWindow.webContents.send("bot-log", `🚀 Running ${accountsToRun.length} accounts in parallel...`);
+  // Multiple accounts — run fully sequential: account 1 finishes everything, then account 2, etc.
+  mainWindow.webContents.send("bot-log",
+    `🚀 تشغيل ${accountsToRun.length} حسابات بشكل تسلسلي — حساب واحد في كل مرة...`);
 
-  const promises = accountsToRun.map((acc, idx) => {
+  function runOneAccount(acc, idx) {
     const profilePath = path.join(app.getPath("userData"), `bot-profile-${acc.id}`);
     if (!fs.existsSync(profilePath)) fs.mkdirSync(profilePath, { recursive: true });
-    const creds = { ...acc, profilePath, dateFrom, dateTo, launchMinimized: store.get("launchMinimized", false) };
+    const creds = {
+      ...acc,
+      profilePath,
+      dateFrom,
+      dateTo,
+      launchMinimized: store.get("launchMinimized", false),
+      needsSnapshot: false,
+      operationsSuiteEnabled,
+      dashboardEnabled,
+      reportingDataEnabled,
+    };
     const prefix = `[${acc.easyEmail || acc.label || "Account " + (idx + 1)}] `;
 
     return new Promise((resolve) => {
+      const runStartedAt = Date.now();
+      const finishTiming = () => {
+        const runEndedAt = Date.now();
+        return { runStartedAt, runEndedAt, runtimeMs: Math.max(0, runEndedAt - runStartedAt) };
+      };
       const child = spawnBotChild(creds);
       botChildren.push(child);
-      if (idx === 0) currentBotChild = child; // track first for kill signal
-      const logs = []; let resolved = false;
+      currentBotChild = child;
+      const logs = [];
+      let resolved = false;
       const safeResolve = (v) => { if (!resolved) { resolved = true; resolve(v); } };
+
       child.stdout.on("data", (d) => {
         const m = d.toString().trim();
         if (m) { logs.push(m); mainWindow.webContents.send("bot-log", prefix + m); }
       });
+
       child.stderr.on("data", (d) => {
-        const m = d.toString().trim(); if (!m) return;
+        const m = d.toString().trim();
+        if (!m) return;
         if (m.includes("CHROME_NOT_FOUND")) {
-          mainWindow.webContents.send("bot-log", prefix + "❌ Chrome not found.");
-        } else { mainWindow.webContents.send("bot-log", prefix + "ERR: " + m); }
+          mainWindow.webContents.send("bot-log", prefix + "❌ Google Chrome غير مثبت على جهازك.");
+          mainWindow.webContents.send("bot-log", prefix + "👉 حمّل Chrome من: https://www.google.com/chrome");
+          mainWindow.webContents.send("bot-log", prefix + "✅ بعد التثبيت افتح البرنامج من جديد.");
+        } else {
+          mainWindow.webContents.send("bot-log", prefix + "ERR: " + m);
+        }
       });
+
       child.on("message", (msg) => {
-        // Tag every event with accountId + accountLabel so the UI can route by account
         const accountId    = acc.id;
-        const accountLabel = acc.easyEmail || acc.label || ("Account " + (idx + 1));
+        const accountEmail = acc.easyEmail || "";
+        const accountLabel = accountEmail || acc.label || ("Account " + (idx + 1));
 
-        if (msg.type === "result") safeResolve({ success: true,  data: msg.data,   accountId, accountLabel });
-        if (msg.type === "error")  safeResolve({ success: false, error: msg.error, accountId, accountLabel });
+        if (msg.type === "result") {
+          const data = msg.data || {};
+          if (data.failedOrders?.buffer && data.failedOrders.buffer.length > 0) {
+            const email = acc.easyEmail || acc.label || ("account-" + (idx + 1));
+            const { dir, filePath } = saveFailedOrdersFile(email, data.failedOrders.buffer);
+            data.failedOrders.failedDir  = dir;
+            data.failedOrders.failedPath = filePath;
+          }
+          safeResolve({ success: true, data, ...finishTiming(), accountId, accountEmail, accountLabel });
+        }
+        if (msg.type === "error") safeResolve({ success: false, error: msg.error, ...finishTiming(), accountId, accountEmail, accountLabel });
 
-        // Build tagged payload — forward ALL events from ALL accounts (UI routes by accountId)
-        const tagged = { ...msg, accountId, accountLabel };
+        if (msg.type === "export-timestamp") {
+          lastExportTimestamp = msg.timestamp;
+        }
+        const tagged = { ...msg, accountId, accountEmail, accountLabel, accountIdx: idx, totalAccounts: accountsToRun.length };
         if (msg.type === "2fa-needed")     mainWindow.webContents.send("bot-2fa-needed",     tagged);
         if (msg.type === "needs-confirm")  mainWindow.webContents.send("bot-needs-confirm",  tagged);
         if (msg.type === "cooldown")       mainWindow.webContents.send("bot-cooldown",       tagged);
         if (msg.type === "preview")        mainWindow.webContents.send("bot-preview",        tagged);
         if (msg.type === "order-progress") mainWindow.webContents.send("bot-order-progress", tagged);
         if (msg.type === "khod-restart")   mainWindow.webContents.send("bot-khod-restart",   tagged);
+        if (msg.type === "session-event") {
+          if (msg.site === "khod" && msg.event === "identity-verified") {
+            bindKhodAffiliateCode(accountId, msg.affiliateCode);
+          }
+          mainWindow.webContents.send("bot-session-event", tagged);
+        }
       });
-      child.on("exit", (code) => safeResolve({
-        success: code === 0,
-        error: code !== 0 ? `${prefix}exited with code ${code}` : null,
-        logs,
-        accountId:    acc.id,
-        accountLabel: acc.easyEmail || acc.label || ("Account " + (idx + 1)),
-      }));
-    });
-  });
 
-  const results = await Promise.all(promises);
+      child.on("error", (err) => {
+        monitoring.captureException(err, { operation: "bot.childProcess", extra: { accountId: acc.id } });
+        safeResolve({
+          success: false,
+          error: `${prefix}${err.message}`,
+          logs,
+          ...finishTiming(),
+          accountId:    acc.id,
+          accountEmail: acc.easyEmail || "",
+          accountLabel: acc.easyEmail || acc.label || ("Account " + (idx + 1)),
+        });
+      });
+
+      child.on("exit", (code) => {
+        safeResolve({
+          success: code === 0,
+          error: code !== 0 ? `${prefix}exited with code ${code}` : null,
+          logs,
+          ...finishTiming(),
+          accountId:    acc.id,
+          accountEmail: acc.easyEmail || "",
+          accountLabel: acc.easyEmail || acc.label || ("Account " + (idx + 1)),
+        });
+      });
+    });
+  }
+
   botChildren = [];
+  const results = [];
+  for (let i = 0; i < accountsToRun.length; i++) {
+    const acc = accountsToRun[i];
+    const label = acc.easyEmail || acc.label || `Account ${i + 1}`;
+
+    // Smart Cooldown between accounts to bypass IP-based rate limiting
+    if (lastExportTimestamp > 0) {
+      const COOLDOWN_MS = 5 * 60 * 1000 + 30 * 1000; // 5 minutes 30 seconds
+      const elapsed = Date.now() - lastExportTimestamp;
+      if (elapsed < COOLDOWN_MS) {
+        let remainingMs = COOLDOWN_MS - elapsed;
+        let remainingSec = Math.ceil(remainingMs / 1000);
+        
+        mainWindow.webContents.send("bot-log",
+          `\n⏸️  [تجنب حد التصدير] الانتظار لمدة ${Math.floor(remainingSec / 60)} دقيقة و ${remainingSec % 60} ثانية قبل بدء الحساب التالي...`);
+        
+        while (remainingMs > 0 && botRunning) {
+          const currentElapsed = Date.now() - lastExportTimestamp;
+          if (currentElapsed >= COOLDOWN_MS) break;
+          const waitTime = Math.min(1000, COOLDOWN_MS - currentElapsed);
+          await new Promise(resolve => setTimeout(resolve, waitTime));
+          remainingMs = COOLDOWN_MS - (Date.now() - lastExportTimestamp);
+          
+          if (!botRunning) break;
+
+          let remSec = Math.ceil(remainingMs / 1000);
+          mainWindow.webContents.send("bot-log",
+            `⏸️  [تجنب حد التصدير] الانتظار لمدة ${Math.floor(remSec / 60)} دقيقة و ${remSec % 60} ثانية قبل بدء الحساب التالي...`);
+        }
+      }
+    }
+
+    if (!botRunning) break; // If user stopped execution during wait
+
+    mainWindow.webContents.send("bot-log",
+      `\n▶️  [${i + 1}/${accountsToRun.length}] بدء الحساب: ${label}`);
+    const result = await runOneAccount(acc, i);
+    results.push(result);
+    mainWindow.webContents.send("bot-log",
+      `✅ [${i + 1}/${accountsToRun.length}] انتهى الحساب: ${label} — ${result.success ? "نجح" : "فشل"}`);
+  }
+
+  botChildren = [];
+  mainWindow.webContents.send("bot-run-complete");
   const allOk = results.every(r => r.success);
   return { success: allOk, multiAccount: true, results };
 });

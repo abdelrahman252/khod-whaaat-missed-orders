@@ -1,0 +1,350 @@
+(function () {
+  "use strict";
+
+  var PAGE_MAP = [
+    { id: "ai-intelligence", label: "Khod Whaat AI Intelligence", path: "/ai-intelligence" },
+    { id: "master", label: "Master dashboard", path: "/dashboard/master" },
+    { id: "overview", label: "KPI overview", path: "/dashboard/overview" },
+    { id: "pipeline", label: "Pipeline", path: "/dashboard/pipeline" },
+    { id: "orders", label: "Orders", path: "/dashboard/orders" },
+    { id: "cod", label: "COD analytics", path: "/dashboard/cod" },
+    { id: "products", label: "Product analytics", path: "/dashboard/products" },
+    { id: "cities", label: "City analytics", path: "/dashboard/cities" },
+    { id: "commission", label: "Commission trend", path: "/dashboard/commission" },
+    { id: "calculator", label: "ROI calculator", path: "/dashboard/calculator" },
+    { id: "productForecast", label: "Product forecast", path: "/dashboard/product-forecast" },
+    { id: "prepaid", label: "Prepaid intelligence", path: "/dashboard/prepaid" },
+  ];
+
+  function num(value, digits) {
+    var n = Number(value || 0);
+    return Number(n.toFixed(digits == null ? 2 : digits));
+  }
+
+  function pct(value) {
+    var n = Number(value || 0);
+    if (n > 1) return num(n, 1);
+    return num(n * 100, 1);
+  }
+
+  function tr(key, params, fallback) {
+    var value = window.dashboardI18n ? window.dashboardI18n.t(key, params) : key;
+    return value && value !== key ? value : (fallback || key);
+  }
+
+  function activeSection() {
+    var shell = document.getElementById("db-shell-mount");
+    return shell && shell._dashboardActiveSection ? shell._dashboardActiveSection : "master";
+  }
+
+  function currentRoiSettings(data) {
+    var meta = data && data.meta ? data.meta : {};
+    var fallback = data && data.roi ? data.roi : {};
+    var accountId = meta.activeAccountId || "__all__";
+    var settings = window.DashboardRoiState && typeof window.DashboardRoiState.get === "function"
+      ? window.DashboardRoiState.get(accountId, fallback)
+      : {
+        adSpend: Number(fallback.adSpend || 0),
+        currency: String(fallback.currency || "SAR").toUpperCase(),
+        egpRate: Number(fallback.egpRate || 52) || 52,
+      };
+    var marketing = window.DashboardMarketingState && typeof window.DashboardMarketingState.get === "function"
+      ? window.DashboardMarketingState.get(accountId)
+      : null;
+    if (marketing && marketing.status === "connected" && marketing.summary && !marketing.manualOverride && Number(marketing.summary.adSpend) > 0) {
+      return Object.assign({}, settings, {
+        adSpend: Number(marketing.summary.adSpend || 0),
+        currency: String(marketing.summary.currency || settings.currency || "SAR").toUpperCase(),
+        source: "syncedTiktok",
+        marketing: {
+          platform: "tiktok",
+          status: marketing.status,
+          lastSyncAt: marketing.lastSyncAt || marketing.summary.lastSyncAt || "",
+          campaignCount: Number(marketing.summary.campaignCount || 0),
+          rowCount: Number(marketing.summary.rowCount || 0)
+        }
+      });
+    }
+    return settings;
+  }
+
+  function convertCommissionFromSar(value, settings) {
+    var sar = Number(value || 0);
+    var currency = String(settings && settings.currency || "SAR").toUpperCase();
+    if (currency === "USD") return sar / 3.75;
+    if (currency === "EGP") return (sar / 3.75) * (Number(settings && settings.egpRate) || 52);
+    return sar;
+  }
+
+  function compactProduct(p, financials) {
+    financials = financials || {};
+    var placed = Number(p.placedCount || 0);
+    var allocatedSpend = Number(financials.totalPlaced || 0) > 0
+      ? Number(financials.adSpend || 0) * placed / Number(financials.totalPlaced || 1)
+      : 0;
+    var cpa = placed > 0 ? allocatedSpend / placed : 0;
+    var commissionInCurrency = convertCommissionFromSar(p.commission || 0, financials);
+    var profitLoss = commissionInCurrency - allocatedSpend;
+    return {
+      id: String(p.key || p.sku || p.name || ""),
+      name: p.name || p.key || "Unknown product",
+      sku: p.sku || "",
+      orders: Number(p.placedCount || 0),
+      delivered: Number(p.deliveredCount || p.units || 0),
+      ndrPct: num(p.ndrPct || p.deliveryRate || 0, 1),
+      drPct: num(p.drRate || p.deliveryPct || 0, 1),
+      cancelPct: num(p.cancelPct || 0, 1),
+      commission: num(p.commission || 0, 2),
+      allocatedAdSpend: num(allocatedSpend, 2),
+      cpa: num(cpa, 2),
+      profitLoss: num(profitLoss, 2),
+      financialCurrency: String(financials.currency || "SAR").toUpperCase(),
+      topCities: (p.cityBreakdown || []).slice(0, 4).map(function (c) {
+        return { city: c.name, orders: Number(c.count || c.orders || 0), ndrPct: num(c.ndr || 0, 1) };
+      }),
+    };
+  }
+
+  function compactCity(name, city, geo) {
+    var province = city.provinceId || "other";
+    var provinceMap = geo && geo.provinceMap ? geo.provinceMap : {};
+    return {
+      city: name,
+      province: province,
+      provinceName: provinceMap[province] ? provinceMap[province].name : province,
+      orders: Number(city.count || 0),
+      activeOrders: Number((city.shippingCount || 0) + (city.confirmedCount || 0) + (city.processingCount || 0)),
+      delivered: Number(city.deliveredOrders || 0),
+      ndrPct: pct(city.count ? (city.deliveredOrders || 0) / city.count : 0),
+      drPct: pct(city.drBaseOrders ? (city.deliveredOrders || 0) / city.drBaseOrders : 0),
+      codPct: pct(city.count ? (city.codCount || 0) / city.count : 0),
+      prepaidPct: pct(city.count ? (city.prepaidCount || 0) / city.count : 0),
+      earnedCommission: num(city.earnedCommission || 0, 2),
+      riskScore: Number(city.riskScore || 0),
+      scalingScore: Number(city.scalingScore || 0),
+    };
+  }
+
+  function productForecasts(products, roi) {
+    var adSpend = Number(roi && roi.adSpend || 0);
+    return (products || []).map(function (p) {
+      var orders = Number(p.placedCount || 0);
+      var delivered = Number(p.deliveredCount || 0);
+      var avgCommission = delivered > 0 ? Number(p.commission || 0) / delivered : Number(roi && roi.avgCommission || 0);
+      var ndr = orders > 0 ? delivered / orders : 0;
+      var expectedRevenue = delivered * avgCommission;
+      return {
+        productId: String(p.key || p.sku || p.name || ""),
+        name: p.name || p.key || "Unknown product",
+        orders: orders,
+        currentNdrPct: pct(ndr),
+        avgCommission: num(avgCommission, 2),
+        expectedRevenue: num(expectedRevenue, 2),
+        cpaBaseline: orders > 0 && adSpend > 0 ? num(adSpend / orders, 2) : 0,
+      };
+    });
+  }
+
+  function datasetSummary(data, products, cities) {
+    data = data || {};
+    var meta = data.meta || {};
+    var orders = Array.isArray(data.orders) ? data.orders : [];
+    var certifiedTotalOrders = data.overview && data.overview.totalOrders
+      ? Number(data.overview.totalOrders.value || 0)
+      : orders.length;
+    var accountOptions = Array.isArray(meta.accountOptions) ? meta.accountOptions : [];
+    var realAccounts = accountOptions.filter(function (acc) {
+      return acc && acc.id && acc.id !== "__all__";
+    });
+    return {
+      activeAccountId: meta.activeAccountId || "",
+      activeAccountLabel: meta.activeAccountLabel || "",
+      periodLabel: meta.periodLabel || meta.monthLabel || "",
+      period: meta.period || null,
+      hasData: !!meta.hasData,
+      totalOrders: certifiedTotalOrders,
+      accountCount: realAccounts.length,
+      productCount: products.length,
+      cityCount: cities.length,
+      lastUpdatedAt: meta.lastUpdatedAt || "",
+      lastUpdatedLabel: meta.lastUpdatedLabel || "",
+      accountOptions: accountOptions.slice(0, 40).map(function (acc) {
+        return {
+          id: acc.id,
+          label: acc.label || acc.name || "",
+          orderCount: Number(acc.orderCount || 0),
+          rawOrderCount: Number(acc.rawOrderCount || 0),
+          hasSnapshot: !!acc.hasSnapshot
+        };
+      })
+    };
+  }
+
+  function visibleMetrics(data, section) {
+    data = data || {};
+    if (section === "calculator") return data.roi || {};
+    if (section === "pipeline") return data.pipeline ? data.pipeline.metrics : {};
+    if (section === "cod") return data.cod || {};
+    if (section === "commission") return data.commissionTrend || {};
+    if (section === "products") return data.products ? data.products.summary : {};
+    if (section === "cities") return data.geo ? data.geo.kpis : {};
+    return data.overview || {};
+  }
+
+  function localExecutiveSummary(context) {
+    var products = context.products || [];
+    var cities = context.cities || [];
+    var roi = context.kpis && context.kpis.roi ? context.kpis.roi : {};
+    var worstProduct = products.slice().sort(function (a, b) { return a.ndrPct - b.ndrPct; })[0];
+    var bestProduct = products.slice().sort(function (a, b) { return b.commission - a.commission; })[0];
+    var bestCity = cities.slice().sort(function (a, b) { return b.earnedCommission - a.earnedCommission; })[0];
+    var riskyCity = cities.slice().sort(function (a, b) { return b.riskScore - a.riskScore; })[0];
+
+    return {
+      message: worstProduct
+        ? tr("ai.summary.bestLeverProduct", { product: worstProduct.name }, "Best lever: raise NDR on " + worstProduct.name + ".")
+        : tr("ai.summary.ready", null, "Dashboard is ready for AI review."),
+      insights: [
+        roi.avgCPA ? tr("ai.summary.cpa", { value: roi.avgCPA }, "Current CPA baseline: " + roi.avgCPA + " SAR.") : "",
+        bestProduct ? tr("ai.summary.topProduct", { product: bestProduct.name }, "Top commission product: " + bestProduct.name + ".") : "",
+        bestCity ? tr("ai.summary.strongestCity", { city: bestCity.city }, "Strongest city: " + bestCity.city + ".") : "",
+        riskyCity && riskyCity.riskScore ? tr("ai.summary.riskyCity", { city: riskyCity.city }, "Highest city risk: " + riskyCity.city + ".") : "",
+      ].filter(Boolean).slice(0, 4),
+      actions: [],
+    };
+  }
+
+  window.buildDashboardAiContext = function (opts) {
+    opts = opts || {};
+    var data = opts.data || window.dashboardGeoData || {};
+    var section = opts.section || activeSection();
+    var geo = data.geo || {};
+    var roiSettings = currentRoiSettings(data);
+    var sourceProducts = data.products && data.products.rankedList ? data.products.rankedList : [];
+    var productFinancials = Object.assign({}, roiSettings, {
+      totalPlaced: sourceProducts.reduce(function (sum, p) {
+        return sum + Number(p.placedCount || 0);
+      }, 0),
+    });
+    var products = sourceProducts.map(function (p) { return compactProduct(p, productFinancials); });
+    var rawProductForecasts = productForecasts(data.products && data.products.rankedList, data.roi);
+    var cityStats = geo.cityStats || {};
+    var cities = Object.keys(cityStats).map(function (name) {
+      return compactCity(name, cityStats[name], geo);
+    });
+    var productLimit = Number(opts.productLimit || 80);
+    var cityLimit = Number(opts.cityLimit || 80);
+    var forecastLimit = Number(opts.forecastLimit || 40);
+
+    var context = {
+      currentPage: section,
+      pages: PAGE_MAP,
+      dataset: datasetSummary(data, products, cities),
+      account: data.meta || {},
+      deliveredAttributionMode: data.meta && data.meta.deliveredDateMode === "createdAt" ? "Created At" : "Last Updated",
+      productFinancials: {
+        allocationRule: "Account ad spend allocated by product placed order share.",
+        accountAdSpend: Number(productFinancials.adSpend || 0),
+        currency: String(productFinancials.currency || "SAR").toUpperCase(),
+        egpRate: Number(productFinancials.egpRate || 52),
+      },
+      filters: window.DashboardFilterBus && window.DashboardFilterBus.getState ? window.DashboardFilterBus.getState() : {},
+      selectedProduct: opts.productId || (window.DashboardFilterBus && window.DashboardFilterBus.getState ? window.DashboardFilterBus.getState().selectedProduct : null),
+      selectedCity: opts.city || (window.DashboardFilterBus && window.DashboardFilterBus.getState ? window.DashboardFilterBus.getState().selectedCity : null),
+      kpis: {
+        overview: data.overview || {},
+        pipeline: data.pipeline ? data.pipeline.metrics : {},
+        roi: data.roi || {},
+        national: geo.kpis || {},
+      },
+      visibleMetrics: visibleMetrics(data, section),
+      products: products.slice(0, productLimit),
+      cities: cities
+        .slice()
+        .sort(function (a, b) { return b.earnedCommission - a.earnedCommission; })
+        .slice(0, cityLimit),
+      forecasts: {
+        roi: data.roi || {},
+        productForecasts: rawProductForecasts.slice(0, forecastLimit),
+      },
+      insights: (geo.insights || []).slice(0, 8).map(function (item) {
+        return {
+          type: item.type,
+          priority: item.priority,
+          city: item.city,
+          product: item.product,
+          title: item.title,
+          recommendation: item.recommendation,
+          metric: item.metric,
+        };
+      }),
+    };
+
+    context.localSummary = localExecutiveSummary(context);
+    return context;
+  };
+
+  window.getDashboardAiPages = function () {
+    return PAGE_MAP.slice();
+  };
+
+  window.getDashboardAiContext = function (opts) {
+    if (typeof window.buildDashboardAiContext !== "function") {
+      return {
+        currentPage: activeSection(),
+        pages: PAGE_MAP.slice(),
+        account: {},
+        filters: {},
+        selectedProduct: null,
+        selectedCity: null,
+        kpis: {},
+        visibleMetrics: {},
+        products: [],
+        cities: [],
+        forecasts: {},
+        insights: [],
+        localSummary: {
+          message: tr("aii.summary.ready", null, "AI is ready for review."),
+          insights: [],
+          actions: [],
+        },
+      };
+    }
+    return window.buildDashboardAiContext(opts || {});
+  };
+
+  window.renderProductAiAdvisor = function (product) {
+    if (!product) return "";
+    var ndr = Number(product.ndrPct || product.deliveryPct || 0);
+    var cancel = Number(product.cancelPct || 0);
+    var commission = Number(product.commission || 0);
+    var tone = ndr < 45 || cancel >= 40 ? "danger" : (ndr >= 70 ? "profit" : "city");
+    var message = ndr < 45
+      ? tr("ai.productAdvisor.unsafeNdr", null, "Unsafe scaling: NDR is below the safe zone.")
+      : (cancel >= 40
+        ? tr("ai.productAdvisor.cancelRisk", null, "Cancellation risk is too high for aggressive spend.")
+        : (ndr >= 70 ? tr("ai.productAdvisor.safeScale", null, "Safe to test controlled scaling.") : tr("ai.productAdvisor.liftNdr", null, "Best lever: lift NDR before scaling.")));
+    var commissionText = Math.round(commission).toLocaleString(window.dashboardI18n ? window.dashboardI18n.locale() : "en-US");
+    var sub = commission > 0 ? tr("ai.productAdvisor.commission", { value: commissionText }, "Commission: " + commissionText + " SAR") : tr("ai.productAdvisor.needsCommission", null, "Needs live commission signal");
+    return '<div class="ai-inline-advisor ' + tone + '">' +
+      '<span>' + tr("ai.productAdvisor.title", null, "AI product advisor") + '</span>' +
+      '<strong>' + message + '</strong>' +
+      '<em>' + sub + '</em>' +
+    '</div>';
+  };
+
+  window.renderCityAiAdvisor = function (city) {
+    if (!city) return "";
+    var ndr = Number(city.deliveryRate || city.ndrPct || 0);
+    var active = Number(city.activeOrders || 0);
+    var tone = ndr < 55 ? "danger" : (ndr >= 70 ? "profit" : "city");
+    var message = ndr < 55
+      ? city.name + " has weak delivery quality."
+      : (ndr >= 70 ? city.name + " is a strong scale candidate." : city.name + " needs tighter delivery control.");
+    return '<div class="ai-inline-advisor ' + tone + '">' +
+      '<span>AI city advisor</span>' +
+      '<strong>' + message + '</strong>' +
+      '<em>Active orders: ' + Math.round(active).toLocaleString("en-US") + '</em>' +
+    '</div>';
+  };
+})();

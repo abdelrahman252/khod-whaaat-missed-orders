@@ -1,5 +1,7 @@
 // ── LICENSE PAGE ──
 window.renderLicense = function (onUnlocked) {
+  function render() {
+  const t  = window._t;
   const el = document.getElementById("page-license");
 
   el.innerHTML = `
@@ -21,11 +23,11 @@ window.renderLicense = function (onUnlocked) {
           ">🔐</div>
         </div>
 
-        <div style="font-size:26px;font-weight:800;color:var(--text1);margin-bottom:8px;letter-spacing:-0.5px">
-          License Required
+        <div style="font-size:26px;font-weight:800;color:var(--text);margin-bottom:8px;letter-spacing:-0.5px">
+          ${t("license.title")}
         </div>
         <div style="font-size:13px;color:var(--text2);line-height:1.6;margin-bottom:6px">
-          Enter your license key to activate the app.
+          ${t("license.subtitle")}
         </div>
         <div id="lic-days-badge" style="
           display:inline-block;background:rgba(124,106,247,0.15);
@@ -41,7 +43,7 @@ window.renderLicense = function (onUnlocked) {
           text-align:left;
         ">
           <label style="font-size:11px;font-weight:700;color:var(--text2);text-transform:uppercase;letter-spacing:.07em;display:block;margin-bottom:10px">
-            License Key
+            ${t("license.key_label")}
           </label>
           <input
             id="lic-input"
@@ -53,7 +55,7 @@ window.renderLicense = function (onUnlocked) {
               width:100%;box-sizing:border-box;
               background:var(--bg);border:1px solid var(--border);
               border-radius:8px;padding:12px 14px;
-              font-size:14px;font-family:monospace;color:var(--text1);
+              font-size:14px;font-family:monospace;color:var(--text);
               letter-spacing:.06em;outline:none;
               transition:border-color 0.2s;
             "
@@ -74,12 +76,12 @@ window.renderLicense = function (onUnlocked) {
           transition:opacity 0.2s,transform 0.15s;
           margin-bottom:20px;
         " onmouseover="this.style.opacity='.88'" onmouseout="this.style.opacity='1'">
-          Activate License →
+          ${t("license.btn_activate")}
         </button>
 
         <div style="font-size:11px;color:var(--text2);line-height:1.7">
-          Contact support if you need a license key.<br>
-          If you see a "different device" error, contact support to reset the device lock.
+          ${t("license.support_hint")}<br>
+          ${t("license.device_hint")}
         </div>
 
       </div>
@@ -119,25 +121,30 @@ window.renderLicense = function (onUnlocked) {
 
   btn.addEventListener("click", async () => {
     const key = input.value.trim();
-    if (!key) { showError("Please enter your license key."); return; }
-    btn.textContent = "Verifying...";
+    if (!key) { showError(t("license.err_empty")); return; }
+    btn.textContent = t("license.btn_verifying");
     btn.disabled = true;
 
     const result = await window.api.submitLicense(key);
 
     if (result.success) {
-      btn.textContent = "✅ Activated!";
+      btn.textContent = t("license.btn_activated");
       btn.style.background = "linear-gradient(135deg,#00d68f,#00b370)";
       btn.style.boxShadow = "0 4px 20px rgba(0,214,143,0.4)";
       if (result.daysLeft != null) {
         const badge = document.getElementById("lic-days-badge");
-        if (badge) { badge.textContent = `${result.daysLeft} day(s) remaining`; }
+        if (badge) { const daysFn = t("license.days_remaining");
+          badge.textContent = typeof daysFn === "function" ? daysFn(result.daysLeft) : daysFn; }
       }
       setTimeout(() => onUnlocked(), 900);
     } else {
-      btn.textContent = "Activate License →";
+      btn.textContent = t("license.btn_activate");
       btn.disabled = false;
-      showError(result.reason || "Invalid license key.");
+      showError(result.reason || t("license.err_invalid"));
     }
   });
+  } // end render()
+
+  window._renderLicenseInPlace = render;
+  render();
 };

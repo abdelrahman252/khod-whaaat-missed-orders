@@ -1,22 +1,34 @@
 {
   "name": "khod-whaat-orders",
-  "version": "1.0.4",
+  "version": "1.0.5",
   "description": "Khod Whaat Orders Automation Bot",
   "author": "Abdelrahman Ahmed",
   "main": "src/main/main.js",
   "scripts": {
     "start": "electron .",
     "dev": "electron . --dev",
+    "admin": "node admin-panel/server.js",
     "dist:mac": "electron-builder --mac --x64 && electron-builder --mac --arm64",
     "dist:win": "electron-builder --win",
-    "dist:all": "electron-builder --mac --win"
+    "dist:all": "electron-builder --mac --win",
+    "build": "electron-builder",
+    "sentry:sourcemaps": "node scripts/sentry-upload-sourcemaps.js",
+    "release:win": "electron-builder --win --publish always",
+    "release:mac": "electron-builder --mac --publish always",
+    "release:all": "electron-builder --mac --win --publish always"
   },
   "dependencies": {
+    "@google/genai": "^2.6.0",
+    "@sentry/electron": "^7.13.0",
+    "dotenv": "^16.4.5",
+    "electron-log": "^5.2.0",
+    "electron-store": "^7.0.2",
+    "electron-updater": "^6.3.9",
     "playwright-core": "^1.52.0",
-    "xlsx": "^0.18.5",
-    "electron-store": "^7.0.2"
+    "xlsx": "^0.18.5"
   },
   "devDependencies": {
+    "@sentry/cli": "^3.4.3",
     "electron": "^30.0.0",
     "electron-builder": "^24.13.3"
   },
@@ -30,20 +42,26 @@
       "src/**/*",
       "assets/**/*",
       "package.json",
-      "!**/*.map",
-      "!**/*.md"
+      "!**/*.md",
+      "!.env"
     ],
     "mac": {
       "category": "public.app-category.productivity",
       "icon": "assets/icon.icns",
       "target": [
-        { "target": "dmg" },
-        { "target": "zip" }
+        {
+          "target": "dmg"
+        },
+        {
+          "target": "zip"
+        }
       ],
-      "hardenedRuntime": true,
+      "hardenedRuntime": false,
       "gatekeeperAssess": false,
       "entitlements": "entitlements.mac.plist",
-      "entitlementsInherit": "entitlements.mac.plist"
+      "entitlementsInherit": "entitlements.mac.plist",
+      "artifactName": "Khod.Whaaat.Orders-${version}-${arch}-mac.${ext}",
+      "identity": null
     },
     "win": {
       "icon": "assets/icon.ico",
@@ -61,7 +79,8 @@
           ]
         }
       ],
-      "requestedExecutionLevel": "asInvoker"
+      "requestedExecutionLevel": "asInvoker",
+      "artifactName": "Khod.Whaaat.Orders.Setup.${version}.${ext}"
     },
     "nsis": {
       "oneClick": false,
@@ -99,7 +118,27 @@
       {
         "from": "assets",
         "to": "assets"
+      },
+      {
+        "from": ".env",
+        "to": ".env"
+      },
+      {
+        "from": ".env.local",
+        "to": ".env.local"
       }
-    ]
+    ],
+    "publish": {
+      "provider": "github",
+      "owner": "abdelrahman252",
+      "repo": "khod-whaaat-missed-orders",
+      "releaseType": "release"
+    },
+    "directories": {
+      "output": "dist"
+    },
+    "portable": {
+      "artifactName": "Khod.Whaaat.Orders.Portable.${version}.${ext}"
+    }
   }
 }

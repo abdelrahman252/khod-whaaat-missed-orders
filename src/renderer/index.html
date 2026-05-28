@@ -3,21 +3,34 @@
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>Khod whaat Bot</title>
+    <meta http-equiv="Content-Security-Policy" content="default-src 'self'; base-uri 'self'; object-src 'none'; frame-src 'none'; script-src 'self' 'unsafe-inline'; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src 'self' https://fonts.gstatic.com data:; img-src 'self' data: blob:; connect-src 'self' https://*.supabase.co https://generativelanguage.googleapis.com https://*.ingest.sentry.io https://sentry.io;">
+    <title>Khod Whaat Bot</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <!-- Load fonts async so a slow/offline network never blocks first paint -->
+    <link rel="preload" as="style" href="https://fonts.googleapis.com/css2?family=DM+Mono:ital,wght@0,300;0,400;0,500;1,300;1,400;1,500&family=Syne:wght@400..800&family=Tajawal:wght@200;300;400;500;700;800;900&display=swap" onload="this.rel='stylesheet'">
+    <noscript><link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=DM+Mono:ital,wght@0,300;0,400;0,500;1,300;1,400;1,500&family=Syne:wght@400..800&family=Tajawal:wght@200;300;400;500;700;800;900&display=swap"></noscript>
     <link rel="stylesheet" href="styles/main.css" />
+    <link rel="stylesheet" href="styles/operations.css" />
+    <link rel="stylesheet" href="styles/analytics.css" />
+    <link rel="stylesheet" href="pages/dashboard/dashboard-styles.css" />
+    <link rel="stylesheet" href="pages/ai-intelligence/ai-intelligence.css" />
     <style>
       /* ── Preloader ── */
       #preloader {
         position: fixed;
-        inset: 0;
+        top: 0;
+        left: 0;
+        right: 0;
+        bottom: 0;
         background: #0b0f1a;
-        display: flex;
-        align-items: center;
-        justify-content: center;
         z-index: 99999;
       }
       .preloader-center {
-        position: relative;
+        position: absolute;
+        top: 50%;
+        left: 50%;
+        transform: translate(-50%, -50%);
         width: 120px;
         height: 120px;
       }
@@ -68,6 +81,13 @@
         }
       }
 
+      [data-theme="light"] #preloader {
+        background: #f6f7f9;
+      }
+      [data-theme="light"] .logo {
+        color: #1e2535;
+      }
+
       /* ── Titlebar overrides ── */
       .titlebar {
         height: 48px !important;
@@ -89,7 +109,7 @@
         align-items: center;
         gap: 8px;
         -webkit-app-region: no-drag;
-        pointer-events: none;
+        pointer-events: auto;
         margin-right: 6px;
       }
       #top-bar-center.visible {
@@ -241,6 +261,52 @@
         opacity: 0.5;
       }
 
+      /* ── Admin Refresh button ── */
+      #btn-admin-refresh {
+        display: none; /* shown only after license is valid */
+        align-items: center;
+        justify-content: center;
+        gap: 5px;
+        height: 26px;
+        padding: 0 10px;
+        border: 1px solid rgba(124, 106, 247, 0.35);
+        border-radius: 6px;
+        background: rgba(124, 106, 247, 0.10);
+        color: #a89cf7;
+        font-size: 11px;
+        font-weight: 600;
+        letter-spacing: 0.04em;
+        cursor: pointer;
+        white-space: nowrap;
+        transition: background 0.15s, border-color 0.15s, color 0.15s;
+        -webkit-app-region: no-drag;
+        flex-shrink: 0;
+        margin: 0 4px;
+      }
+      #btn-admin-refresh:hover {
+        background: rgba(124, 106, 247, 0.22);
+        border-color: rgba(124, 106, 247, 0.6);
+        color: #c4b8ff;
+      }
+      #btn-admin-refresh:active {
+        background: rgba(124, 106, 247, 0.32);
+      }
+      #btn-admin-refresh.refreshing {
+        opacity: 0.6;
+        pointer-events: none;
+      }
+      #btn-admin-refresh .refresh-icon {
+        display: inline-block;
+        transition: transform 0.6s ease;
+      }
+      #btn-admin-refresh.refreshing .refresh-icon {
+        animation: spin-once 0.7s linear forwards;
+      }
+      @keyframes spin-once {
+        from { transform: rotate(0deg); }
+        to   { transform: rotate(360deg); }
+      }
+
       /* ── Theme toggle (sun/moon switch) ── */
       .tb-theme-switch {
         font-size: 14px;
@@ -334,7 +400,8 @@
         top: 48px !important;
       }
     </style>
-  </head>
+    <!-- Analytics + Operations styles are included in main.css -->
+</head>
   <body>
     <div id="preloader">
       <div class="preloader-center">
@@ -349,7 +416,7 @@
       <!-- App branding -->
       <div class="titlebar-left">
         <span class="app-icon">⚡</span>
-        <span class="app-name">Khod whaat Bot</span>
+        <span class="app-name">Khod Whaat Bot</span>
       </div>
       <div class="titlebar-divider"></div>
 
@@ -367,12 +434,26 @@
       <!-- Toggles -->
       <div class="titlebar-divider"></div>
 
+      <!-- Admin Refresh button — syncs license + account state from Supabase -->
+      <button
+        id="btn-admin-refresh"
+        title="Sync with admin panel"
+        aria-label="Sync account and license status"
+        data-tooltip="Sync license and account permissions from the admin panel."
+      >
+        <span class="refresh-icon">↻</span>
+        <span class="refresh-label">Sync</span>
+      </button>
+      <div class="titlebar-divider"></div>
+
       <!-- Lang toggle: EN ↔ AR -->
       <div class="tb-lang-switch">
         <input
           id="toggle-lang"
           class="check-toggle check-toggle-round-flat"
           type="checkbox"
+          aria-label="Switch language"
+          data-tooltip="Switch between English and Arabic."
         />
         <label for="toggle-lang"></label>
         <span class="lang-on">AR</span>
@@ -381,7 +462,7 @@
       <div class="titlebar-divider"></div>
 
       <!-- Theme toggle: light ↔ dark -->
-      <label class="tb-theme-switch" title="Switch theme">
+      <label class="tb-theme-switch" title="Switch theme" data-tooltip="Switch between light and dark theme.">
         <span class="tb-sun"
           ><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24">
             <g fill="#ffd43b">
@@ -397,7 +478,7 @@
               d="m223.5 32c-123.5 0-223.5 100.3-223.5 224s100 224 223.5 224c60.6 0 115.5-24.2 155.8-63.4 5-4.9 6.3-12.5 3.1-18.7s-10.1-9.7-17-8.5c-9.8 1.7-19.8 2.6-30.1 2.6-96.9 0-175.5-78.8-175.5-176 0-65.8 36-123.1 89.3-153.3 6.1-3.5 9.2-10.5 7.7-17.3s-7.3-11.9-14.3-12.5c-6.3-.5-12.6-.8-19-.8z"
             ></path></svg
         ></span>
-        <input type="checkbox" id="toggle-theme" class="tb-theme-input" />
+        <input type="checkbox" id="toggle-theme" class="tb-theme-input" aria-label="Switch theme" />
         <span class="tb-theme-slider"></span>
       </label>
 
@@ -406,9 +487,9 @@
 
       <div class="titlebar-right">
         <div class="titlebar-controls">
-          <button class="tb-btn" id="btn-minimize">&#8212;</button>
-          <button class="tb-btn" id="btn-maximize">&#9633;</button>
-          <button class="tb-btn tb-close" id="btn-close">&#10005;</button>
+          <button class="tb-btn" id="btn-minimize" aria-label="Minimize window" title="Minimize" data-tooltip="Minimize window">&#8212;</button>
+          <button class="tb-btn" id="btn-maximize" aria-label="Maximize window" title="Maximize" data-tooltip="Maximize or restore window">&#9633;</button>
+          <button class="tb-btn tb-close" id="btn-close" aria-label="Close window" title="Close" data-tooltip="Close Khod Whaat Order Bot">&#10005;</button>
         </div>
       </div>
     </div>
@@ -418,17 +499,358 @@
       <div id="page-license" class="page"></div>
       <div id="page-setup" class="page"></div>
       <div id="page-run" class="page"></div>
-      <div id="page-results" class="page"></div>
+      <div id="page-results"    class="page"></div>
+      <div id="page-analytics"  class="page"></div>
+      <div id="page-operations" class="page"></div>
+      <div id="page-dashboard"  class="page"></div>
+      <div id="page-ai-intelligence" class="page"></div>
     </div>
 
+    <script src="../monitoring/sentry.renderer.js"></script>
     <script src="pages/license.js"></script>
+    <script src="pages/expired-overlay.js"></script>
+    <script src="pages/analytics/analytics-utils.js"></script>
     <script src="pages/setup.js"></script>
-    <script src="pages/run.js"></script>
+    <script src="pages/run.js?v=sidebar-fix-20260523"></script>
     <script src="pages/results.js"></script>
+    <!-- Chart.js -->
+    <script src="pages/analytics/chart.umd.min.js"></script>
+    <!-- SheetJS (XLSX export for Analytics) — served locally, no network request -->
+    <script src="../../node_modules/xlsx/dist/xlsx.full.min.js"></script>
+    <!-- Locales -->
+    <script src="locales/ar/analytics.js"></script>
+    <script src="locales/en/analytics.js"></script>
+    <script src="locales/ar/operations.js"></script>
+    <script src="locales/en/operations.js"></script>
+    <script src="page-i18n.js"></script>
+    <script src="pages/premium-preview.js"></script>
+    <!-- Analytics modules (load in dependency order) -->
+    <script src="pages/analytics/analytics-charts.js"></script>
+    <script src="pages/analytics/analytics-kpis.js"></script>
+    <script src="pages/analytics/analytics-table.js"></script>
+    <script src="pages/analytics/analytics-insights.js"></script>
+    <script src="pages/analytics/analytics.js"></script>
+    <!-- Operations modules -->
+    <script src="pages/operations/operations-utils.js"></script>
+    <script src="pages/operations/operations-monitor.js"></script>
+    <script src="pages/operations/operations-history.js"></script>
+    <script src="pages/operations/operations-presets.js"></script>
+    <script src="pages/operations/operations-insights.js"></script>
+    <script src="pages/operations/operations.js"></script>
+    <!-- Dashboard -->
+    <script src="pages/dashboard/locales/ar/dashboard-locale.js"></script>
+    <script src="pages/dashboard/locales/en/dashboard-locale.js"></script>
+    <script src="pages/dashboard/dashboard-i18n.js"></script>
+    <script src="pages/dashboard/dashboard-aggregator.js"></script>
+    <script src="pages/dashboard/dashboard-aggregator-score.js"></script>
+    <script src="pages/dashboard/dashboard-aggregator-geo.js"></script>
+    <script src="pages/dashboard/dashboard-insight-engine.js"></script>
+    <script src="pages/dashboard/dashboard-filter-bus.js"></script>
+    <script src="pages/dashboard/dashboard-shared.js"></script>
+    <script src="pages/dashboard/dashboard-ai-context.js"></script>
+    <script src="pages/dashboard/dashboard-ai-ui.js"></script>
+    <script src="pages/ai-intelligence/ai-intelligence-data.js"></script>
+    <script src="pages/ai-intelligence/engine/intent-detector.js"></script>
+    <script src="pages/ai-intelligence/engine/analytics-engine.js"></script>
+    <script src="pages/ai-intelligence/engine/context-compressor.js"></script>
+    <script src="pages/ai-intelligence/engine/session-memory.js"></script>
+    <script src="pages/ai-intelligence/engine/local-reasoning-engine.js"></script>
+    <script src="pages/ai-intelligence/engine/scenario-database.js"></script>
+    <script src="pages/ai-intelligence/engine/business-orchestrator.js"></script>
+    <script src="pages/dashboard/sections/section-khod-ai.js"></script>
+    <script src="pages/ai-intelligence/ai-intelligence.js"></script>
+    <script src="pages/dashboard/sections/section1-overview.js"></script>
+    <script src="pages/dashboard/sections/section2-pipeline.js"></script>
+    <script src="pages/dashboard/sections/section3-orders.js"></script>
+    <script src="pages/dashboard/sections/section4-cod.js"></script>
+    <script src="pages/dashboard/sections/section5-products.js"></script>
+    <script src="pages/dashboard/sections/section6-commission.js"></script>
+    <script src="pages/dashboard/sections/section-marketing-connections.js"></script>
+    <script src="pages/dashboard/sections/section7-calculator.js"></script>
+    <script src="pages/dashboard/sections/section8-master.js"></script>
+    <script src="pages/dashboard/sections/section-cities.js"></script>
+    <script src="pages/dashboard/sections/section-city-drawer.js"></script>
+    <script src="pages/dashboard/sections/section-product-matrix.js"></script>
+    <script src="pages/dashboard/sections/section-prepaid.js"></script>
+    <script src="pages/dashboard/sections/section-insight-strip.js"></script>
+    <script src="pages/dashboard/sections/section9-product-forecast.js"></script>
+    <script src="pages/dashboard/dashboard-shell.js"></script>
+    <script src="pages/dashboard/dashboard.js"></script>
+    <script src="tooltip.js"></script>
     <script src="app.js"></script>
     <script>
       // Preloader is dismissed by showPage() in app.js — only once the first
       // real page has been rendered and activated. No timer-based removal here.
+    </script>
+    <!-- ── AUTO-UPDATE TOAST ── -->
+    <style>
+      #updateToast {
+        display: none;
+        position: fixed;
+        bottom: 20px;
+        right: 20px;
+        z-index: 9999;
+        background: var(--bg2);
+        border: 1px solid rgba(123,92,240,.45);
+        border-radius: 14px;
+        padding: 14px 18px;
+        min-width: 260px;
+        max-width: 320px;
+        box-shadow: 0 8px 32px rgba(0,0,0,.4);
+        font-family: 'Tajawal', 'Segoe UI', sans-serif;
+      }
+      #updateTitle { font-weight: 700; font-size: 13px; color: var(--text); }
+      #updateSub   { font-size: 11px; color: var(--text2); margin-top: 1px; }
+      [data-theme="light"] #updateToast { box-shadow: 0 8px 32px rgba(0,0,0,.12); }
+    </style>
+    <div id="updateToast">
+      <div style="display:flex;align-items:center;gap:10px;margin-bottom:10px;">
+        <div style="width:32px;height:32px;border-radius:8px;background:rgba(123,92,240,.15);display:flex;align-items:center;justify-content:center;flex-shrink:0;">
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#a78bfa" stroke-width="2.5"><polyline points="23 4 23 10 17 10"/><path d="M20.49 15a9 9 0 1 1-2.12-9.36L23 10"/></svg>
+        </div>
+        <div>
+          <div id="updateTitle">Update Available</div>
+          <div id="updateSub"></div>
+        </div>
+        <button onclick="document.getElementById('updateToast').style.display='none'" style="margin-inline-start:auto;background:none;border:none;color:var(--text2);cursor:pointer;padding:2px;font-size:16px;line-height:1;">✕</button>
+      </div>
+      <!-- progress bar (hidden until download starts) -->
+      <div id="updateProgressWrap" style="display:none;margin-bottom:10px;">
+        <div style="background:var(--border);border-radius:99px;height:5px;overflow:hidden;">
+          <div id="updateProgressBar" style="height:100%;width:0%;background:linear-gradient(90deg,#7b5cf0,#a78bfa);border-radius:99px;transition:width .3s;"></div>
+        </div>
+        <div id="updateProgressLabel" style="font-size:11px;color:var(--text2);margin-top:4px;text-align:end;">0%</div>
+      </div>
+      <div style="display:flex;gap:8px;">
+        <button id="updateActionBtn" onclick="handleUpdateAction()" style="
+          flex:1;padding:8px 12px;border-radius:8px;border:none;cursor:pointer;
+          background:linear-gradient(135deg,#7b5cf0,#a78bfa);color:#fff;
+          font-weight:700;font-size:12px;font-family:'DM Sans',sans-serif;
+        ">Download Update</button>
+      </div>
+    </div>
+
+    <script>
+    "use strict";
+    // ════════════════════════════════════════════════════════════════
+    //  AUTO-UPDATER UI
+    // ════════════════════════════════════════════════════════════════
+    let _updateState = 'idle'; // idle | checking | available | downloading | downloaded | error
+
+    function _updLog(level, ...args) {
+      const ts = new Date().toISOString();
+      const prefix = `[AutoUpdate][${ts}]`;
+      if (level === 'error') console.error(prefix, ...args);
+      else if (level === 'warn')  console.warn(prefix, ...args);
+      else                        console.log(prefix, ...args);
+    }
+
+    function showUpdateToast(title, sub, btnLabel, showProgress) {
+      _updLog('info', `showUpdateToast → title="${title}" btn="${btnLabel}" progress=${showProgress}`);
+      const toast = document.getElementById('updateToast');
+      const dot   = document.getElementById('updateDot');
+      document.getElementById('updateTitle').textContent = title;
+      document.getElementById('updateSub').textContent   = sub;
+      document.getElementById('updateActionBtn').textContent = btnLabel;
+      document.getElementById('updateProgressWrap').style.display = showProgress ? 'block' : 'none';
+      if (toast) toast.style.display = 'block';
+      if (dot)   dot.style.display   = 'block';
+    }
+
+    function hideUpdateToast() {
+      _updLog('info', 'hideUpdateToast called');
+      const t = document.getElementById('updateToast');
+      if (t) t.style.display = 'none';
+    }
+
+    function updText(key, fallback) {
+      if (window._t) {
+        const value = window._t(key);
+        if (typeof value === 'string') return value;
+      }
+      return fallback;
+    }
+
+    function updTextFn(key, fallback, value) {
+      if (window._t) {
+        const fn = window._t(key);
+        if (typeof fn === 'function') return fn(value);
+        if (typeof fn === 'string') return fn;
+      }
+      return fallback;
+    }
+
+    function _setUpdBtn(loading) {
+      const btn = document.getElementById('sv3-update-btn');
+      const lbl = document.getElementById('sv3-update-btn-label');
+      if (!btn) return;
+      btn.style.opacity  = loading ? '0.6' : '1';
+      btn.style.cursor   = loading ? 'wait' : 'pointer';
+      btn.disabled       = loading;
+      btn.title          = loading ? updText('update.btn_title_checking', 'Checking for updates...') : updText('update.btn_title_check', 'Check for updates');
+      if (lbl) lbl.textContent = loading ? updText('setup.checking_updates', 'Checking...') : updText('setup.check_updates_btn', 'Check for Updates');
+    }
+
+    function handleUpdateAction() {
+      _updLog('info', `handleUpdateAction called, state=${_updateState}`);
+      if (_updateState === 'available') {
+        _updLog('info', 'Starting update download…');
+        _updateState = 'downloading';
+        document.getElementById('updateActionBtn').textContent = updText('update.downloading_action', 'Downloading...');
+        document.getElementById('updateActionBtn').disabled = true;
+        document.getElementById('updateProgressWrap').style.display = 'block';
+        window.api.downloadUpdate();
+      } else if (_updateState === 'downloaded') {
+        _updLog('info', 'Requesting install & restart…');
+        window.api.installUpdate();
+      } else {
+        _updLog('warn', `handleUpdateAction called in unexpected state: ${_updateState}`);
+      }
+    }
+
+    function checkForUpdatesManual() {
+      _updLog('info', `checkForUpdatesManual called, state=${_updateState}`);
+      if (_updateState === 'available' || _updateState === 'downloaded') {
+        _updLog('info', 'Update already found — re-showing toast');
+        document.getElementById('updateToast').style.display = 'block';
+        return;
+      }
+      if (_updateState === 'checking' || _updateState === 'downloading') {
+        _updLog('info', `Already in progress (state=${_updateState}), ignoring click`);
+        return;
+      }
+
+      _updateState = 'checking';
+      _setUpdBtn(true);
+      _updLog('info', 'Calling api.checkForUpdates…');
+
+      window.api.checkForUpdates()
+        .then(res => {
+          _updLog('info', 'checkForUpdates resolved:', JSON.stringify(res));
+          _setUpdBtn(false);
+          if (res && res.dev) {
+            _updLog('warn', 'Running in dev/unpackaged mode — auto-update skipped');
+            _updateState = 'idle';
+            document.getElementById('updateTitle').textContent = updText('update.dev_title', 'Dev Mode');
+            document.getElementById('updateSub').textContent = updText('update.dev_sub', 'Auto-update only works in packaged app.');
+            document.getElementById('updateActionBtn').textContent = updText('update.ok', 'OK');
+            document.getElementById('updateActionBtn').onclick = hideUpdateToast;
+            document.getElementById('updateProgressWrap').style.display = 'none';
+            document.getElementById('updateToast').style.display = 'block';
+            return;
+          }
+          if (res && res.ok === false) {
+            _updLog('error', 'checkForUpdates returned error from main:', res.error);
+            _updateState = 'error';
+            document.getElementById('updateTitle').textContent = updText('update.check_failed_title', 'Update Check Failed');
+            document.getElementById('updateSub').textContent = res.error || updText('update.unknown_error', 'Unknown error');
+            document.getElementById('updateActionBtn').textContent = updText('update.dismiss', 'Dismiss');
+            document.getElementById('updateActionBtn').disabled = false;
+            document.getElementById('updateActionBtn').onclick = () => { _updateState = 'idle'; hideUpdateToast(); };
+            document.getElementById('updateProgressWrap').style.display = 'none';
+            document.getElementById('updateToast').style.display = 'block';
+          }
+          // If ok===true, the autoUpdater events (onUpdateAvailable / onUpdateNotAvailable) fire next
+        })
+        .catch(err => {
+          _updLog('error', 'checkForUpdates IPC threw:', err);
+          _setUpdBtn(false);
+          _updateState = 'error';
+          document.getElementById('updateTitle').textContent = updText('update.check_failed_title', 'Update Check Failed');
+          document.getElementById('updateSub').textContent = err.message || String(err);
+          document.getElementById('updateActionBtn').textContent = updText('update.dismiss', 'Dismiss');
+          document.getElementById('updateActionBtn').disabled = false;
+          document.getElementById('updateActionBtn').onclick = () => { _updateState = 'idle'; hideUpdateToast(); };
+          document.getElementById('updateProgressWrap').style.display = 'none';
+          document.getElementById('updateToast').style.display = 'block';
+        });
+    }
+
+    function initAutoUpdater() {
+      _updLog('info', 'initAutoUpdater — wiring up IPC events');
+      if (!window.api || !window.api.onUpdateAvailable) {
+        _updLog('warn', 'window.api.onUpdateAvailable not found — preload may not have loaded correctly');
+        return;
+      }
+
+      window.api.onUpdateAvailable(({ version }) => {
+        _updLog('info', `onUpdateAvailable fired — version=${version}`);
+        _updateState = 'available';
+        _setUpdBtn(false);
+        document.getElementById('updateTitle').textContent = updTextFn('update.available_title', 'Update v' + version + ' Available', version);
+        document.getElementById('updateSub').textContent   = updText('update.available_sub', 'A new version is ready to download.');
+        document.getElementById('updateActionBtn').textContent = updText('update.download_update', 'Download Update');
+        document.getElementById('updateActionBtn').disabled = false;
+        document.getElementById('updateActionBtn').onclick = handleUpdateAction;
+        document.getElementById('updateProgressWrap').style.display = 'none';
+        document.getElementById('updateToast').style.display = 'block';
+        const dot = document.getElementById('updateDot');
+        if (dot) dot.style.display = 'block';
+      });
+
+      window.api.onUpdateNotAvailable(() => {
+        _updLog('info', `onUpdateNotAvailable fired — state was ${_updateState}`);
+        _setUpdBtn(false);
+        if (_updateState === 'checking') {
+          _updateState = 'idle';
+          document.getElementById('updateTitle').textContent = updText('update.up_to_date_title', "You're up to date");
+          document.getElementById('updateSub').textContent = updText('update.up_to_date_sub', 'No new version found.');
+          document.getElementById('updateActionBtn').textContent = updText('update.ok', 'OK');
+          document.getElementById('updateActionBtn').onclick = hideUpdateToast;
+          document.getElementById('updateProgressWrap').style.display = 'none';
+          document.getElementById('updateToast').style.display = 'block';
+        } else {
+          _updateState = 'idle';
+        }
+      });
+
+      window.api.onUpdateProgress(({ percent }) => {
+        _updLog('info', `onUpdateProgress — ${percent}%`);
+        const bar = document.getElementById('updateProgressBar');
+        const lbl = document.getElementById('updateProgressLabel');
+        if (bar) bar.style.width = percent + '%';
+        if (lbl) lbl.textContent = percent + '%';
+        document.getElementById('updateTitle').textContent = updText('update.downloading_title', 'Downloading Update...');
+        document.getElementById('updateSub').textContent   = updTextFn('update.download_progress', percent + '% complete', percent);
+        document.getElementById('updateProgressWrap').style.display = 'block';
+      });
+
+      window.api.onUpdateDownloaded(() => {
+        _updLog('info', 'onUpdateDownloaded fired — update ready to install');
+        _updateState = 'downloaded';
+        document.getElementById('updateProgressWrap').style.display = 'none';
+        document.getElementById('updateTitle').textContent = updText('update.ready_title', 'Update Ready to Install');
+        document.getElementById('updateSub').textContent   = updText('update.ready_sub', 'Restart the app to apply the update.');
+        document.getElementById('updateActionBtn').textContent = updText('update.restart_install', 'Restart & Install');
+        document.getElementById('updateActionBtn').disabled = false;
+        document.getElementById('updateActionBtn').onclick = handleUpdateAction;
+        document.getElementById('updateToast').style.display = 'block';
+      });
+
+      window.api.onUpdateError(({ message }) => {
+        _updLog('error', `onUpdateError fired — message: ${message}`);
+        _updateState = 'error';
+        _setUpdBtn(false);
+        document.getElementById('updateTitle').textContent = updText('update.error_title', 'Update Error');
+        document.getElementById('updateSub').textContent = message || updText('update.error_sub', 'An unknown error occurred during update.');
+        document.getElementById('updateActionBtn').textContent = updText('update.dismiss', 'Dismiss');
+        document.getElementById('updateActionBtn').disabled = false;
+        document.getElementById('updateActionBtn').onclick = () => { _updateState = 'idle'; hideUpdateToast(); };
+        document.getElementById('updateProgressWrap').style.display = 'none';
+        document.getElementById('updateToast').style.display = 'block';
+        const dot = document.getElementById('updateDot');
+        if (dot) dot.style.display = 'none';
+      });
+
+      _updLog('info', 'initAutoUpdater — all events wired successfully');
+    }
+
+    // Call initAutoUpdater after DOM is ready
+    if (document.readyState === 'loading') {
+      document.addEventListener('DOMContentLoaded', initAutoUpdater);
+    } else {
+      initAutoUpdater();
+    }
     </script>
   </body>
 </html>

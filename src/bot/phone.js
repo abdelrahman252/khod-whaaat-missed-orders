@@ -1,41 +1,64 @@
 "use strict";
 
-/**
- * Normalize a Saudi phone number to 9-digit core (5XXXXXXXX)
- * Uses duk.js logic (correct slice(2) for 00-prefix)
- * Returns null if invalid
- */
-function normalizePhone(phone) {
+function toWesternDigits(value) {
+  return value
+    .toString()
+    .replace(/[٠-٩]/g, (d) => "٠١٢٣٤٥٦٧٨٩".indexOf(d).toString())
+    .replace(/[۰-۹]/g, (d) => "۰۱۲۳۴۵۶۷۸۹".indexOf(d).toString());
+}
+
+function _normalizeCore(phone) {
   if (!phone) return null;
 
-  let digits = phone
-    .toString()
-    .replace(/[٠-٩]/g, (d) => "٠١٢٣٤٥٦٧٨٩".indexOf(d).toString());
-
-  digits = digits.replace(/\D/g, "");
+  let digits = toWesternDigits(phone).replace(/\D/g, "");
   if (!digits) return null;
 
   if (digits.startsWith("00")) digits = digits.slice(2);
   if (digits.startsWith("966")) digits = digits.slice(3);
   if (digits.startsWith("0")) digits = digits.slice(1);
 
-  // Must start with 5 to be a valid Saudi mobile number
-  if (!digits.startsWith("5")) return null;
+  if (digits.length === 10 && digits.endsWith("0")) {
+    digits = digits.slice(0, 9);
+  }
 
-  // If longer than 9 digits, cut to exactly 9 (handles trailing 0, double 0, +, extra digits, etc.)
-  if (digits.length > 9) digits = digits.slice(0, 9);
+  if (digits.startsWith("5") && digits.length === 9) {
+    return { digits, uncertain: false };
+  }
 
-  if (digits.length !== 9) return null;
+  if (digits.startsWith("5") && digits.length === 8) {
+    return { digits: digits + "0", uncertain: true };
+  }
 
-  return digits;
+  let raw = toWesternDigits(phone).replace(/\D/g, "");
+  if (raw.startsWith("00")) raw = raw.slice(2);
+
+  for (let i = raw.length - 9; i >= 0; i--) {
+    if (raw[i] === "5") {
+      return { digits: raw.slice(i, i + 9), uncertain: false };
+    }
+  }
+
+  for (let i = raw.length - 8; i >= 0; i--) {
+    if (raw[i] === "5") {
+      return { digits: raw.slice(i, i + 8) + "0", uncertain: true };
+    }
+  }
+
+  return null;
 }
 
-/**
- * Format to 966XXXXXXXXX for output
- */
+function normalizePhone(phone) {
+  const result = _normalizeCore(phone);
+  return result ? result.digits : null;
+}
+
+function normalizePhoneWithMeta(phone) {
+  return _normalizeCore(phone);
+}
+
 function formatPhone966(phone) {
   const core = normalizePhone(phone);
   return core ? "966" + core : null;
 }
 
-module.exports = { normalizePhone, formatPhone966 };
+module.exports = { normalizePhone, normalizePhoneWithMeta, formatPhone966 };

@@ -6,17 +6,53 @@ const fs   = require("fs");
 const os   = require("os");
 const path = require("path");
 const {
-  parseKhodPhones,
+  parseKhodOrderKeys,
+  parseKhodAnalyticsMap,
+  parseFullMonthSnapshot,
   parseRealOrders,
   parseMissedOrders,
   buildProductCatalog,
   resolveMissedOrders,
   mergeAndDeduplicate,
 } = require("./parser");
-const { buildOutputExcel, buildFailedExcel } = require("./output");
+const { buildOutputExcel, buildFailedExcel, buildSkippedExcel } = require("./output");
 
 const config = JSON.parse(process.env.BOT_CONFIG || "{}");
 const log = (msg) => process.stdout.write(msg + "\n");
+
+
+// ════════════════════════════════════════
+// FILE HELPERS
+// ════════════════════════════════════════
+
+/**
+ * Build a filename like: skipped-orders-user_example_com-2025-06-01_14-32.xlsx
+ * Uses config.easyEmail (sanitised) + local timestamp so files never overwrite each other.
+ */
+function accountFileBase(prefix) {
+  const email = (config.easyEmail || "account")
+    .replace(/[<>:"/\\|?*\x00-\x1F@]/g, "_");
+  const now = new Date();
+  const pad = (n) => String(n).padStart(2, "0");
+  const ts = `${now.getFullYear()}-${pad(now.getMonth() + 1)}-${pad(now.getDate())}_${pad(now.getHours())}-${pad(now.getMinutes())}`;
+  return `${prefix}-${email}-${ts}.xlsx`;
+}
+
+/**
+ * Return a file path that does not yet exist.
+ * If `dir/filename` is already taken, appends -1, -2, … until free.
+ */
+function uniqueFilePath(dir, filename) {
+  let p = path.join(dir, filename);
+  if (!fs.existsSync(p)) return p;
+  const ext  = path.extname(filename);
+  const base = path.basename(filename, ext);
+  let i = 1;
+  while (fs.existsSync(p)) {
+    p = path.join(dir, `${base}-${i++}${ext}`);
+  }
+  return p;
+}
 
 // ════════════════════════════════════════
 // SESSION HELPERS
@@ -204,7 +240,7 @@ async function pickDateInEasyOrdersCalendar(page, targetDt) {
 // ════════════════════════════════════════
 async function pickDateInTaagerCalendar(page, targetDt) {
   const targetDataDay = formatDataDay(targetDt);
-  log(`📅 Khod whaat calendar → ${targetDataDay}`);
+  log(`📅 Khod Whaat calendar → ${targetDataDay}`);
 
   await page.waitForSelector('[role="grid"]', { timeout: 10000 });
   await page.waitForTimeout(300);
@@ -228,27 +264,67 @@ async function pickDateInTaagerCalendar(page, targetDt) {
 
   await page.locator(`[data-day="${targetDataDay}"] button`).click();
   await page.waitForTimeout(400);
-  log(`✅ Khod whaat calendar: ${targetDataDay}`);
+  log(`✅ Khod Whaat calendar: ${targetDataDay}`);
 }
 
 // ════════════════════════════════════════
 // EASY-ORDERS EXPORT TRIGGER
+//
+// Flow: trigger export → Easy-Orders auto-redirects to notifications →
+//       reload once → grab the FIRST card matching keyword by text content.
 // ════════════════════════════════════════
 async function triggerEasyOrdersExport(page, exportFromDate, keyword) {
-  const MAX_ATTEMPTS  = 3;
-  const COOLDOWN_MS   = 6 * 60 * 1000; // Easy-Orders rate limit: 1 export per 5 min
-  const CHECK_POLL_MS = 5000;
-  const CHECK_ROUNDS  = 24; // ~2 min of polling after triggering
+  const MAX_ATTEMPTS = 3;
+  const COOLDOWN_MS  = 6 * 60 * 1000; // Easy-Orders rate limit: ~1 export per 5 min
 
   const pageUrl = keyword === "missed-orders"
     ? "https://app.easy-orders.net/#/missed-orders"
     : "https://app.easy-orders.net/#/orders";
 
-  // ── Step 1: Trigger the export and immediately return the timestamp ──
-  const triggerExport = async (n) => {
+  // After a reload, grab the href of the FIRST card whose text matches `keyword`.
+  // Text-based classification — never relies on filename suffix.
+  const grabFirstMatchingCard = async () => {
+    return await page.evaluate(({ keyword }) => {
+      function shortText(el) {
+        return (el.innerText || el.textContent || "").replace(/\s+/g, " ").trim().slice(0, 200);
+      }
+      function cardKind(text) {
+        const t = String(text || "").toLowerCase();
+        const missed =
+          t.includes("missed orders report") ||
+          t.includes("missed order report") ||
+          t.includes("تقرير الطلبات الفائتة") ||
+          t.includes("طلبات فائتة");
+        if (missed) return "missed-orders";
+        const orders =
+          t.includes("ملف اكسل للطلبات") ||
+          t.includes("ملف إكسل للطلبات") ||
+          t.includes("انشاء ملف اكسل") ||
+          t.includes("إنشاء ملف إكسل") ||
+          t.includes("orders exported") ||
+          t.includes("orders export") ||
+          t.includes("created orders excel");
+        return orders ? "orders" : "";
+      }
+
+      const rows = Array.from(document.querySelectorAll("tr, [role='row'], li"));
+      for (const row of rows) {
+        const text = shortText(row);
+        if (cardKind(text) !== keyword) continue;
+        const links = Array.from(row.querySelectorAll('a[href*=".xlsx"], a[href*="/excel/"]'));
+        const fileLink = links.find(a => (a.href || "").startsWith("https://"));
+        if (fileLink) {
+          return { href: fileLink.href, text };
+        }
+      }
+      return null;
+    }, { keyword });
+  };
+
+  for (let n = 1; n <= MAX_ATTEMPTS; n++) {
     log(`\n📤 Export attempt ${n}/${MAX_ATTEMPTS} for "${keyword}"...`);
 
-    // ── Ensure English FIRST — before any selector checks ──
+    // ── 1. Navigate to the orders/missed-orders page ──
     log(`[NAV] → ${pageUrl}`);
     await page.goto(pageUrl, { waitUntil: "domcontentloaded" });
     await page.waitForTimeout(1500);
@@ -256,7 +332,7 @@ async function triggerEasyOrdersExport(page, exportFromDate, keyword) {
     const landedUrl = page.url();
     log(`[NAV] landed: ${landedUrl} | title: ${await page.title().catch(() => "?")}`);
 
-    // ── Session probe before attempting export ──
+    // ── Session probe ──
     try {
       await assertEasyOrdersSession(page);
     } catch (sessionErr) {
@@ -273,13 +349,11 @@ async function triggerEasyOrdersExport(page, exportFromDate, keyword) {
       await page.waitForTimeout(2000);
     }
 
-    // ── FALLBACK: reload page up to 3 times if table or export button not found ──
-    let pageReady = false;
+    // ── Wait for table + export button (retry up to 3 page reloads) ──
     for (let reload = 1; reload <= 3; reload++) {
       try {
         await page.waitForSelector("table", { timeout: 15000 });
-        await page.waitForSelector('button:has-text("Export")', { timeout: 15000 });
-        pageReady = true;
+        await page.waitForSelector('.RaList-main button:has-text("Export"), main button:has-text("Export"), button:has-text("Export")', { timeout: 15000 });
         break;
       } catch (e) {
         log(`⚠️ Page not ready (reload ${reload}/3): ${e.message}`);
@@ -287,7 +361,6 @@ async function triggerEasyOrdersExport(page, exportFromDate, keyword) {
           log(`🔄 Reloading page and trying again...`);
           await page.goto(pageUrl, { waitUntil: "domcontentloaded" });
           await page.waitForTimeout(4000);
-          // Re-ensure English after reload
           const switched2 = await ensureEasyOrdersEnglish(page);
           if (switched2) await page.waitForTimeout(2000);
         } else {
@@ -296,101 +369,164 @@ async function triggerEasyOrdersExport(page, exportFromDate, keyword) {
       }
     }
 
-    await page.click('button:has-text("Export")');
-    await page.waitForTimeout(2000);
+    // ── 2. Open the export dialog ──
+    // The Export button is MuiButton-outlined (Create Order is MuiButton-contained, an <a> tag).
+    // This is the most specific stable selector we can use without relying on dynamic class hashes.
+    log(`🖱️ Clicking page-level Export button to open dialog...`);
+    const pageExportBtn = page.locator('button.MuiButton-outlined:has-text("Export")').first();
+    await pageExportBtn.waitFor({ state: "visible", timeout: 10000 });
+    const pageExportText = await pageExportBtn.innerText().catch(() => "?");
+    log(`   Found page Export button — text: "${pageExportText.replace(/\s+/g, " ").trim()}" — clicking`);
+    await pageExportBtn.click();
+    await page.waitForTimeout(1500);
 
-    await page.click(".react-datepicker-wrapper:first-of-type input");
+    // ── 3. Interact with the export dialog ──
+    // MUST use state:"visible" — "attached" (the default) passes even for hidden dialogs
+    // that React keeps in the DOM from a previous render cycle.
+    log(`⏳ Waiting for export dialog to become visible...`);
+    const dialog = page.locator('div[role="dialog"]').first();
+    try {
+      await dialog.waitFor({ state: "visible", timeout: 8000 });
+    } catch {
+      // Dialog did not appear — take a screenshot so we can see what went wrong
+      await debugScreenshot(page, `export-dialog-not-visible-${keyword}-${n}`);
+      throw new Error(`Export dialog did not appear after clicking Export button (keyword="${keyword}", attempt=${n})`);
+    }
+
+    const dialogTitle = await dialog.locator('h2, .MuiDialogTitle-root').innerText().catch(() => "?");
+    log(`✅ Dialog is VISIBLE — title: "${dialogTitle.trim()}"`);
+
+    // Confirm date inputs are visible inside the dialog
+    const dateInputs = dialog.locator('.react-datepicker-wrapper input');
+    const dateInputCount = await dateInputs.count();
+    log(`   Date inputs in dialog: ${dateInputCount}`);
+
+    const startValBefore = await dateInputs.first().inputValue().catch(() => "?");
+    log(`   Start date current value: "${startValBefore}"`);
+
+    // Click start date input and pick the date
+    log(`🗓️ Clicking start date input...`);
+    await dateInputs.first().click();
+    await page.waitForTimeout(500);
+    log(`🗓️ Picking start date: ${formatDataDay(exportFromDate)}`);
     await pickDateInEasyOrdersCalendar(page, exportFromDate);
-    await page.click(".MuiDialogTitle-root");
+
+    // DO NOT press Escape here — MUI dialogs listen for Escape and will close the whole dialog.
+    // Clicking a date in the calendar already closes the calendar popup automatically.
+    // Click the dialog title (h2) as a safe fallback to dismiss any lingering calendar overlay
+    // without risking closing the dialog itself.
+    await dialog.locator('h2').click().catch(() => {});
     await page.waitForTimeout(500);
 
-    await page.waitForSelector(".MuiDialogActions-root button", { timeout: 5000 });
-    const triggeredAt = Date.now();
-    await page.click(".MuiDialogActions-root button");
-    await page.waitForTimeout(1500);
-    log(`⏱️ Export triggered at ${new Date(triggeredAt).toISOString()}`);
-    return triggeredAt;
-  };
+    // Confirm start date was set
+    const startValAfter = await dateInputs.first().inputValue().catch(() => "?");
+    log(`✅ Start date set — value now: "${startValAfter}"`);
 
-  // ── Step 2: Poll notifications for the ready file ──
-  const pollForFile = async (triggeredAt) => {
-    await page.goto("https://app.easy-orders.net/#/notifications", { waitUntil: "domcontentloaded" });
-    await page.waitForTimeout(2000);
-
-    // Build href patterns that distinguish orders vs missed-orders without suffix tricks.
-    // Use dash-wrapped strings: "-orders-" never matches "-missed-orders-" files.
-    const hrefMustContain    = keyword === "missed-orders" ? "-missed-orders-" : "-orders-";
-    const hrefMustNotContain = keyword === "orders"        ? "-missed-orders-" : null;
-
-    for (let i = 1; i <= CHECK_ROUNDS; i++) {
-      log(`🔁 Checking notifications (${i}/${CHECK_ROUNDS}) for "${keyword}"...`);
-      try {
-        const found = await page.evaluate(
-          ({ hrefMustContain, hrefMustNotContain }) => {
-            // Rows are ordered newest-first — first matching row with chip = correct file
-            const rows = Array.from(document.querySelectorAll("tr"));
-
-            for (const row of rows) {
-              const links = Array.from(row.querySelectorAll('a[href*=".xlsx"]'));
-              if (!links.length) continue;
-
-              // Find a link whose href matches our keyword pattern
-              const matchingLink = links.find(a => {
-                const href = a.href || "";
-                if (!href.includes(hrefMustContain)) return false;
-                if (hrefMustNotContain && href.includes(hrefMustNotContain)) return false;
-                return true;
-              });
-              if (!matchingLink) continue;
-
-              // Check for success chip anywhere in this row (chip is sibling of link,
-              // not ancestor — so searching the whole row is the correct approach)
-              const hasChip = !!row.querySelector(".MuiChip-colorSuccess");
-
-              if (hasChip) {
-                return matchingLink.href; // newest ready export for this keyword
-              }
-              // Row matched keyword but no chip yet — export still processing.
-              // Rows are newest-first so stop here, don't check older rows.
-              return null;
-            }
-            return null;
-          },
-          { hrefMustContain, hrefMustNotContain }
-        );
-        if (found) { log(`✅ Download URL found: ${found.slice(0, 80)}...`); return found; }
-      } catch (e) {
-        log(`⚠️ Check error: ${e.message}`);
-      }
-      await page.waitForTimeout(CHECK_POLL_MS);
-      await page.reload({ waitUntil: "domcontentloaded" });
-      await page.waitForTimeout(2000);
+    // End date defaults to today — read and log it for debugging
+    if (dateInputCount >= 2) {
+      const endVal = await dateInputs.nth(1).inputValue().catch(() => "?");
+      log(`   End date (default): "${endVal}"`);
     }
-    return null; // not ready after polling window
-  };
 
-  // ── Main retry loop ──
-  // Strategy: trigger → poll for ~2 min → if still not ready, DON'T keep checking.
-  // Instead: wait out the full 6-min cooldown (from trigger time), then re-trigger fresh.
-  // This avoids hammering the server and respects the 1-export-per-5-min rate limit.
-  for (let n = 1; n <= MAX_ATTEMPTS; n++) {
-    const triggeredAt = await triggerExport(n);
-    const url = await pollForFile(triggeredAt);
-    if (url) return url;
+    // Verify the dialog is still open before clicking Export
+    const dialogStillVisible = await dialog.isVisible().catch(() => false);
+    if (!dialogStillVisible) {
+      await debugScreenshot(page, `dialog-closed-before-export-btn-${keyword}-${n}`);
+      throw new Error(`Dialog was closed before clicking the Export button — Escape may have dismissed it (keyword="${keyword}", attempt=${n})`);
+    }
 
+    // ── 4. Click the Export button inside the dialog ──
+    const dialogExportBtn = dialog.locator('.MuiDialogActions-root button');
+    await dialogExportBtn.waitFor({ state: "visible", timeout: 5000 });
+    const dialogExportText = await dialogExportBtn.innerText().catch(() => "?");
+    log(`🖱️ Dialog action button found — text: "${dialogExportText.replace(/\s+/g, " ").trim()}" — clicking...`);
+    await dialogExportBtn.click();
+
+    const triggeredAt = Date.now();
+    log(`⏱️ Export button clicked at ${new Date(triggeredAt).toISOString()}`);
+
+    // ── 5. Verify export was submitted — dialog must close ──
+    log(`⏳ Waiting for dialog to close (confirms export was submitted)...`);
+    try {
+      await dialog.waitFor({ state: "hidden", timeout: 8000 });
+      log(`✅ Dialog closed — export successfully submitted ✅`);
+    } catch {
+      // Dialog still open — might be a rate-limit message or error inside it
+      const dialogBody = await dialog.innerText().catch(() => "");
+      log(`⚠️ Dialog did NOT close after 8s — content: "${dialogBody.replace(/\s+/g, " ").trim().slice(0, 200)}"`);
+      await debugScreenshot(page, `dialog-not-closed-${keyword}-${n}`);
+      // Press Escape to dismiss and let the retry loop handle it
+      await page.keyboard.press("Escape").catch(() => {});
+      await page.waitForTimeout(1000);
+    }
+
+    // ── 6. Check toast — detect rate limit before touching notifications ──
+    await page.waitForTimeout(1000);
+    const toastEl = await page.locator('[role="alert"], .MuiSnackbarContent-root, .Toastify__toast').innerText().catch(() => null);
+    const toastText = toastEl ? toastEl.trim().replace(/\s+/g, " ") : "";
+
+    const isRateLimited = toastText.includes("5 minutes") ||
+                          toastText.includes("5 دقائق")   ||
+                          toastText.includes("every")      ||
+                          toastText.includes("abuse");
+
+    if (toastText) {
+      log(`📢 Toast: "${toastText}"`);
+    } else {
+      log(`   No toast detected`);
+    }
+
+    if (isRateLimited) {
+      // Export was NOT submitted — grabbing a card now would return an old one. Skip.
+      log(`⚠️ Rate limit confirmed — export did NOT create a new file. Skipping notification grab.`);
+    } else {
+      // ── 7. Ensure we are on the notifications page ──
+      await page.waitForTimeout(1500);
+      const urlAfterExport = page.url();
+      log(`[NAV] URL after export: ${urlAfterExport}`);
+      if (!urlAfterExport.includes("notifications")) {
+        log(`[NAV] Not redirected automatically — navigating to notifications...`);
+        await page.goto("https://app.easy-orders.net/#/notifications", { waitUntil: "domcontentloaded" });
+        await page.waitForTimeout(1000);
+      } else {
+        log(`[NAV] Easy-Orders redirected to notifications automatically ✅`);
+      }
+
+      // ── 8. Two guaranteed reloads before grabbing ──
+      log(`🔄 Reload #1 of notifications...`);
+      await page.reload({ waitUntil: "domcontentloaded" });
+      await page.waitForTimeout(2500);
+      log(`✅ Reload #1 done — URL: ${page.url()}`);
+
+      log(`🔄 Reload #2 of notifications...`);
+      await page.reload({ waitUntil: "domcontentloaded" });
+      await page.waitForTimeout(2500);
+      log(`✅ Reload #2 done — URL: ${page.url()}`);
+
+      // ── 9. Grab the first matching card ──
+      log(`🔍 Scanning notifications for first "${keyword}" card...`);
+      const result = await grabFirstMatchingCard();
+      if (result) {
+        log(`✅ "${keyword}" card FOUND ✅`);
+        log(`   Card text: "${result.text.slice(0, 120)}"`);
+        log(`   Card URL:  ${result.href}`);
+        // Notify parent process of successful export completion
+        process.send && process.send({ type: "export-timestamp", timestamp: Date.now() });
+        return result.href;
+      }
+      log(`⚠️ No "${keyword}" card found after 2 reloads — will wait cooldown and retry`);
+    }
+
+    // ── Rate limit / card not found — wait cooldown then retry ──
     if (n < MAX_ATTEMPTS) {
-      // Calculate how long we've already spent since triggering
       const elapsed   = Date.now() - triggeredAt;
       const remaining = Math.max(0, COOLDOWN_MS - elapsed);
       const waitSecs  = Math.ceil(remaining / 1000);
 
-      log(`\n⚠️ Export not ready after polling — rate limit hit.`);
-      log(`⏸️  Cooling down for ${waitSecs}s before re-triggering (already waited ${Math.round(elapsed / 1000)}s)...`);
-
-      // Notify UI about the cooldown
+      log(`\n⚠️ Export not ready after reloads — rate limit likely.`);
+      log(`⏸️  Cooling down for ${waitSecs}s before re-triggering...`);
       process.send && process.send({ type: "cooldown", seconds: waitSecs, attempt: n, maxAttempts: MAX_ATTEMPTS });
 
-      // Wait out the remaining cooldown in 10s ticks so the log stays alive
       let left = remaining;
       while (left > 0) {
         const tick = Math.min(10000, left);
@@ -398,7 +534,6 @@ async function triggerEasyOrdersExport(page, exportFromDate, keyword) {
         left -= tick;
         if (left > 0) log(`⏳ Re-triggering in ${Math.ceil(left / 1000)}s...`);
       }
-
       log(`🔄 Cooldown done — re-triggering export now\n`);
     }
   }
@@ -412,6 +547,203 @@ async function downloadToBuffer(page, url) {
   const response = await page.context().request.get(url);
   const body     = await response.body();
   return Buffer.from(body);
+}
+
+function normalizeEmail(value) {
+  return String(value || "").trim().toLowerCase();
+}
+
+function normalizeIdentityText(value) {
+  return String(value || "")
+    .replace(/[\u{1F300}-\u{1FAFF}]/gu, "")
+    .replace(/[\u200E\u200F\u061C]/g, "")
+    .replace(/\s+/g, " ")
+    .trim()
+    .toLowerCase();
+}
+
+function normalizeAffiliateCode(value) {
+  return String(value || "").replace(/[^\dA-Za-z_-]/g, "").trim();
+}
+
+function assertIdentityMatch(site, expectedLabel, expected, actual) {
+  if (expected !== actual) {
+    throw new Error(`${site}_IDENTITY_MISMATCH: expected ${expectedLabel} "${expected}", detected "${actual || "unknown"}"`);
+  }
+}
+
+async function collectEasyOrdersIdentityEmails(page) {
+  return await page.evaluate(() => {
+    const EMAIL_RE = /[A-Z0-9._%+-]+@[A-Z0-9.-]+\.[A-Z]{2,}/ig;
+    const hits = [];
+    const seen = new Set();
+
+    function add(source, text) {
+      if (text === undefined || text === null) return;
+      const value = String(text);
+      const decoded = (() => {
+        try { return decodeURIComponent(value); } catch { return ""; }
+      })();
+      const matches = `${value} ${decoded}`.match(EMAIL_RE) || [];
+      for (const raw of matches) {
+        const email = raw.trim().toLowerCase();
+        const key = `${source}|${email}`;
+        if (!seen.has(key)) {
+          seen.add(key);
+          hits.push({ source, email });
+        }
+      }
+    }
+
+    function decodeBase64Url(value) {
+      try {
+        const padded = value.replace(/-/g, "+").replace(/_/g, "/").padEnd(Math.ceil(value.length / 4) * 4, "=");
+        return decodeURIComponent(
+          Array.from(atob(padded), c => `%${c.charCodeAt(0).toString(16).padStart(2, "0")}`).join("")
+        );
+      } catch {
+        try {
+          const padded = value.replace(/-/g, "+").replace(/_/g, "/").padEnd(Math.ceil(value.length / 4) * 4, "=");
+          return atob(padded);
+        } catch {
+          return "";
+        }
+      }
+    }
+
+    function scanJwt(source, text) {
+      const value = String(text || "");
+      const tokens = value.match(/eyJ[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+/g) || [];
+      for (const token of tokens) {
+        const parts = token.split(".");
+        if (parts.length >= 2) add(`${source}:jwt`, decodeBase64Url(parts[1]));
+      }
+    }
+
+    add("document", document.body ? document.body.innerText : "");
+    add("title", document.title || "");
+    for (const el of Array.from(document.querySelectorAll("[title], [aria-label], [alt], [data-user], [data-email], [href]"))) {
+      add("dom-attr", [
+        el.getAttribute("title"),
+        el.getAttribute("aria-label"),
+        el.getAttribute("alt"),
+        el.getAttribute("data-user"),
+        el.getAttribute("data-email"),
+        el.getAttribute("href"),
+      ].filter(Boolean).join(" "));
+    }
+
+    for (const storage of [localStorage, sessionStorage]) {
+      const storageName = storage === localStorage ? "localStorage" : "sessionStorage";
+      for (let i = 0; i < storage.length; i++) {
+        const key = storage.key(i);
+        const value = storage.getItem(key);
+        add(storageName, `${key || ""} ${value || ""}`);
+        scanJwt(storageName, `${key || ""} ${value || ""}`);
+      }
+    }
+
+    add("cookie", document.cookie || "");
+    scanJwt("cookie", document.cookie || "");
+
+    return hits;
+  });
+}
+
+async function revealEasyOrdersIdentityMenu(page) {
+  const selectors = [
+    'button[aria-label="app_bar.user_settings"]',
+    '[data-testid="user-avatar"]',
+    'button:has(.MuiAvatar-root)',
+    '.MuiAvatar-root',
+    '.MuiAppBar-root button[aria-label*="account" i]',
+    '.MuiAppBar-root button[aria-label*="user" i]',
+    '.MuiToolbar-root button:has([data-testid="AccountCircleIcon"])',
+  ];
+
+  for (const selector of selectors) {
+    const target = page.locator(selector).first();
+    if (await target.count().catch(() => 0)) {
+      try {
+        await target.click({ timeout: 1200 });
+        await page.waitForTimeout(800);
+        return true;
+      } catch {}
+    }
+  }
+  return false;
+}
+
+async function readEasyOrdersCurrentStore(page, expectedEmail) {
+  // Do not use generated MUI class names like "muiltr-new-*".
+  // They are build-generated and can change anytime; use aria-labels, text, roles, and stable structure only.
+  await revealEasyOrdersIdentityMenu(page);
+  await page.waitForTimeout(500);
+  return page.evaluate((email) => {
+    const normalize = (value) => String(value || "")
+      .replace(/[\u{1F300}-\u{1FAFF}]/gu, "")
+      .replace(/[\u200E\u200F\u061C]/g, "")
+      .replace(/\s+/g, " ")
+      .trim()
+      .toLowerCase();
+    const expectedEmail = normalize(email);
+    const texts = Array.from(document.querySelectorAll('[role="presentation"] p, [role="presentation"] span, [class*="MuiPopover-paper"] p, [class*="MuiPopover-paper"] span'))
+      .map(el => (el.innerText || el.textContent || "").trim())
+      .filter(Boolean);
+    const emailIndex = texts.findIndex(text => normalize(text) === expectedEmail);
+    if (emailIndex > 0) return normalize(texts[emailIndex - 1]);
+    const storeHeadingIndex = texts.findIndex(text => normalize(text).replace(/:$/, "") === "stores");
+    if (storeHeadingIndex >= 0) {
+      const candidate = texts.slice(storeHeadingIndex + 1).find(text => !/@/.test(text) && normalize(text) !== "add store");
+      if (candidate) return normalize(candidate);
+    }
+    return "";
+  }, expectedEmail);
+}
+
+async function verifyEasyOrdersIdentity(page, where = "session") {
+  const expected = normalizeEmail(config.easyEmail);
+  const expectedStore = normalizeIdentityText(config.easyStore);
+  if (!expected) {
+    throw new Error("EASY_ORDERS_IDENTITY_CONFIG_MISSING: easyEmail is not set");
+  }
+  if (!expectedStore) {
+    throw new Error("EASY_ORDERS_STORE_CONFIG_MISSING: easyStore is required for this licensed account slot");
+  }
+
+  let hits = await collectEasyOrdersIdentityEmails(page).catch(() => []);
+  let detected = [...new Set(hits.map(h => normalizeEmail(h.email)).filter(Boolean))];
+
+  if (!detected.includes(expected)) {
+    const opened = await revealEasyOrdersIdentityMenu(page).catch(() => false);
+    if (opened) {
+      const menuHits = await collectEasyOrdersIdentityEmails(page).catch(() => []);
+      hits = [...hits, ...menuHits];
+      detected = [...new Set(hits.map(h => normalizeEmail(h.email)).filter(Boolean))];
+      await page.keyboard.press("Escape").catch(() => {});
+    }
+  }
+
+  if (detected.includes(expected)) {
+    const sources = [...new Set(hits.filter(h => normalizeEmail(h.email) === expected).map(h => h.source))].join(", ") || "page";
+    const currentStore = await readEasyOrdersCurrentStore(page, expected).catch(() => "");
+    log(`[IDENTITY][Easy-Orders] expected email=${expected}, expected store=${expectedStore}, detected emails=${detected.join(", ") || "none"}, detected store=${currentStore || "unknown"}, where=${where}`);
+    if (currentStore !== expectedStore) {
+      await debugScreenshot(page, `easy-orders-store-mismatch-${where}`);
+    }
+    assertIdentityMatch("EASY_ORDERS", "store", expectedStore, currentStore);
+    log(`✅ Easy-Orders identity verified: ${expected} (${sources})`);
+    process.send && process.send({ type: "session-event", site: "easy-orders", event: "identity-verified", email: expected, store: config.easyStore, where });
+    return true;
+  }
+
+  await debugScreenshot(page, `easy-orders-identity-${where}`);
+
+  if (detected.length > 0) {
+    throw new Error(`EASY_ORDERS_IDENTITY_MISMATCH: expected ${expected}, detected ${detected.join(", ")}`);
+  }
+
+  throw new Error(`EASY_ORDERS_IDENTITY_UNVERIFIED: expected ${expected}, but no Easy-Orders email was visible in page/storage/cookies`);
 }
 
 // ════════════════════════════════════════
@@ -439,8 +771,11 @@ async function phase1_easyOrdersLogin(page) {
   // before skipping login.  Prevents stale/revoked cookie false positives.
   const alreadyLoggedIn = !landedUrl.includes("login");
   if (alreadyLoggedIn) {
+    // Give SPA extra time to hydrate before probing DOM
+    await page.waitForTimeout(1500);
     const authDomPresent = await page.$(
-      '.MuiAppBar-root, [aria-label="language-switcher"], nav, .sidebar, [data-testid="user-avatar"]'
+      '.MuiAppBar-root, [aria-label="language-switcher"], [data-testid="user-avatar"], ' +
+      '[class*="Dashboard"], [class*="OrderList"], .MuiDrawer-root, .MuiCard-root'
     ) !== null;
     if (authDomPresent) {
       log("✅ Easy-orders: already logged in (URL + DOM verified), skipping login\n");
@@ -450,9 +785,7 @@ async function phase1_easyOrdersLogin(page) {
       process.send && process.send({ type: "session-event", site: "easy-orders", event: "session-probe-failed", url: landedUrl });
       await debugScreenshot(page, "easy-orders-probe-fail");
       // Fall through to login block below
-      goto_login: {
-        await doEasyOrdersLogin(page);
-      }
+      await doEasyOrdersLogin(page);
     }
   } else {
     log("🔐 Easy-orders: session expired, logging in...");
@@ -468,15 +801,14 @@ async function phase1_easyOrdersLogin(page) {
     log("🏪 Store selection page detected...");
 
     const storeName = (config.easyStore || "").trim().toLowerCase();
+    const cards = page.locator('.MuiCard-root');
+    const count = await cards.count();
 
     if (!storeName) {
-      log("⚠️ No store name configured — clicking first store");
-      await page.locator('.MuiCard-root').first().click();
+      throw new Error("EASY_ORDERS_STORE_CONFIG_MISSING: easyStore is required for this licensed account slot");
     } else {
       log(`🔍 Looking for store: "${config.easyStore}"`);
 
-      const cards = page.locator('.MuiCard-root');
-      const count = await cards.count();
       let found   = false;
 
       for (let i = 0; i < count; i++) {
@@ -484,7 +816,7 @@ async function phase1_easyOrdersLogin(page) {
         const nameEl   = card.locator('h6');
         const cardName = (await nameEl.innerText().catch(() => "")).trim().toLowerCase();
 
-        if (cardName === storeName || cardName.includes(storeName) || storeName.includes(cardName)) {
+        if (normalizeIdentityText(cardName) === normalizeIdentityText(storeName)) {
           log(`✅ Found store: "${cardName}" — clicking`);
           await card.click();
           found = true;
@@ -493,8 +825,7 @@ async function phase1_easyOrdersLogin(page) {
       }
 
       if (!found) {
-        log(`⚠️ Store "${config.easyStore}" not found — clicking first store as fallback`);
-        await cards.first().click();
+        throw new Error(`Store "${config.easyStore}" was not found in the store selection list!`);
       }
     }
 
@@ -507,6 +838,8 @@ async function phase1_easyOrdersLogin(page) {
 
     await ensureEasyOrdersEnglish(page);
   }
+
+  await verifyEasyOrdersIdentity(page, "phase1");
 }
 
 // ════════════════════════════════════════
@@ -578,10 +911,14 @@ async function doEasyOrdersLogin(page) {
     log(`[NAV] ${Math.round((Date.now() - started) / 1000)}s — url: ${currentUrl} | title: ${currentTitle}`);
 
     if (!currentUrl.includes("login")) {
+      // Give SPA extra time to hydrate before checking DOM
+      await page.waitForTimeout(1500);
       // URL moved off login — now perform DOM verification before declaring success
+      // Use MuiAppBar which only appears in the authenticated dashboard, not the login page
       const authDomPresent = await page.$(
-        '.MuiAppBar-root, [aria-label="language-switcher"], nav, .sidebar'
-      ) !== null;
+        '.MuiAppBar-root, [aria-label="language-switcher"], [class*="Dashboard"], ' +
+        '[class*="OrderList"], .MuiDrawer-root, .MuiCard-root'
+      ) !== null || currentUrl.includes("store-selection");
       if (authDomPresent) {
         confirmed = true;
         log(`✅ Easy-orders: login CONFIRMED (URL + DOM verified) — url: ${currentUrl} | title: ${currentTitle}`);
@@ -722,16 +1059,32 @@ async function khodLogin(page) {
   // can redirect away from /auth/login momentarily before the server invalidates it.
   const urlLooksAuthenticated = !landedUrl.includes("/auth/login") && !landedUrl.includes("/login");
   if (urlLooksAuthenticated) {
-    const authDomPresent = await page.$(
-      '.affiliate-orders, .sidebar, nav, [data-user], .user-info, .affiliate-header, [data-affiliate-id], main'
-    ) !== null;
+    // Use specific post-auth selectors only — generic nav/main/sidebar also exist on login page
+    const authDomPresent = await page.evaluate(() => {
+      // Look for elements that ONLY appear after successful login on khod-whaat.com
+      const specific = [
+        'a[href*="/affiliate/orders"]',
+        'a[href*="/affiliate/statistics"]',
+        '[class*="affiliate-header"]',
+        '[data-affiliate-id]',
+        '[data-user]',
+        '.user-dropdown',
+        // The welcome bar visible in screenshot: "Welcome massage for affiliate ..."
+        '[class*="welcome"]',
+        // Avatar/profile in topbar that only appears post-login
+        'header img[alt*="user"], header img[alt*="avatar"], header .avatar',
+        // Statistics link that appears in the nav after login (see screenshot)
+        'a[href*="statistics"]',
+      ];
+      return specific.some(sel => document.querySelector(sel) !== null);
+    });
     if (authDomPresent) {
-      log("✅ Khod: already logged in (URL + DOM verified)");
+      log("✅ Khod Whaat: already logged in (URL + DOM verified)");
       process.send && process.send({ type: "session-event", site: "khod", event: "session-reused", method: "dom-verified", url: landedUrl });
       return;
     }
     // URL moved but no auth DOM — stale cookie / redirect loop
-    log("⚠️ Khod: URL looks authenticated but auth DOM not found — SESSION_PROBE failed, re-logging in");
+    log("⚠️ Khod Whaat: URL looks authenticated but auth DOM not found — SESSION_PROBE failed, re-logging in");
     process.send && process.send({ type: "session-event", site: "khod", event: "session-probe-failed", url: landedUrl });
     await debugScreenshot(page, "khod-probe-fail");
     // Clear sessionStorage to evict any stale client-side auth state
@@ -742,7 +1095,15 @@ async function khodLogin(page) {
   }
 
   const method = config.khodLoginMethod || "email";
-  log(`🔐 Khod: logging in via ${method}...`);
+  log(`🔐 Khod Whaat: logging in via ${method}...`);
+
+  // ── Validate required credentials before touching the form ──
+  if (method === "phone" && !config.khodPhone) {
+    throw new Error("Khod Whaat login method is 'phone' but khodPhone is not set in config");
+  }
+  if (method !== "phone" && !config.khodEmail) {
+    throw new Error("Khod Whaat login method is 'email' but khodEmail is not set in config");
+  }
 
   // ── Fill credentials with reload fallback ──
   for (let loginAttempt = 1; loginAttempt <= 3; loginAttempt++) {
@@ -764,16 +1125,16 @@ async function khodLogin(page) {
       }
       await page.waitForTimeout(2000);
       // Log SUBMISSION separately from CONFIRMATION
-      log("✅ Khod: credentials SUBMITTED (awaiting server confirmation...)");
+      log("✅ Khod Whaat: credentials SUBMITTED (awaiting server confirmation...)");
       break;
     } catch (e) {
-      log(`⚠️ Khod login form attempt ${loginAttempt}/3 failed: ${e.message}`);
+      log(`⚠️ Khod Whaat login form attempt ${loginAttempt}/3 failed: ${e.message}`);
       if (loginAttempt < 3) {
-        log(`🔄 Reloading Khod login page and retrying...`);
+        log(`🔄 Reloading Khod Whaat login page and retrying...`);
         await page.goto("https://khod-whaat.com/affiliate/auth/login", { waitUntil: "domcontentloaded" });
         await page.waitForTimeout(3000);
       } else {
-        log("❌ Khod login form not found after 3 attempts — proceeding to wait for manual login");
+        log("❌ Khod Whaat login form not found after 3 attempts — proceeding to wait for manual login");
       }
     }
   }
@@ -793,13 +1154,27 @@ async function khodLogin(page) {
 
     const urlOffLogin = !currentUrl.includes("/login") && !currentUrl.includes("/auth");
     if (urlOffLogin) {
-      // DOM-verify: look for any authenticated element before declaring success
-      const authDomPresent = await page.$(
-        '.affiliate-orders, .sidebar, nav, main, [data-user], .user-info'
-      ) !== null;
+      // DOM-verify: look for specific post-auth elements — avoid generic nav/main that exist on login page
+      // Give the SPA extra time to hydrate before checking
+      await page.waitForTimeout(1500);
+      const authDomPresent = await page.evaluate(() => {
+        const specific = [
+          'a[href*="/affiliate/orders"]',
+          'a[href*="/affiliate/statistics"]',
+          '[class*="affiliate-header"]',
+          '[data-affiliate-id]',
+          '[data-user]',
+          '.user-dropdown',
+          '[class*="welcome"]',
+          'a[href*="statistics"]',
+          // Fallback: any link inside header/topbar that is NOT on a login form
+          'header a[href]:not([href*="login"]):not([href*="auth"])',
+        ];
+        return specific.some(sel => document.querySelector(sel) !== null);
+      });
       if (authDomPresent) {
         confirmed = true;
-        log(`✅ Khod: login CONFIRMED (URL + DOM verified) — url: ${currentUrl} | title: ${currentTitle}`);
+        log(`✅ Khod Whaat: login CONFIRMED (URL + DOM verified) — url: ${currentUrl} | title: ${currentTitle}`);
         process.send && process.send({ type: "session-event", site: "khod", event: "login-confirmed", method: "dom-verified", url: currentUrl });
         await debugScreenshot(page, "khod-login-confirmed");
         break;
@@ -811,9 +1186,9 @@ async function khodLogin(page) {
 
   if (!confirmed) {
     await debugScreenshot(page, "khod-login-timeout");
-    throw new Error("Khod login timeout after 5 minutes");
+    throw new Error("Khod Whaat login timeout after 5 minutes");
   }
-  log("✅ Khod login confirmed");
+  log("✅ Khod Whaat login confirmed");
 }
 
 // ════════════════════════════════════════
@@ -826,21 +1201,79 @@ async function assertKhodSession(page) {
   if (isOnLoginPage(url)) {
     throw new Error(`SESSION_EXPIRED: on login page (${url})`);
   }
-  // DOM-verify: look for any known post-auth element
-  const authDomPresent = await page.$(
-    '.affiliate-orders, .sidebar, nav, main, [data-user], .user-info'
-  ) !== null;
+  // DOM-verify: look for specific post-auth elements only
+  const authDomPresent = await page.evaluate(() => {
+    const specific = [
+      'a[href*="/affiliate/orders"]',
+      'a[href*="/affiliate/statistics"]',
+      '[class*="affiliate-header"]',
+      '[data-affiliate-id]',
+      '[data-user]',
+      '.user-dropdown',
+      '[class*="welcome"]',
+      'a[href*="statistics"]',
+      'header a[href]:not([href*="login"]):not([href*="auth"])',
+    ];
+    return specific.some(sel => document.querySelector(sel) !== null);
+  });
   if (!authDomPresent) {
     const title = await page.title().catch(() => "");
     throw new Error(`SESSION_UNVERIFIED: URL ok (${url}) but no auth DOM found | title: "${title}"`);
   }
 }
 
+async function openKhodAccountDropdown(page) {
+  const trigger = page.locator('[data-hs-unfold-target="#accountNavbarDropdown"], .navbar-dropdown-account-wrapper').first();
+  if (await trigger.count().catch(() => 0)) {
+    await trigger.click({ timeout: 2000 }).catch(() => {});
+    await page.waitForTimeout(500);
+  }
+}
+
+async function readKhodIdentity(page) {
+  await openKhodAccountDropdown(page);
+  return page.evaluate(() => {
+    const root = document.querySelector("#accountNavbarDropdown") || document.body;
+    const text = root.innerText || root.textContent || "";
+    const email = (text.match(/[A-Z0-9._%+-]+@[A-Z0-9.-]+\.[A-Z]{2,}/i) || [])[0] || "";
+    const codeMatch = text.match(/(?:كود|code)\s*:?\s*([0-9A-Za-z_-]+)/i);
+    const name = (root.querySelector(".card-title")?.textContent || "").trim();
+    return { email: email.trim().toLowerCase(), affiliateCode: codeMatch ? codeMatch[1].trim() : "", name };
+  });
+}
+
+async function verifyKhodIdentity(page, where = "session") {
+  const expectedEmail = normalizeEmail(config.khodEmail);
+  const expectedCode = normalizeAffiliateCode(config.khodAffiliateCode);
+  if (!expectedEmail) throw new Error("KHOD_IDENTITY_CONFIG_MISSING: khodEmail is not set");
+  const identity = await readKhodIdentity(page);
+  const actualEmail = normalizeEmail(identity.email);
+  const actualCode = normalizeAffiliateCode(identity.affiliateCode);
+  log(`[IDENTITY][Khod] expected email=${expectedEmail}, expected code=${expectedCode || "(first-bind)"}, detected email=${actualEmail || "unknown"}, detected code=${actualCode || "unknown"}, where=${where}`);
+  if (expectedEmail !== actualEmail || (expectedCode && expectedCode !== actualCode) || !actualCode) {
+    await debugScreenshot(page, `khod-identity-mismatch-${where}`);
+  }
+  assertIdentityMatch("KHOD", "email", expectedEmail, actualEmail);
+  if (expectedCode) assertIdentityMatch("KHOD", "affiliate code", expectedCode, actualCode);
+  if (!actualCode) throw new Error("KHOD_IDENTITY_UNVERIFIED: affiliate code was not visible in the account dropdown");
+  log(`Khod identity verified: ${actualEmail} / ${actualCode}`);
+  process.send && process.send({
+    type: "session-event",
+    site: "khod",
+    event: "identity-verified",
+    email: actualEmail,
+    affiliateCode: actualCode,
+    name: identity.name || "",
+    where,
+  });
+  return identity;
+}
+
 async function khodExportAttempt(page, exportFromDate, dateTo, attemptNum) {
-  log(`\n🔄 Khod export attempt ${attemptNum}/${MAX_KHOD_ATTEMPTS}`);
+  log(`\n🔄 Khod Whaat export attempt ${attemptNum}/${MAX_KHOD_ATTEMPTS}`);
 
   // ── Navigate to orders list with fallback reload ──
-  log("🌐 Loading Khod orders page...");
+  log("🌐 Loading Khod Whaat orders page...");
   let pageLoaded = false;
   for (let reload = 1; reload <= 3; reload++) {
     try {
@@ -856,15 +1289,18 @@ async function khodExportAttempt(page, exportFromDate, dateTo, attemptNum) {
       // a cryptic "date picker not found" when the real issue is a lost session.
       try {
         await assertKhodSession(page);
+        await verifyKhodIdentity(page, `export-attempt-${attemptNum}`);
         process.send && process.send({ type: "session-event", site: "khod", event: "session-probe-ok", url: landedUrl });
       } catch (sessionErr) {
-        log(`🔐 Khod SESSION_DESYNC before export attempt: ${sessionErr.message}`);
+        log(`🔐 Khod Whaat SESSION_DESYNC before export attempt: ${sessionErr.message}`);
         process.send && process.send({ type: "session-event", site: "khod", event: "session-probe-failed", url: landedUrl, error: sessionErr.message });
         await debugScreenshot(page, `khod-export-session-fail-${attemptNum}`);
         await khodLogin(page);
         log(`[NAV] → https://khod-whaat.com/affiliate/orders/list/all (post re-login)`);
         await page.goto("https://khod-whaat.com/affiliate/orders/list/all", { waitUntil: "domcontentloaded" });
         await page.waitForTimeout(3000);
+        await assertKhodSession(page);
+        await verifyKhodIdentity(page, `export-attempt-${attemptNum}-post-login`);
       }
 
       // ── Wait for date input to appear ──
@@ -891,13 +1327,13 @@ async function khodExportAttempt(page, exportFromDate, dateTo, attemptNum) {
       pageLoaded = true;
       break;
     } catch (e) {
-      log(`⚠️ Khod orders page not ready (reload ${reload}/3): ${e.message}`);
+      log(`⚠️ Khod Whaat orders page not ready (reload ${reload}/3): ${e.message}`);
       if (reload < 3) {
-        log(`🔄 Reloading Khod orders page...`);
+        log(`🔄 Reloading Khod Whaat orders page...`);
         await page.waitForTimeout(4000);
       } else {
         await debugScreenshot(page, `khod-orders-page-fail-${attemptNum}`);
-        throw new Error(`Khod orders page failed to load after 3 reloads: ${e.message}`);
+        throw new Error(`Khod Whaat orders page failed to load after 3 reloads: ${e.message}`);
       }
     }
   }
@@ -974,7 +1410,7 @@ async function khodExportAttempt(page, exportFromDate, dateTo, attemptNum) {
 
         const dlPromise = page.waitForEvent("download", { timeout: 15 * 60 * 1000 });
         await page.locator(sel).first().click({ noWaitAfter: true });
-        log("⏳ Waiting for Khod to generate file (page may reload — normal)...");
+        log("⏳ Waiting for Khod Whaat to generate file (page may reload — normal)...");
 
         const dl = await dlPromise;
         const stream = await dl.createReadStream();
@@ -985,7 +1421,7 @@ async function khodExportAttempt(page, exportFromDate, dateTo, attemptNum) {
           stream.on("error", rej);
         });
         const buffer = Buffer.concat(chunks);
-        log(`✅ Khod orders downloaded: ${buffer.length} bytes`);
+        log(`✅ Khod Whaat orders downloaded: ${buffer.length} bytes`);
         return buffer;
       }
     } catch (e) {
@@ -1008,7 +1444,7 @@ async function khodExportAttempt(page, exportFromDate, dateTo, attemptNum) {
 
 async function phase4_khod(page, exportFromDate, dateTo) {
   log("\n═══════════════════════════════════════");
-  log("  PHASE 4 — Khod Login & Export");
+  log("  PHASE 4 — Khod Whaat Login & Export");
   log("═══════════════════════════════════════\n");
 
   // ── Login (once — session persists across retries) ──
@@ -1018,13 +1454,13 @@ async function phase4_khod(page, exportFromDate, dateTo) {
   // ── Ensure Arabic language is active BEFORE any export attempt ──
   // We always navigate to /lang/sa first — this is idempotent (safe if already Arabic)
   // and eliminates the selector-based language detection which fails on some client machines.
-  log("🌐 Khod: ensuring Arabic language is active...");
+  log("🌐 Khod Whaat: ensuring Arabic language is active...");
   try {
     await page.goto("https://khod-whaat.com/lang/sa", { waitUntil: "domcontentloaded" });
     await page.waitForTimeout(2000);
-    log("✅ Khod: Arabic language confirmed");
+    log("✅ Khod Whaat: Arabic language confirmed");
   } catch (e) {
-    log(`⚠️ Khod: language set failed (non-fatal): ${e.message} — continuing`);
+    log(`⚠️ Khod Whaat: language set failed (non-fatal): ${e.message} — continuing`);
   }
 
   // ── Export with full fallback retry loop ──
@@ -1036,7 +1472,7 @@ async function phase4_khod(page, exportFromDate, dateTo) {
       return buffer; // ✅ success
     } catch (err) {
       lastError = err;
-      log(`\n❌ Khod export attempt ${attempt}/${MAX_KHOD_ATTEMPTS} FAILED`);
+      log(`\n❌ Khod Whaat export attempt ${attempt}/${MAX_KHOD_ATTEMPTS} FAILED`);
       log(`   Reason: ${err.message}`);
 
       if (attempt < MAX_KHOD_ATTEMPTS) {
@@ -1075,7 +1511,7 @@ async function phase4_khod(page, exportFromDate, dateTo) {
           }
         }
 
-        log(`\n🔄 Restarting Khod export (attempt ${attempt + 1}/${MAX_KHOD_ATTEMPTS})...`);
+        log(`\n🔄 Restarting Khod Whaat export (attempt ${attempt + 1}/${MAX_KHOD_ATTEMPTS})...`);
 
         // Hard refresh before next attempt
         try {
@@ -1087,7 +1523,7 @@ async function phase4_khod(page, exportFromDate, dateTo) {
         try {
           const currentUrl = page.url();
           if (currentUrl.includes("/login") || currentUrl.includes("/auth")) {
-            log("🔐 Session expired — re-logging into Khod...");
+            log("🔐 Session expired — re-logging into Khod Whaat...");
             await khodLogin(page);
           }
         } catch {}
@@ -1096,13 +1532,13 @@ async function phase4_khod(page, exportFromDate, dateTo) {
         try {
           await page.goto("https://khod-whaat.com/lang/sa", { waitUntil: "domcontentloaded" });
           await page.waitForTimeout(2000);
-          log("🌐 Khod: Arabic language re-confirmed before next attempt");
+          log("🌐 Khod Whaat: Arabic language re-confirmed before next attempt");
         } catch {}
       }
     }
   }
 
-  throw new Error(`Khod export failed after ${MAX_KHOD_ATTEMPTS} attempts. Last error: ${lastError?.message}`);
+  throw new Error(`Khod Whaat export failed after ${MAX_KHOD_ATTEMPTS} attempts. Last error: ${lastError?.message}`);
 }
 
 // ════════════════════════════════════════
@@ -1241,12 +1677,13 @@ async function assertEasyOrdersSession(page) {
     throw new Error(`SESSION_EXPIRED: on login page (${url})`);
   }
   const authDomPresent = await page.$(
-    '.MuiAppBar-root, [aria-label="language-switcher"], nav'
+    '.MuiAppBar-root, [aria-label="language-switcher"], [class*="Dashboard"], [class*="OrderList"], .MuiDrawer-root, .MuiCard-root'
   ) !== null;
   if (!authDomPresent) {
     const title = await page.title().catch(() => "");
     throw new Error(`SESSION_UNVERIFIED: URL ok (${url}) but no auth DOM found | title: "${title}"`);
   }
+  await verifyEasyOrdersIdentity(page, "assert");
 }
 async function phase5_createOrders(page, orders) {
   log("\n═══════════════════════════════════════");
@@ -1274,22 +1711,27 @@ async function phase5_createOrders(page, orders) {
         total: orders.length,
         success: results.success,
         failed: results.failed,
-        lastOrder: { name: order.name, product: order.productName },
+        lastOrder: { name: order.name, product: order.productName, sku: order.sku || "", city: order.city || "", phone: order.normPhone ? "966" + order.normPhone : "", uncertain: !!order.uncertain, orderStatus: order.orderStatus || "" },
       });
 
     } catch (err) {
       results.failed++;
       log(`${orderNum} ❌ FAILED: ${err.message}`);
       results.failedOrders.push({
-        name: order.name,
-        product: order.productName,
-        phone: "966" + order.normPhone,
-        source: order.source || "real",   // "real" or "missed"
-        city: order.city || "",
-        address: order.address || "",
-        qty: order.qty || 1,
-        subtotal: order.subtotal || 0,
-        error: err.message,
+        name:        order.name,
+        product:     order.productName,
+        sku:         order.sku         || "",
+        phone:       "966" + order.normPhone,
+        uncertain:   !!order.uncertain,
+        source:      order.source      || "real",
+        city:        order.city        || "",
+        address:     order.address     || "",
+        qty:         order.qty         || 1,
+        subtotal:    order.subtotal    || 0,
+        // ── Analytics fields ──
+        orderStatus: order.orderStatus || "",
+        amountDue:   order.amountDue   || 0,
+        error:       err.message,
       });
 
       // Still report progress
@@ -1299,7 +1741,7 @@ async function phase5_createOrders(page, orders) {
         total: orders.length,
         success: results.success,
         failed: results.failed,
-        lastOrder: { name: order.name, product: order.productName, error: err.message },
+        lastOrder: { name: order.name, product: order.productName, sku: order.sku || "", city: order.city || "", phone: order.normPhone ? "966" + order.normPhone : "", uncertain: !!order.uncertain, error: err.message },
       });
 
       // Navigate back to orders list to reset state before next order
@@ -1370,7 +1812,11 @@ async function createSingleOrderAttempt(page, order, orderNum, attempt) {
     process.send && process.send({ type: "session-event", site: "easy-orders", event: "session-probe-failed", url: page.url(), error: sessionErr.message });
     await debugScreenshot(page, `easy-orders-session-fail`);
     await phase1_easyOrdersLogin(page);
+    // Re-navigate to create page after re-login — the retry loop above will catch any
+    // further failure and log the order as failed if all attempts are exhausted
     await page.goto("https://app.easy-orders.net/#/orders/create", { waitUntil: "domcontentloaded" });
+    // Re-verify session is good now before proceeding
+    await assertEasyOrdersSession(page);
   }
 
   await page.waitForSelector('button:has-text("Choose Products")', { timeout: 15000 });
@@ -1667,10 +2113,17 @@ async function verifyFinalTotal(page, targetSubtotal, orderNum) {
 (async () => {
   const dateFrom       = parseDate(config.dateFrom);
   const dateTo         = parseDate(config.dateTo);
-  const exportFromDate = subtractDay(dateFrom); // -1 day, same as Easy-Orders
+  const exportFromDate = subtractDay(dateFrom); // -1 day so Easy-Orders export catches late-night orders and builds full product catalog
+  const nowForKhod     = new Date();
+  const reportingDataEnabled = !!config.reportingDataEnabled;
+  const dashboardEnabled = !!config.dashboardEnabled;
+  const khodStartDate  = reportingDataEnabled
+    ? new Date(nowForKhod.getFullYear(), nowForKhod.getMonth(), 1)
+    : exportFromDate;
+  const khodDateKey = (date) => `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, "0")}-${String(date.getDate()).padStart(2, "0")}`;
 
   log(`📅 Date range  : ${formatDataDay(dateFrom)} → ${formatDataDay(dateTo)}`);
-  log(`📅 Export from : ${formatDataDay(exportFromDate)} (one day before)\n`);
+  log(`📅 Export from : ${formatDataDay(exportFromDate)} (Easy-Orders) | Khod Whaat from: ${formatDataDay(khodStartDate)}\n`);
 
   const profilePath = config.profilePath;
   if (!profilePath) throw new Error("profilePath not set in config — cannot persist sessions");
@@ -1756,9 +2209,14 @@ async function verifyFinalTotal(page, targetSubtotal, orderNum) {
       // Faster V8 startup: skip idle GC tasks during launch
       "--disable-v8-idle-tasks",
 
+      // ── Suppress Chrome UI overlays that cover the page ──
+      // Prevents "Chrome didn't shut down correctly — Restore pages?" bubble
+      // from appearing over the page when the profile had an unclean shutdown.
+      "--hide-crash-restore-bubble",
+
       // ── Display (safe, no banners) ──
       "--force-device-scale-factor=1",
-      "--window-size=1400,900",
+      "--window-size=1280,800",
 
       // ── Locale — force Gregorian calendar dates on Arabic OS (safe) ──
       "--lang=en-US",
@@ -1767,6 +2225,7 @@ async function verifyFinalTotal(page, targetSubtotal, orderNum) {
 
     locale: "en-US",
     waitForInitialPage: false,
+    viewport: null,
   });
 
   // ── TASK 5: Spoof browser fingerprint on every page before any JS runs ──
@@ -1792,7 +2251,23 @@ async function verifyFinalTotal(page, targetSubtotal, orderNum) {
   });
 
   const page = context.pages()[0] || (await context.newPage());
-  page.setViewportSize({ width: 1400, height: 900 }).catch(() => {});
+
+  // ── Dismiss Chrome's "Restore pages?" crash-recovery dialog ──
+  // This dialog appears in the Chrome UI (not the web page) when a profile was
+  // previously closed uncleanly. It can appear as a web-overlay on chrome://settings
+  // or as an infobar. We dismiss it by navigating away and marking the session as clean.
+  try {
+    await page.evaluate(() => {
+      // Tell Chrome's SessionRestore that we don't want to restore — equivalent to
+      // clicking "No thanks" on the "Restore pages?" infobar.
+      try { sessionStorage.setItem("session_crashed", "dismissed"); } catch (_) {}
+    });
+    // Also dismiss via CDP: set a flag that Chrome checks on the new-tab page
+    const cdpDismiss = await context.newCDPSession(page);
+    await cdpDismiss.send("Page.handleJavaScriptDialog", { accept: false }).catch(() => {});
+    await cdpDismiss.detach().catch(() => {});
+  } catch (_) {}
+  log(`🧹 Chrome crash-recovery dialog dismissed (if present)`);
 
   // Minimize the Chrome window via CDP if launchMinimized is set
   if (config.launchMinimized) {
@@ -1822,24 +2297,79 @@ async function verifyFinalTotal(page, targetSubtotal, orderNum) {
     // Reason: orders submitted on previous bot runs already exist in Khod under
     // dates AFTER the user's range. If we cap at dateTo we miss them and re-submit.
     const khodEndDate = new Date();            // today at runtime
-    const khodBuffer  = await phase4_khod(page, exportFromDate, khodEndDate);
+    const khodBuffer  = await phase4_khod(page, khodStartDate, khodEndDate);
 
     // ── Parse all sheets ──
     log("\n═══════════════════════════════════════");
     log("  PROCESSING DATA");
     log("═══════════════════════════════════════\n");
 
-    const khodPhones      = parseKhodPhones(khodBuffer);
-    const realOrders      = parseRealOrders(realBuffer, dateFrom, dateTo);
-    const missedOrders    = parseMissedOrders(missedBuffer, dateFrom, dateTo);
+    const khodOrderKeys      = parseKhodOrderKeys(khodBuffer);
+    const khodAnalyticsMap   = parseKhodAnalyticsMap(khodBuffer);
+    const khodDashboardSnapshot = dashboardEnabled
+      ? parseFullMonthSnapshot(khodBuffer, { dateFrom: khodStartDate, dateTo: khodEndDate })
+      : [];
+    const realOrders         = parseRealOrders(realBuffer, dateFrom, dateTo);
+    const { orders: missedOrders, skippedOrders: phoneFailedOrders } =
+      parseMissedOrders(missedBuffer, dateFrom, dateTo);
     const catalog         = buildProductCatalog(realOrders);
-    const resolvedMissed  = resolveMissedOrders(missedOrders, catalog);
-    const { orders, stats } = mergeAndDeduplicate(realOrders, resolvedMissed, khodPhones);
+    const { resolved: resolvedMissed, skippedOrders: catalogFailedOrders } =
+      resolveMissedOrders(missedOrders, catalog);
+
+    const allSkippedOrders = [...phoneFailedOrders, ...catalogFailedOrders].map(o => ({
+      ...o,
+      accountEmail: config.easyEmail || "",
+      accountLabel: config.label || "",
+      khodCountry: config.khodCountry || "sa",
+    }));
+    let skippedBuffer = null;
+    let skippedFilePath = "";
+    if (allSkippedOrders.length > 0) {
+      skippedBuffer = buildSkippedExcel(allSkippedOrders);
+      if (skippedBuffer) {
+        const skippedDir = path.join(path.dirname(profilePath), "failed-orders");
+        if (!fs.existsSync(skippedDir)) fs.mkdirSync(skippedDir, { recursive: true });
+        skippedFilePath = uniqueFilePath(skippedDir, accountFileBase("skipped-orders"));
+        fs.writeFileSync(skippedFilePath, skippedBuffer);
+        log(`Couldnt-process file saved: ${skippedFilePath}`);
+      }
+    }
+
+    // ── Learn product name mappings (Khod ↔ Easy-Orders) ──
+    // Cross-references phone numbers across both exports to discover which
+    // Khod product name corresponds to which Easy-Orders marketing name.
+    // Saves learned pairs to disk — grows over time, never cleared.
+    // If the file doesn't exist yet (first run or deleted) → starts fresh and works normally.
+    const { orders, stats } = mergeAndDeduplicate(realOrders, resolvedMissed, khodOrderKeys);
 
     log(`\n✅ FINAL: ${orders.length} new orders to save`);
 
     if (orders.length === 0) {
-      process.send && process.send({ type: "result", data: { orders: 0, stats, buffer: null, productSummary: [] } });
+      process.send && process.send({
+        type: "result",
+        data: {
+          orders: 0,
+          stats,
+          buffer: null,
+          productSummary: [],
+          skippedOrders: {
+            count: allSkippedOrders.length,
+            rows: allSkippedOrders,
+            buffer: skippedBuffer ? Array.from(skippedBuffer) : null,
+            filePath: skippedFilePath,
+          },
+          khodSnapshot: {
+            entries:     Array.from(khodAnalyticsMap.byPhoneSku.entries()),
+            skuDefaults: khodAnalyticsMap.skuDefaults,
+          },
+          khodDashboardSnapshot: dashboardEnabled ? {
+            snapshot: khodDashboardSnapshot,
+            dateFrom: khodDateKey(khodStartDate),
+            dateTo: khodDateKey(khodEndDate),
+            snapshotMonth: khodDateKey(khodStartDate).slice(0, 7),
+          } : null,
+        },
+      });
       return;
     }
 
@@ -1850,6 +2380,7 @@ async function verifyFinalTotal(page, targetSubtotal, orderNum) {
     // ── Send preview to dashboard before starting upload ──
     const previewRows = orders.slice(0, 50).map(o => ({
       productName: o.productName || "",
+      sku:         o.sku || "",
       qty:         o.qty || 1,
       unitPrice:   o.unitPrice || "",
       date:        o.date || "",
@@ -1858,6 +2389,7 @@ async function verifyFinalTotal(page, targetSubtotal, orderNum) {
       address:     o.address || "",
       name:        o.name || "",
       phone:       "966" + o.normPhone,
+      uncertain:   !!o.uncertain,
     }));
     process.send && process.send({
       type: "preview",
@@ -1873,12 +2405,12 @@ async function verifyFinalTotal(page, targetSubtotal, orderNum) {
     const uploadResults = await phase5_createOrders(page, orders);
 
     // ── Build product summary ──
-    const productMap = {};
+    const productSummaryMap = {};
     for (const order of orders) {
       const key = order.productName || "Unknown";
-      if (!productMap[key]) productMap[key] = { productName: key, count: 0, totalQty: 0 };
-      productMap[key].count++;
-      productMap[key].totalQty += order.qty || 1;
+      if (!productSummaryMap[key]) productSummaryMap[key] = { productName: key, count: 0, totalQty: 0 };
+      productSummaryMap[key].count++;
+      productSummaryMap[key].totalQty += order.qty || 1;
     }
 
     // ── Send final result ──
@@ -1891,8 +2423,36 @@ async function verifyFinalTotal(page, targetSubtotal, orderNum) {
       data: {
         orders: uploadResults.success,
         stats,
-        productSummary: Object.values(productMap),
+        productSummary: Object.values(productSummaryMap),
         buffer: Array.from(outputBuffer),
+        orderRows: orders.map(o => {
+          // ── Khod analytics enrichment ──
+          // 1st priority: exact phone+SKU match in current Khod export (update run status)
+          // 2nd priority: SKU-level inference from other orders with same SKU (first-run estimate)
+          // 3rd priority: Easy-Orders fallback already set in parser.js
+          const khodKey   = `${o.normPhone}|${o.sku}`;
+          const khodExact = khodAnalyticsMap.byPhoneSku.get(khodKey);
+          const khodSku   = khodAnalyticsMap.skuDefaults[o.sku] || {};
+
+          return {
+            name:               o.name        || "",
+            phone:              "966" + o.normPhone,
+            productName:        o.productName || "",
+            sku:                o.sku         || "",
+            qty:                o.qty         || 1,
+            city:               o.city        || "",
+            unitPrice:          o.unitPrice   || "",
+            subtotal:           o.subtotal    || 0,
+            date:               o.date        || "",
+            source:             o.source      || "real",
+            address:            o.address     || "",
+            // ── Analytics fields (enriched) ──
+            orderStatus:        khodExact?.orderStatus        || o.orderStatus        || "Under processing",
+            amountDue:          khodExact?.amountDue          ?? khodSku.amountDue    ?? o.amountDue    ?? 0,
+            marketerCommission: khodExact?.marketerCommission ?? khodSku.marketerCommission ?? o.marketerCommission ?? 0,
+            khodOrderNumber:    khodExact?.khodOrderNumber    || o.khodOrderNumber    || "",
+          };
+        }),
         failedOrders: {
           count: uploadResults.failed,
           summary: uploadResults.failedOrders,
@@ -1901,6 +2461,24 @@ async function verifyFinalTotal(page, targetSubtotal, orderNum) {
           failedPath: "",
           buffer: failedBuffer ? Array.from(failedBuffer) : null,
         },
+        skippedOrders: {
+          count: allSkippedOrders.length,
+          rows: allSkippedOrders,
+          buffer: skippedBuffer ? Array.from(skippedBuffer) : null,
+          filePath: skippedFilePath,
+        },
+        // ── Khod analytics snapshot — used by app.js to enrich previous stored runs ──
+        // Maps are serialized as entry arrays for JSON transport.
+        khodSnapshot: {
+          entries:     Array.from(khodAnalyticsMap.byPhoneSku.entries()),
+          skuDefaults: khodAnalyticsMap.skuDefaults,
+        },
+        khodDashboardSnapshot: dashboardEnabled ? {
+          snapshot: khodDashboardSnapshot,
+          dateFrom: khodDateKey(khodStartDate),
+          dateTo: khodDateKey(khodEndDate),
+          snapshotMonth: khodDateKey(khodStartDate).slice(0, 7),
+        } : null,
       },
     });
 

@@ -86,6 +86,8 @@ function buildFailedExcel(failedOrders) {
     "اسم المستلم",              // customer name
     "الهاتف",                   // phone
     "المنتجات",                 // product name
+    "SKU",
+    "رقم غير مؤكد",
     "عدد القطع",                // qty
     "السعر الكلي بدون الشحن",  // subtotal
     "المدينة",                  // city
@@ -103,6 +105,8 @@ function buildFailedExcel(failedOrders) {
     f.name    || "",
     f.phone   || "",
     f.product || "",
+    f.sku     || "",
+    f.uncertain ? "YES" : "NO",
     f.qty     || 1,
     f.subtotal || "",
     f.city    || "",
@@ -112,12 +116,66 @@ function buildFailedExcel(failedOrders) {
 
   const ws = XLSX.utils.aoa_to_sheet([headers, ...dataRows]);
   ws["!cols"] = [
-    { wch: 16 }, { wch: 25 }, { wch: 16 }, { wch: 45 },
-    { wch: 10 }, { wch: 24 }, { wch: 20 }, { wch: 35 }, { wch: 50 },
+    { wch: 16 }, { wch: 25 }, { wch: 16 }, { wch: 45 }, { wch: 22 },
+    { wch: 14 }, { wch: 10 }, { wch: 24 }, { wch: 20 }, { wch: 35 }, { wch: 50 },
   ];
 
   XLSX.utils.book_append_sheet(wb, ws, "Failed Orders");
   return XLSX.write(wb, { type: "buffer", bookType: "xlsx" });
 }
 
-module.exports = { buildOutputExcel, buildFailedExcel };
+function buildSkippedExcel(skippedOrders) {
+  if (!skippedOrders || skippedOrders.length === 0) return null;
+
+  const reasonLabels = {
+    phone_parse_failed: "Invalid phone number",
+    phone_uncertain_zero_appended: "Phone missing digit - trailing 0 added",
+    product_not_in_catalog: "Product not found in catalog",
+  };
+
+  const headers = [
+    "Account Email",
+    "Account Label",
+    "Khod Whaat Country",
+    "Full Name",
+    "Raw Phone",
+    "Product",
+    "City",
+    "Address",
+    "Reason",
+    "Reason Label",
+    "Uncertain",
+  ];
+
+  const rows = skippedOrders.map((o) => {
+    const reasonKey = o.uncertain && o.reason === "phone_parse_failed"
+      ? "phone_uncertain_zero_appended"
+      : o.reason;
+    return [
+      o.accountEmail || "",
+      o.accountLabel || "",
+      o.khodCountry || "sa",
+      o.name || "",
+      o.rawPhone || "",
+      o.productName || "",
+      o.city || "",
+      o.address || "",
+      reasonKey || "",
+      reasonLabels[reasonKey] || reasonKey || "",
+      o.uncertain ? "YES" : "NO",
+    ];
+  });
+
+  const ws = XLSX.utils.aoa_to_sheet([headers, ...rows]);
+  ws["!cols"] = [
+    { wch: 30 }, { wch: 18 }, { wch: 12 }, { wch: 28 },
+    { wch: 18 }, { wch: 45 }, { wch: 22 }, { wch: 35 },
+    { wch: 30 }, { wch: 34 }, { wch: 12 },
+  ];
+
+  const wb = XLSX.utils.book_new();
+  XLSX.utils.book_append_sheet(wb, ws, "Couldnt Process");
+  return XLSX.write(wb, { type: "buffer", bookType: "xlsx" });
+}
+
+module.exports = { buildOutputExcel, buildFailedExcel, buildSkippedExcel };

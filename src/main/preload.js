@@ -1,5 +1,104 @@
 const { contextBridge, ipcRenderer } = require("electron");
 
+function safeMonitoringContext(context) {
+  if (!context || typeof context !== "object") return {};
+  const copy = { ...context };
+  ["password", "easyPassword", "khodPassword", "token", "licenseKey", "key", "apikey"].forEach((key) => {
+    if (Object.prototype.hasOwnProperty.call(copy, key)) copy[key] = "[Filtered]";
+  });
+  return copy;
+}
+
+function serializeMonitoringError(errorLike) {
+  if (errorLike && typeof errorLike === "object") {
+    return {
+      name: errorLike.name || "Error",
+      message: errorLike.message || errorLike.reason || errorLike.error || JSON.stringify(errorLike),
+      stack: errorLike.stack || "",
+    };
+  }
+  return { name: "Error", message: String(errorLike == null ? "Unknown error" : errorLike), stack: "" };
+}
+
+function sendMonitoring(channel, payload) {
+  try { ipcRenderer.send(channel, payload); } catch (_) {}
+}
+
+function capturePageException(errorLike, context) {
+  sendMonitoring("khod-monitoring:capture-exception", {
+    error: serializeMonitoringError(errorLike),
+    context: {
+      process: "renderer",
+      bridge: "preload",
+      ...safeMonitoringContext(context),
+    },
+  });
+}
+
+function capturePageMessage(message, level, context) {
+  sendMonitoring("khod-monitoring:capture-message", {
+    message: String(message),
+    level: level || "info",
+    context: {
+      process: "renderer",
+      bridge: "preload",
+      ...safeMonitoringContext(context),
+    },
+  });
+}
+
+function monitoredInvoke(channel, ...args) {
+  const start = Date.now();
+  sendMonitoring("khod-monitoring:add-breadcrumb", {
+    category: "ipc",
+    message: channel,
+    level: "info",
+    data: { direction: "renderer-to-main" },
+  });
+  return ipcRenderer.invoke(channel, ...args).catch((err) => {
+    const message = err && err.message ? err.message : String(err);
+    const mainAlreadyCaptured = message.includes("Error invoking remote method");
+    if (!mainAlreadyCaptured) {
+      capturePageException(err, {
+        operation: "ipc.invoke",
+        channel,
+        durationMs: Date.now() - start,
+        argCount: args.length,
+      });
+    }
+    throw err;
+  });
+}
+
+contextBridge.exposeInMainWorld("monitoring", {
+  captureException: (errorLike, context) => capturePageException(errorLike, context),
+  captureMessage: (message, level, context) => capturePageMessage(message, level, context),
+  addBreadcrumb: (breadcrumb) => sendMonitoring("khod-monitoring:add-breadcrumb", safeMonitoringContext(breadcrumb)),
+  setUserContext: (user) => sendMonitoring("khod-monitoring:set-user", safeMonitoringContext(user)),
+  setContext: (key, value) => sendMonitoring("khod-monitoring:set-context", { key: String(key), value: safeMonitoringContext(value) }),
+  setTag: (key, value) => sendMonitoring("khod-monitoring:set-tag", { key: String(key), value: String(value) }),
+  reportIpcFailure: (channel, errorLike, context) => capturePageException(errorLike, {
+    operation: "ipc.invoke",
+    channel,
+    ...safeMonitoringContext(context),
+  }),
+  getMeta: () => ({ appVersion: "1.0.5" }),
+});
+
+if (process.defaultApp || process.env.SENTRY_ENABLE_TESTS === "1") {
+  contextBridge.exposeInMainWorld("monitoringTests", {
+    rendererError: () => setTimeout(() => { throw new Error("SENTRY_TEST_RENDERER_ERROR"); }, 0),
+    asyncRejection: () => Promise.reject(new Error("SENTRY_TEST_RENDERER_ASYNC_REJECTION")),
+    mainError: () => monitoredInvoke("sentry-test-main-error"),
+    mainAsyncRejection: () => monitoredInvoke("sentry-test-async-rejection"),
+    reactRenderFailure: () => {
+      const error = new Error("SENTRY_TEST_REACT_RENDER_FAILURE");
+      capturePageException(error, { operation: "react.error-boundary.test" });
+      throw error;
+    },
+  });
+}
+
 contextBridge.exposeInMainWorld("api", {
   // Window
   minimize: () => ipcRenderer.send("window-minimize"),
@@ -7,31 +106,33 @@ contextBridge.exposeInMainWorld("api", {
   close:    () => ipcRenderer.send("window-close"),
 
   // License
-  checkLicense:  () => ipcRenderer.invoke("check-license"),
-  submitLicense: (key) => ipcRenderer.invoke("submit-license", key),
+  checkLicense:        () => monitoredInvoke("check-license"),
+  checkLicenseNocache: () => monitoredInvoke("check-license-nocache"),
+  submitLicense:       (key) => monitoredInvoke("submit-license", key),
 
   // Credentials
-  getCredentials:      () => ipcRenderer.invoke("get-credentials"),
-  saveCredentials:     (creds) => ipcRenderer.invoke("save-credentials", creds),
-  saveAllAccounts:     (accounts) => ipcRenderer.invoke("save-all-accounts", accounts),
-  unlockSingleAccount: (data) => ipcRenderer.invoke("unlock-single-account", data),
-  relockAccount:       (data) => ipcRenderer.invoke("relock-account", data),
-  clearAllData:        () => ipcRenderer.invoke("clear-all-data"),
+  getCredentials:      () => monitoredInvoke("get-credentials"),
+  saveCredentials:     (creds) => monitoredInvoke("save-credentials", creds),
+  saveAllAccounts:     (accounts) => monitoredInvoke("save-all-accounts", accounts),
+  relockAccount:       (data) => monitoredInvoke("relock-account", data),
+  clearAllData:        () => monitoredInvoke("clear-all-data"),
+  clearResetFlag:      () => monitoredInvoke("clear-reset-flag"),
 
   // Settings
-  setAutoRun:         (val)  => ipcRenderer.invoke("set-auto-run", val),
-  setAutoRunInterval: (mins) => ipcRenderer.invoke("set-auto-run-interval", mins),
-  setLaunchMinimized: (val)  => ipcRenderer.invoke("set-launch-minimized", val),
-  getAutoRunProgress: ()     => ipcRenderer.invoke("get-auto-run-progress"),
+  setAutoRun:         (val)  => monitoredInvoke("set-auto-run", val),
+  setAutoRunInterval: (mins) => monitoredInvoke("set-auto-run-interval", mins),
+  setAutoRunAccounts:  (ids)  => monitoredInvoke("set-auto-run-accounts", ids),
+  setLaunchMinimized: (val)  => monitoredInvoke("set-launch-minimized", val),
+  getAutoRunProgress: ()     => monitoredInvoke("get-auto-run-progress"),
   killBot:            ()     => ipcRenderer.send("kill-bot"),
-  openFolder:         (folder) => ipcRenderer.invoke("open-folder", folder),
+  openFolder:         (folder) => monitoredInvoke("open-folder", folder),
 
   // Bot
-  runBot:          (params) => ipcRenderer.invoke("run-bot", params),
+  runBot:          (params) => monitoredInvoke("run-bot", params),
   botStarted:      () => ipcRenderer.send("bot-started"),
   botFinished:     () => ipcRenderer.send("bot-finished"),
   onBotLog:        (cb) => ipcRenderer.on("bot-log",           (_, msg)  => cb(msg)),
-  on2faNeeded:     (cb) => ipcRenderer.on("bot-2fa-needed",    ()        => cb()),
+  on2faNeeded:     (cb) => ipcRenderer.on("bot-2fa-needed",    (_, data) => cb(data)),
   onNeedsConfirm:  (cb) => ipcRenderer.on("bot-needs-confirm", ()        => cb()),
   onPreview:       (cb) => ipcRenderer.on("bot-preview",       (_, data) => cb(data)),
   onOrderProgress: (cb) => ipcRenderer.on("bot-order-progress",(_, data) => cb(data)),
@@ -41,9 +142,46 @@ contextBridge.exposeInMainWorld("api", {
   removeAllListeners: (ch) => ipcRenderer.removeAllListeners(ch),
 
   // Settings (theme + lang)
-  getSettings:  () => ipcRenderer.invoke("get-settings"),
-  saveSettings: (s) => ipcRenderer.invoke("save-settings", s),
+  getSettings:  () => monitoredInvoke("get-settings"),
+  saveSettings: (s) => monitoredInvoke("save-settings", s),
 
   // Output
-  saveOutputFile: (data) => ipcRenderer.invoke("save-output-file", data),
+  saveOutputFile: (data) => monitoredInvoke("save-output-file", data),
+
+  // Analytics
+  saveRunAnalytics:      (payload) => monitoredInvoke("save-run-analytics",      payload),
+  getAnalyticsRuns:      (filter)  => monitoredInvoke("get-analytics-runs",      filter),
+  clearAnalyticsData:    ()        => monitoredInvoke("clear-analytics-data"),
+  getAnalyticsSettings:  ()        => monitoredInvoke("get-analytics-settings"),
+  saveAnalyticsSettings: (s)       => monitoredInvoke("save-analytics-settings", s),
+
+  // Dashboard
+  runDashboardFetch:     (params)          => monitoredInvoke("run-dashboard-fetch",     params),
+  saveDashboardSnapshot: (accountId, data) => monitoredInvoke("save-dashboard-snapshot", accountId, data),
+  getDashboardSnapshot:  (accountId)       => monitoredInvoke("get-dashboard-snapshot",  accountId),
+  getDashboardAutoTs:    (accountId)       => monitoredInvoke("get-dashboard-auto-ts",   accountId),
+  setDashboardAutoTs:    (accountId, ts)   => monitoredInvoke("set-dashboard-auto-ts",   accountId, ts),
+  clearDashboardData:    ()                => monitoredInvoke("clear-dashboard-data"),
+  getDashboardEnabled:   ()                => monitoredInvoke("get-dashboard-enabled"),
+  getMarketingStatus:    (accountId, platform) => monitoredInvoke("get-marketing-status", accountId, platform),
+  connectMarketing:      (accountId, platform) => monitoredInvoke("connect-marketing-platform", accountId, platform),
+  saveMarketingMapping:  (accountId, platform, sourceAccountIds) => monitoredInvoke("save-marketing-mapping", accountId, platform, sourceAccountIds),
+  saveAllMarketingMappings: (platform, mappings) => monitoredInvoke("save-all-marketing-mappings", platform, mappings),
+  syncMarketingData:     (accountId, platform, range) => monitoredInvoke("sync-marketing-data", accountId, platform, range),
+  syncAllMarketingData:  (platform, range) => monitoredInvoke("sync-all-marketing-data", platform, range),
+  openExternalUrl:       (url)             => monitoredInvoke("open-external-url", url),
+  dashboardAiQuery:      (payload)         => monitoredInvoke("dashboard-ai-query", payload),
+  getAiAdminAnalytics:   ()                => monitoredInvoke("get-ai-admin-analytics"),
+  debugGeminiPing:       ()                => monitoredInvoke("debug-gemini-ping"),
+
+  // Auto-updater
+  getAppVersion:        ()    => monitoredInvoke("get-app-version"),
+  checkForUpdates:      ()    => monitoredInvoke("check-for-updates"),
+  downloadUpdate:       ()    => monitoredInvoke("download-update"),
+  installUpdate:        ()    => monitoredInvoke("install-update"),
+  onUpdateAvailable:    (cb) => ipcRenderer.on("update-available",     (_e, info) => cb(info)),
+  onUpdateNotAvailable: (cb) => ipcRenderer.on("update-not-available", ()         => cb()),
+  onUpdateProgress:     (cb) => ipcRenderer.on("update-progress",      (_e, p)    => cb(p)),
+  onUpdateDownloaded:   (cb) => ipcRenderer.on("update-downloaded",    ()         => cb()),
+  onUpdateError:        (cb) => ipcRenderer.on("update-error",         (_e, err)  => cb(err)),
 });

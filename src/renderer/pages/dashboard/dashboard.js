@@ -1,0 +1,210 @@
+/*
+   dashboard.js
+   Outer Dashboard page mount. The inner shell owns the fixed topbar, section
+   routing, and account changes; this file owns loading aggregator data.
+*/
+(function () {
+  'use strict';
+
+  function resetObject(target, source) {
+    Object.keys(target).forEach(function (key) {
+      delete target[key];
+    });
+    Object.assign(target, source || {});
+  }
+
+  function emptyDashboardData() {
+    var allLabel = window.dashboardI18n ? window.dashboardI18n.t('shell.allAccounts') : 'كل الحسابات المشتركة';
+    var noUpdate = window.dashboardI18n ? window.dashboardI18n.t('shell.noUpdate') : 'لا يوجد تحديث';
+    return {
+      _loaded: true,
+      meta: {
+        activeAccountId: window.getActiveAccountId ? window.getActiveAccountId() : '__all__',
+        activeAccountLabel: window.currentActiveAccountLabel || allLabel,
+        monthLabel: '',
+        hasData: false,
+        lastUpdatedLabel: noUpdate,
+        accountOptions: window.dashboardAccountsList || [{ id: '__all__', value: '__all__', label: allLabel, name: allLabel, orderCount: 0 }]
+      },
+      overview: null,
+      pipeline: null,
+      stages: [],
+      orders: [],
+      outcomeOrders: [],
+      cod: null,
+      products: null,
+      commissionTrend: null,
+      roi: null,
+      geo: null
+    };
+  }
+
+  function mapAggregatorToSections(result) {
+    var orders = Array.isArray(result.orders) ? result.orders : [];
+    var outcomeOrders = Array.isArray(result.outcomeOrders) ? result.outcomeOrders : orders;
+    var pipeline = result.pipeline ? Object.assign({}, result.pipeline, { orders: orders }) : null;
+    return {
+      _loaded: true,
+      meta: result.meta || {},
+      overview: result.overview || null,
+      pipeline: pipeline,
+      stages: result.pipeline && result.pipeline.stages ? result.pipeline.stages : [],
+      orders: orders,
+      outcomeOrders: outcomeOrders,
+      cod: result.cod || null,
+      products: result.products || null,
+      commissionTrend: result.commissionTrend || null,
+      roi: result.roi || null,
+      geo: result.geo || null
+    };
+  }
+
+  window.renderDashboard = function () {
+    var el = document.getElementById('page-dashboard');
+    if (!el) return;
+
+    // Preserve the active section across re-renders (e.g. language switches).
+    // The shell stores it on the mount element; save it before the DOM is wiped.
+    var prevMount = document.getElementById('db-shell-mount');
+    if (prevMount && prevMount._dashboardActiveSection) {
+      window._dashboardInitialSection = prevMount._dashboardActiveSection;
+    }
+
+    el.innerHTML =
+      '<div class="sv3-shell dashboard-page-shell">' +
+        renderSharedSidebar('dashboard') +
+        '<div class="dashboard-page-main">' +
+          '<div id="db-shell-mount"></div>' +
+          '<div id="dashboard-update-overlay" class="dashboard-update-overlay" hidden aria-live="polite" aria-busy="false"></div>' +
+        '</div>' +
+      '</div>';
+
+    wireSharedSidebar(el);
+    if (window.dashboardI18n) window.dashboardI18n.apply(el);
+
+    var shellMount = document.getElementById('db-shell-mount');
+    var updateOverlay = document.getElementById('dashboard-update-overlay');
+    var dashData = { _loaded: false, meta: { accountOptions: window.dashboardAccountsList || [] } };
+    var dashVersion = 0;
+    var marketingStatusLoads = {};
+
+    function esc(value) {
+      if (window.KhodUI && typeof window.KhodUI.esc === 'function') return window.KhodUI.esc(value);
+      return String(value == null ? '' : value).replace(/[&<>"']/g, function (ch) {
+        return ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[ch];
+      });
+    }
+
+    function setDashboardUpdateOverlay(state) {
+      var overlay = document.getElementById('dashboard-update-overlay') || updateOverlay;
+      if (!overlay) return;
+      state = state || {};
+      var active = !!state.active;
+      overlay.hidden = !active;
+      overlay.setAttribute('aria-busy', active ? 'true' : 'false');
+      if (!active) {
+        overlay.innerHTML = '';
+        return;
+      }
+      var title = state.title || (window._t ? window._t('dashboard.fetching_title') : 'Updating dashboard...');
+      var body = state.body || (window._t ? window._t('dashboard.fetching_body') : 'Fetching live Khod data. This may take a few minutes. Keep the app open.');
+      overlay.innerHTML =
+        '<div class="dashboard-update-panel" role="status">' +
+          '<span class="dash-preloader-spinner" aria-hidden="true"></span>' +
+          '<div class="dashboard-update-copy">' +
+            '<strong>' + esc(title) + '</strong>' +
+            '<span>' + esc(body) + '</span>' +
+          '</div>' +
+        '</div>';
+    }
+
+    window.setDashboardUpdateOverlay = setDashboardUpdateOverlay;
+    if (window._dashboardFetchState) setDashboardUpdateOverlay(window._dashboardFetchState);
+
+    function ensureMarketingStatusLoaded(data) {
+      var store = window.DashboardMarketingState;
+      if (!store || typeof store.get !== 'function' || typeof store.load !== 'function') return;
+      var meta = data && data.meta ? data.meta : {};
+      var accountId = meta.activeAccountId || (window.getActiveAccountId ? window.getActiveAccountId() : '__all__');
+      accountId = String(accountId || '__all__');
+      if (!accountId) return;
+
+      var current = store.get(accountId);
+      if (current && current.loading) return;
+      if (marketingStatusLoads[accountId]) return;
+
+      marketingStatusLoads[accountId] = true;
+      store.load(accountId).catch(function () { return null; }).then(function () {
+        marketingStatusLoads[accountId] = false;
+      });
+    }
+
+    function runAggregator(showLoader) {
+      if (showLoader) {
+        dashData._loaded = false;
+        dashData._loading = true;
+        dashData._version = ++dashVersion;
+        dashData.meta = dashData.meta || {};
+        dashData.meta.activeAccountId = window.getActiveAccountId ? window.getActiveAccountId() : '__all__';
+        if (typeof window.refreshDashboardShell === 'function') {
+          window.refreshDashboardShell(shellMount, dashData);
+        }
+      }
+
+      if (typeof window.runDashboardAggregator !== 'function') {
+        resetObject(dashData, emptyDashboardData());
+        dashData._version = ++dashVersion;
+        if (typeof window.refreshDashboardShell === 'function') {
+          window.refreshDashboardShell(shellMount, dashData);
+        }
+        return;
+      }
+
+      window.runDashboardAggregator(function (result) {
+        if (!result) {
+          resetObject(dashData, emptyDashboardData());
+        } else {
+          resetObject(dashData, mapAggregatorToSections(result));
+        }
+        dashData._version = ++dashVersion;
+        window.dashboardGeoData = dashData;
+        dashData._loading = false;
+        if (typeof window.refreshDashboardShell === 'function') {
+          window.refreshDashboardShell(shellMount, dashData);
+        }
+        ensureMarketingStatusLoaded(dashData);
+      });
+    }
+
+    function handlePeriodChange() {
+      runAggregator(true);
+    }
+
+    function handleDeliveredDateModeChange() {
+      runAggregator(true);
+    }
+
+    window.renderDashboardShell(shellMount, dashData, {
+      onAccountChange: function (accountId) {
+        if (window.setActiveAccountId) window.setActiveAccountId(accountId);
+        runAggregator(true);
+      },
+      onPeriodChange: handlePeriodChange,
+      onDeliveredDateModeChange: handleDeliveredDateModeChange,
+      onDashboardUpdate: function (period) {
+        var activeId = window.getActiveAccountId ? window.getActiveAccountId() : '__all__';
+        var ids = [];
+        if (activeId && activeId !== '__all__') ids = [activeId];
+        else ids = (window.dashboardAccountsList || [])
+          .filter(function (acc) { return acc && acc.id && acc.id !== '__all__'; })
+          .map(function (acc) { return acc.id; });
+        if (typeof window._onRunForDashboard === 'function') {
+          window._onRunForDashboard(ids, period || (window.DashboardPeriodState && window.DashboardPeriodState.get()), { stayOnDashboard: true });
+        }
+      }
+    });
+
+    runAggregator(false);
+    if (window.KhodPremiumPreview) window.KhodPremiumPreview.mount(el, 'dashboard');
+  };
+})();
