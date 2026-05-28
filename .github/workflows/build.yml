@@ -1,81 +1,92 @@
-name: Build — Mac & Windows
-
+name: Build & Release — Mac (arm64 + x64) & Windows
 on:
-  push:
-    tags:
-      - "v*"
-
+  release:
+    types: [published]
 permissions:
   contents: write
-
 jobs:
-  build-mac:
-    name: Build macOS DMG
+  # ── arm64 ──
+  build-mac-arm64:
+    name: Build macOS arm64
     runs-on: macos-latest
     steps:
-      - name: Checkout
-        uses: actions/checkout@v4
-
-      - name: Setup Node
-        uses: actions/setup-node@v4
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
         with:
           node-version: 20
           cache: npm
-
       - name: Install dependencies
         run: npm install
         env:
           PLAYWRIGHT_SKIP_BROWSER_DOWNLOAD: 1
-
-      - name: Build DMG (x64)
-        run: npx electron-builder --mac --x64
+      - name: Create env files
+        run: |
+          echo "SUPABASE_URL=${{ secrets.SUPABASE_URL }}" >> .env
+          echo "SUPABASE_PUBLISHABLE_KEY=${{ secrets.SUPABASE_PUBLISHABLE_KEY }}" >> .env
+          echo "GEMINI_API_KEY=${{ secrets.GEMINI_API_KEY }}" >> .env.local
+      - name: Build arm64
+        run: npx electron-builder --mac --arm64 --publish never
         env:
           PLAYWRIGHT_SKIP_BROWSER_DOWNLOAD: 1
           CSC_IDENTITY_AUTO_DISCOVERY: false
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          ELECTRON_BUILDER_PUBLISH: never
-
-      - name: Build DMG (arm64)
-        run: npx electron-builder --mac --arm64
+      - name: Upload arm64 files to release
+        run: gh release upload ${{ github.event.release.tag_name }} dist/*.dmg dist/*.zip dist/*.blockmap dist/latest-mac.yml --clobber
         env:
-          PLAYWRIGHT_SKIP_BROWSER_DOWNLOAD: 1
-          CSC_IDENTITY_AUTO_DISCOVERY: false
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          ELECTRON_BUILDER_PUBLISH: never
-
-      - name: Upload Mac artifacts to Release
-        uses: softprops/action-gh-release@v2
+  # ── x64 ──
+  build-mac-x64:
+    name: Build macOS x64
+    runs-on: macos-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
         with:
-          files: |
-            dist/*.dmg
-            dist/*.zip
-
+          node-version: 20
+          cache: npm
+      - name: Install dependencies
+        run: npm install
+        env:
+          PLAYWRIGHT_SKIP_BROWSER_DOWNLOAD: 1
+      - name: Create env files
+        run: |
+          echo "SUPABASE_URL=${{ secrets.SUPABASE_URL }}" >> .env
+          echo "SUPABASE_PUBLISHABLE_KEY=${{ secrets.SUPABASE_PUBLISHABLE_KEY }}" >> .env
+          echo "GEMINI_API_KEY=${{ secrets.GEMINI_API_KEY }}" >> .env.local
+      - name: Build x64
+        run: npx electron-builder --mac --x64 --publish never
+        env:
+          PLAYWRIGHT_SKIP_BROWSER_DOWNLOAD: 1
+          CSC_IDENTITY_AUTO_DISCOVERY: false
+      - name: Upload x64 files to release
+        run: gh release upload ${{ github.event.release.tag_name }} dist/*.dmg dist/*.zip dist/*.blockmap dist/latest-mac.yml --clobber
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+  # ── Windows ──
   build-win:
-    name: Build Windows EXE
+    name: Build Windows x64
     runs-on: windows-latest
     steps:
-      - name: Checkout
-        uses: actions/checkout@v4
-
-      - name: Setup Node
-        uses: actions/setup-node@v4
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
         with:
           node-version: 20
           cache: npm
-
       - name: Install dependencies
         run: npm install
         env:
           PLAYWRIGHT_SKIP_BROWSER_DOWNLOAD: 1
-
-      - name: Build EXE
-        run: npm run dist:win
+      - name: Create env files
+        run: |
+          echo "SUPABASE_URL=${{ secrets.SUPABASE_URL }}" >> .env
+          echo "SUPABASE_PUBLISHABLE_KEY=${{ secrets.SUPABASE_PUBLISHABLE_KEY }}" >> .env
+          echo "GEMINI_API_KEY=${{ secrets.GEMINI_API_KEY }}" >> .env.local
+        shell: bash
+      - name: Build Windows
+        run: npx electron-builder --win --x64 --publish never
         env:
           PLAYWRIGHT_SKIP_BROWSER_DOWNLOAD: 1
+      - name: Upload Windows files to release
+        run: gh release upload ${{ github.event.release.tag_name }} (Get-ChildItem dist\*.exe,dist\*.blockmap,dist\latest.yml | ForEach-Object { $_.FullName }) --clobber
+        shell: pwsh
+        env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          ELECTRON_BUILDER_PUBLISH: never
-
-      - name: Upload EXE to Release
-        uses: softprops/action-gh-release@v2
-        with:
-          files: dist/*.exe
