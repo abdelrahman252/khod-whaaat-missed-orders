@@ -160,7 +160,11 @@ function _opsAccountKey(item) {
 function _opsAccountDisplay(item) {
   if (!item) return "-";
   if (typeof item === "string") return item === "__single__" ? "-" : item;
-  return item.accountEmail || item.accountLabel || item.accountId || "-";
+  return item.accountLabel || item.accountEmail || item.accountId || "-";
+}
+function _opsAccountEmail(item) {
+  if (!item || typeof item === "string") return "";
+  return item.accountEmail || "";
 }
 function _opsAccountMatches(item, key) {
   if (!key) return true;
@@ -187,7 +191,7 @@ function _opsUniqueAccounts(runs) {
       const k = _opsAccountKey(r);
       if (!k || seen.has(k)) continue;
       seen.add(k);
-      out.push({ key: k, label: _opsAccountDisplay(r) });
+      out.push({ key: k, label: _opsAccountDisplay(r), email: _opsAccountEmail(r) });
     }
     return out;
   }

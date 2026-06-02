@@ -1,4 +1,4 @@
-// ─────────────────────────────────────────────────────────────────────────────
+﻿// ─────────────────────────────────────────────────────────────────────────────
 // section9-product-forecast.js — Product-Level Smart Forecasting Engine
 // Parity with Account Calculator (Section 7) — same inputs, tooltips, metrics
 // ─────────────────────────────────────────────────────────────────────────────
@@ -38,7 +38,11 @@ window.renderSectionProductForecast = function (mountEl, data, ctx) {
     var delivered = p.deliveredCount || p.units || 0;
     var realNdr   = orders > 0 ? (delivered / orders) : 0;
     var realComm  = delivered > 0 ? (p.commission / delivered) : 0;
-    if (realNdr  === 0) realNdr  = 0.50;
+    var realDeliveredSales = Number(p.deliveredSales || p.totalDeliveredSales || 0);
+    var realDeliveredAov = p.deliveredAov !== undefined
+      ? Number(p.deliveredAov || 0)
+      : (delivered > 0 ? realDeliveredSales / delivered : 0);
+    if (realNdr  === 0) realNdr  = 0.30;
     if (realComm === 0) realComm = 35;
 
     var pId = p.key || p.sku || p.name;
@@ -52,6 +56,8 @@ window.renderSectionProductForecast = function (mountEl, data, ctx) {
       realDelivered: delivered,
       realNdr:       realNdr,
       realCommission:realComm,
+      realDeliveredSales: realDeliveredSales,
+      realDeliveredAov: realDeliveredAov,
       realAdSpend:   realAdSpend,
       // Editable — always stored in SAR internally
       adSpend:       realAdSpend,
@@ -68,6 +74,8 @@ window.renderSectionProductForecast = function (mountEl, data, ctx) {
   var itemsPerPage = 10;
   var tableSortBy  = '';
   var tableSortDir = 'desc';
+  var tableSearchQuery = '';
+  var tableSearchTimer = null;
   var forecastAccountId = (data && data.meta && data.meta.activeAccountId) ||
     (ctx && ctx.data && ctx.data.meta && ctx.data.meta.activeAccountId) ||
     (window.getActiveAccountId ? window.getActiveAccountId() : '__all__');
@@ -99,7 +107,7 @@ window.renderSectionProductForecast = function (mountEl, data, ctx) {
     if (viewCurrency === 'EGP') return (val / egpRate) * 3.75;
     return val;
   }
-  function formatMoney(sarVal, noSign) {
+  function formatMoney(sarVal, noSign, decimals) {
     var val  = toDisplay(sarVal);
     var abs  = Math.abs(val);
     var sign = (val < 0 && !noSign) ? '-' : '';
@@ -107,7 +115,12 @@ window.renderSectionProductForecast = function (mountEl, data, ctx) {
     var valStr;
     if (abs >= 1000000) valStr = (abs / 1000000).toFixed(2) + 'M';
     else if (abs >= 1000)    valStr = (abs / 1000).toFixed(1) + 'K';
-    else valStr = Math.round(abs).toLocaleString('en');
+    else if (decimals != null) {
+      valStr = abs.toLocaleString('en', {
+        minimumFractionDigits: decimals,
+        maximumFractionDigits: decimals
+      });
+    } else valStr = Math.round(abs).toLocaleString('en');
 
     if (viewCurrency === 'USD') {
       return sign + '$' + valStr;
@@ -118,10 +131,10 @@ window.renderSectionProductForecast = function (mountEl, data, ctx) {
   function formatPct(v) { return Math.round(v * 100) + '%'; }
 
   function matchMethodLabel(sim) {
-    if (sim && sim.syncMatchMethod === 'sku') return p9Txt('TikTok spend matched by SKU', 'تمت مطابقة إنفاق تيك توك بواسطة SKU');
-    if (sim && sim.syncMatchMethod === 'sku+name') return p9Txt('TikTok spend matched by SKU and normalized name', 'تمت مطابقة إنفاق تيك توك بواسطة SKU والاسم الموحد');
-    if (sim && sim.syncMatchMethod === 'name') return p9Txt('TikTok spend matched by normalized name fallback', 'تمت مطابقة إنفاق تيك توك بالاسم الموحد كخيار احتياطي');
-    return p9Txt('No TikTok campaign matched; include this SKU or product name in the campaign.', 'لا توجد حملة تيك توك مطابقة؛ أضف SKU أو اسم المنتج إلى الحملة.');
+    if (sim && sim.syncMatchMethod === 'sku') return p9Txt('Marketing spend matched by SKU', 'تمت مطابقة إنفاق التسويق بواسطة SKU');
+    if (sim && sim.syncMatchMethod === 'sku+name') return p9Txt('Marketing spend matched by SKU and normalized name', 'تمت مطابقة إنفاق التسويق بواسطة SKU والاسم الموحد');
+    if (sim && sim.syncMatchMethod === 'name') return p9Txt('Marketing spend matched by normalized name fallback', 'تمت مطابقة إنفاق التسويق بالاسم الموحد كخيار احتياطي');
+    return p9Txt('No marketing campaign matched; include this SKU or product name in the campaign.', 'لا توجد حملة تسويق مطابقة؛ أضف SKU أو اسم المنتج إلى الحملة.');
   }
 
   function periodDate(value) {
@@ -151,6 +164,15 @@ window.renderSectionProductForecast = function (mountEl, data, ctx) {
       .trim();
   }
 
+  function escapeHtml(value) {
+    return String(value == null ? '' : value)
+      .replace(/&/g, '&amp;')
+      .replace(/</g, '&lt;')
+      .replace(/>/g, '&gt;')
+      .replace(/"/g, '&quot;')
+      .replace(/'/g, '&#39;');
+  }
+
   function validSku(product) {
     var sku = textKey(product && product.sku || '');
     return sku && sku !== 'n a' && sku !== 'na' ? sku : '';
@@ -163,10 +185,11 @@ window.renderSectionProductForecast = function (mountEl, data, ctx) {
   function productTokens(name) {
     var stop = {
       ad: true, ads: true, campaign: true, tiktok: true, tik: true, tok: true,
+      snapchat: true, snap: true, sc: true, facebook: true, fb: true, meta: true,
       ksa: true, saudi: true, sale: true, offer: true, new: true, test: true,
       flying: true, original: true, product: true,
-      منتج: true, عرض: true, جديد: true, اصلي: true, جهاز: true,
-      بعد: true, تعمل: true, يعمل: true, عدد: true, قطعه: true, حبه: true
+      'منتج': true, 'عرض': true, 'جديد': true, 'اصلي': true, 'جهاز': true,
+      'بعد': true, 'تعمل': true, 'يعمل': true, 'عدد': true, 'قطعه': true, 'حبه': true
     };
     return textKey(name).split(' ').filter(function (token) {
       return token.length >= 3 && !stop[token] && !/^x\d+$/i.test(token) && !/^\d+$/.test(token);
@@ -281,6 +304,7 @@ window.renderSectionProductForecast = function (mountEl, data, ctx) {
     var netProfit       = revenue - s.adSpend;
     var roi             = s.adSpend > 0 ? (netProfit / s.adSpend) * 100 : 0;
     var cpa             = totalOrders > 0 ? s.adSpend / totalOrders : 0;
+    var breakEvenCpa    = s.avgCommission * (totalOrders > 0 ? (deliveredOrders / totalOrders) : (Number(s.ndr) || 0));
     var returnPerSar    = s.adSpend > 0 ? revenue / s.adSpend : 0;
     var revenuePerDel   = deliveredOrders > 0 ? revenue / deliveredOrders : 0;
     var ndrRequired     = (totalOrders > 0 && s.avgCommission > 0) ? s.adSpend / (totalOrders * s.avgCommission) : null;
@@ -291,7 +315,7 @@ window.renderSectionProductForecast = function (mountEl, data, ctx) {
     var projNet         = (Math.round(projOrders * s.ndr) * s.avgCommission) - projBudget;
     var projRoi         = projBudget > 0 ? (projNet / projBudget) * 100 : 0;
     return {
-      totalOrders, deliveredOrders, revenue, netProfit, roi, cpa, returnPerSar, revenuePerDel,
+      totalOrders, deliveredOrders, revenue, netProfit, roi, cpa, breakEvenCpa, returnPerSar, revenuePerDel,
       ndrRequired, commRequired, delivRequired, projNet, projRoi, projBudget
     };
   }
@@ -502,29 +526,29 @@ window.renderSectionProductForecast = function (mountEl, data, ctx) {
         text: p9Txt('Campaign is losing <span class="hi-red">', 'الحملة تتكبد خسارة <span class="hi-red">') + formatMoney(Math.abs(c.netProfit), true) + p9Txt('</span> net.', '</span> صافي.') });
     } else {
       insights.push({ type: 'positive', icon: '🟢', cat: p9Txt('PROFITABILITY', 'الربحية'),
-        text: p9Txt('Campaign is profitable — net <span class="hi-green">', 'الحملة رابحة — صافي <span class="hi-green">') + formatMoney(c.netProfit, true) + '</span>.' });
+        text: p9Txt('Campaign is profitable — net <span class="hi-cyan">', 'الحملة رابحة — صافي <span class="hi-cyan">') + formatMoney(c.netProfit, true) + '</span>.' });
     }
 
     // Unit economics
     if (c.cpa > c.revenuePerDel && s.adSpend > 0) {
       insights.push({ type: 'negative', icon: '📉', cat: p9Txt('UNIT ECONOMICS', 'اقتصاديات الطلب'),
-        text: p9Txt('<span class="hi-red">CPA (', '<span class="hi-red">تكلفة الطلب (') + formatMoney(c.cpa, true) + p9Txt(')</span> exceeds revenue per delivery <strong>(', ')</span> أعلى من إيراد التسليم <strong>(') + formatMoney(c.revenuePerDel, true) + p9Txt(')</strong>. Scaling multiplies losses.', ')</strong>. التوسع سيضاعف الخسائر.') });
+        text: p9Txt('<span class="hi-red">CPA (', '<span class="hi-red">تكلفة الطلب (') + formatMoney(c.cpa, true, 2) + p9Txt(')</span> exceeds revenue per delivery <strong>(', ')</span> أعلى من إيراد التسليم <strong>(') + formatMoney(c.revenuePerDel, true, 2) + p9Txt(')</strong>. Scaling multiplies losses.', ')</strong>. التوسع سيضاعف الخسائر.') });
     } else if (c.revenuePerDel > 0 && s.adSpend > 0) {
       insights.push({ type: 'positive', icon: '📈', cat: p9Txt('UNIT ECONOMICS', 'اقتصاديات الطلب'),
-        text: p9Txt('Revenue per delivery <span class="hi-green">(', 'إيراد التسليم <span class="hi-green">(') + formatMoney(c.revenuePerDel, true) + p9Txt(')</span> exceeds CPA — unit economics healthy.', ')</span> أعلى من تكلفة الطلب — اقتصاديات صحية.') });
+        text: p9Txt('Revenue per delivery <span class="hi-cyan">(', 'إيراد التسليم <span class="hi-cyan">(') + formatMoney(c.revenuePerDel, true, 2) + p9Txt(')</span> exceeds CPA — unit economics healthy.', ')</span> أعلى من تكلفة الطلب — اقتصاديات صحية.') });
     }
 
     // NDR analysis
     var ndrPct = Math.round(s.ndr * 100);
-    if (s.ndr < 0.45) {
+    if (s.ndr < 0.20) {
       insights.push({ type: 'negative', icon: '⚠️', cat: p9Txt('NDR ANALYSIS', 'تحليل نسبة التسليم'),
-        text: p9Txt('NDR of <span class="hi-red">', 'نسبة التسليم <span class="hi-red">') + ndrPct + p9Txt('%</span> is critically below 45% — primary driver of losses.', '%</span> أقل من حد الخطر 45% — سبب رئيسي للخسائر.') });
-    } else if (s.ndr < 0.60) {
+        text: p9Txt('NDR of <span class="hi-red">', 'نسبة التسليم <span class="hi-red">') + ndrPct + p9Txt('%</span> is critically below 20% — primary driver of losses.', '%</span> أقل من حد الخطر 20% — سبب رئيسي للخسائر.') });
+    } else if (s.ndr < 0.30) {
       insights.push({ type: 'warning', icon: '📊', cat: p9Txt('NDR ANALYSIS', 'تحليل نسبة التسليم'),
-        text: p9Txt('NDR of <span class="hi-yellow">', 'نسبة التسليم <span class="hi-yellow">') + ndrPct + p9Txt('%</span> is below market average (60%). Improving NDR would materially boost profitability.', '%</span> أقل من المتوسط الصحي 60%. رفعها سيحسن الربحية بوضوح.') });
-    } else if (s.ndr >= 0.75) {
+        text: p9Txt('NDR of <span class="hi-yellow">', 'نسبة التسليم <span class="hi-yellow">') + ndrPct + p9Txt('%</span> is below healthy baseline (30%). Improving NDR would materially boost profitability.', '%</span> أقل من المتوسط الصحي 30%. رفعها سيحسن الربحية بوضوح.') });
+    } else if (s.ndr >= 0.40) {
       insights.push({ type: 'positive', icon: '✅', cat: p9Txt('NDR ANALYSIS', 'تحليل نسبة التسليم'),
-        text: p9Txt('NDR of <span class="hi-green">', 'نسبة التسليم <span class="hi-green">') + ndrPct + p9Txt('%</span> exceeds safe scaling threshold (75%) — delivery is strong.', '%</span> أعلى من حد التوسع الآمن 75% — أداء تسليم قوي.') });
+        text: p9Txt('NDR of <span class="hi-cyan">', 'نسبة التسليم <span class="hi-cyan">') + ndrPct + p9Txt('%</span> reaches the top delivery tier (40%) — delivery is strong.', '%</span> أعلى من مستوى التسليم 40% — أداء تسليم قوي.') });
     }
 
     // Break-even hint
@@ -554,6 +578,13 @@ window.renderSectionProductForecast = function (mountEl, data, ctx) {
     var rows = simulations.map(function (sim, idx) {
       return { sim: sim, idx: idx };
     });
+    var query = textKey(tableSearchQuery);
+    if (query) {
+      rows = rows.filter(function (row) {
+        return textKey(row.sim.name).indexOf(query) !== -1 ||
+          textKey(row.sim.sku).indexOf(query) !== -1;
+      });
+    }
     if (!tableSortBy) return rows;
     var direction = tableSortDir === 'asc' ? 1 : -1;
     return rows.sort(function (left, right) {
@@ -579,7 +610,8 @@ window.renderSectionProductForecast = function (mountEl, data, ctx) {
 
   function buildTable() {
     var sortedRows = sortedSimulationRows();
-    var totalPages = Math.ceil(simulations.length / itemsPerPage);
+    var totalFilteredRows = sortedRows.length;
+    var totalPages = Math.ceil(totalFilteredRows / itemsPerPage);
     if (currentPage > totalPages) currentPage = totalPages;
     if (currentPage < 1) currentPage = 1;
     var startIndex    = (currentPage - 1) * itemsPerPage;
@@ -592,7 +624,7 @@ window.renderSectionProductForecast = function (mountEl, data, ctx) {
       var isSel        = absoluteIdx === selectedIdx;
       var trStyle      = 'cursor:pointer;transition:background 0.2s;border-bottom:1px solid rgba(255,255,255,0.04);background:' + (isSel ? 'rgba(59,130,246,0.1)' : 'transparent') + ';';
       var displaySpend = s.realAdSpend === 0 ? '' : Math.round(toDisplay(s.realAdSpend));
-      var spendLocked = s.syncedAdSpend ? ' disabled title="' + p9Txt('Synced from TikTok campaign spend', 'Synced from TikTok campaign spend') + '"' : '';
+      var spendLocked = s.syncedAdSpend ? ' disabled title="' + p9Txt('Synced from marketing campaign spend', 'Synced from marketing campaign spend') + '"' : '';
 
       // ── FIX: Use CSS class for profit color — overrides any theme stylesheet ──
       var pClass = profitClass(realNetProfit);
@@ -616,6 +648,13 @@ window.renderSectionProductForecast = function (mountEl, data, ctx) {
         '</td>' +
       '</tr>';
     }).join('');
+    if (!rows) {
+      rows = '<tr><td colspan="6" style="padding:28px 16px;text-align:center;color:rgba(255,255,255,0.45);font-size:13px;font-weight:700;">' +
+        (tableSearchQuery
+          ? p9Txt('No product matches this search.', 'لا يوجد منتج مطابق لهذا البحث.')
+          : p9Txt('No products available.', 'لا توجد منتجات متاحة.')) +
+        '</td></tr>';
+    }
 
     // Pagination
     var pagesHtml = '';
@@ -627,9 +666,9 @@ window.renderSectionProductForecast = function (mountEl, data, ctx) {
     var paginationHtml = window.renderDashboardPagination ? window.renderDashboardPagination({
       currentPage: currentPage,
       totalPages: totalP,
-      totalItems: simulations.length,
-      startItem: simulations.length ? startIndex + 1 : 0,
-      endItem: Math.min(startIndex + itemsPerPage, simulations.length),
+      totalItems: totalFilteredRows,
+      startItem: totalFilteredRows ? startIndex + 1 : 0,
+      endItem: Math.min(startIndex + itemsPerPage, totalFilteredRows),
       itemLabel: p9Txt('products', 'منتج'),
       pageButtonClass: 's9-page-btn',
       prevClass: 's9-page-prev',
@@ -650,11 +689,20 @@ window.renderSectionProductForecast = function (mountEl, data, ctx) {
         '<div style="font-size:12px;color:rgba(255,255,255,0.4);margin-top:2px;">' + p9Txt('Enter budget per product to see forecasts.', 'أدخل الميزانية لكل منتج لرؤية التوقعات.') + '</div>' +
         '<div style="display:flex;align-items:center;justify-content:space-between;gap:10px;margin-top:10px;padding:9px 10px;border:1px solid rgba(45,212,191,.18);border-radius:10px;background:rgba(45,212,191,.06);flex-wrap:wrap;">' +
           '<div style="display:flex;flex-direction:column;gap:2px;min-width:0;">' +
-            '<span style="font-size:11px;color:#2dd4bf;font-weight:900;">' + p9Txt('TikTok sync period', 'TikTok sync period') + ': ' + productSyncPeriodLabel() + '</span>' +
+            '<span style="font-size:11px;color:#2dd4bf;font-weight:900;">' + p9Txt('Marketing sync period', 'Marketing sync period') + ': ' + productSyncPeriodLabel() + '</span>' +
             '<span style="font-size:10px;color:rgba(255,255,255,.48);font-weight:700;">' + p9Txt('Matched products', 'المنتجات المطابقة') + ': ' + syncedProductCount + ' / ' + simulations.length + ' · ' + p9Txt('SKU rows', 'صفوف SKU') + ': ' + matchSummary.skuRows + ' · ' + p9Txt('Name fallback rows', 'صفوف مطابقة الاسم') + ': ' + matchSummary.nameRows + ' · ' + p9Txt('Unmatched', 'غير مطابق') + ': ' + matchSummary.unmatchedRows + '</span>' +
-            '<span style="font-size:10px;color:#f59e0b;font-weight:700;">' + p9Txt('Best accuracy: include the product SKU in each TikTok campaign name. Name fallback accepts a distinctive single word or matching phrase and normalizes common Arabic spelling variants. Renamed historical campaigns may require a Windsor cache refresh before they appear here.', 'لأدق نتيجة: ضع SKU المنتج داخل اسم كل حملة تيك توك. تقبل مطابقة الاسم كلمة مميزة واحدة أو عبارة مطابقة مع توحيد اختلافات الكتابة العربية الشائعة. قد تحتاج أسماء الحملات التاريخية المعدلة إلى تحديث ذاكرة Windsor المؤقتة قبل أن تظهر هنا.') + '</span>' +
+            '<span style="font-size:10px;color:#f59e0b;font-weight:700;">' + p9Txt('Best accuracy: include the product SKU in each TikTok, Snapchat, or Facebook campaign name. Name fallback accepts a distinctive single word or matching phrase and normalizes common Arabic spelling variants. Renamed historical campaigns may require a Windsor cache refresh before they appear here.', 'لأدق نتيجة: ضع SKU المنتج داخل اسم كل حملة تيك توك أو سناب شات أو فيسبوك. تقبل مطابقة الاسم كلمة مميزة واحدة أو عبارة مطابقة مع توحيد اختلافات الكتابة العربية الشائعة. قد تحتاج أسماء الحملات التاريخية المعدلة إلى تحديث ذاكرة Windsor المؤقتة قبل أن تظهر هنا.') + '</span>' +
           '</div>' +
           '<button type="button" id="s9-sync-now" style="border:1px solid rgba(168,85,247,.45);background:rgba(168,85,247,.18);color:#fff;border-radius:8px;padding:7px 11px;font-size:11px;font-weight:900;cursor:pointer;font-family:inherit;"' + syncDisabled + '>' + syncLabel + '</button>' +
+        '</div>' +
+        '<div style="display:flex;align-items:center;gap:10px;margin-top:10px;flex-wrap:wrap;">' +
+          '<div style="flex:1;min-width:220px;position:relative;">' +
+            '<input type="search" id="s9-product-search" value="' + escapeHtml(tableSearchQuery) + '" placeholder="' + p9Txt('Search product name or SKU...', 'ابحث باسم المنتج أو SKU...') + '" ' +
+              'style="width:100%;box-sizing:border-box;background:#0b1120;border:1px solid rgba(255,255,255,0.10);border-radius:10px;color:#fff;font-family:Cairo,sans-serif;font-size:12px;font-weight:700;padding:9px 12px;outline:none;transition:border-color .18s,box-shadow .18s;" />' +
+          '</div>' +
+          '<div style="font-size:11px;color:rgba(255,255,255,0.42);font-weight:800;white-space:nowrap;">' +
+            p9Txt('Showing', 'يعرض') + ' ' + totalFilteredRows + ' / ' + simulations.length +
+          '</div>' +
         '</div>' +
       '</div>' +
       '<div style="flex:1;overflow-y:auto;" class="dash-scroll">' +
@@ -713,9 +761,9 @@ window.renderSectionProductForecast = function (mountEl, data, ctx) {
         ) +
         _kpiMiniTip(
           p9Txt('Net Delivery Rate', 'نسبة التسليم NDR'),
-          Math.round(s.ndr * 100) + '%', '#f59e0b', '📊',
+          Math.round(s.ndr * 100) + '%', (window.dashboardRateColor ? window.dashboardRateColor(s.ndr, { scale: 'ratio' }) : (s.ndr >= 0.40 ? '#22d3ee' : s.ndr >= 0.30 ? '#00e676' : s.ndr >= 0.20 ? '#f59e0b' : '#ef4444')), '📊',
           p9Txt('Net Delivery Rate (NDR)', 'نسبة التسليم (NDR)'),
-          p9Txt('Percentage of orders successfully delivered. Healthy baseline starts at 60%.', 'النسبة المئوية للطلبات التي تم تسليمها. المعيار الصحي يبدأ من 60%.'),
+          p9Txt('Percentage of orders successfully delivered. Healthy baseline starts at 30%, with top tier at 40%+.', 'النسبة المئوية للطلبات التي تم تسليمها. المعيار الصحي يبدأ من 30%، وأعلى مستوى من 40% فأكثر.'),
           'NDR = deliveredOrders ÷ totalOrders × 100'
         ) +
         _kpiMiniTip(
@@ -724,6 +772,20 @@ window.renderSectionProductForecast = function (mountEl, data, ctx) {
           p9Txt('Average Commission', 'متوسط العمولة'),
           p9Txt('Average commission earned per delivered order from the company.', 'متوسط العمولة المكتسبة لكل طلب مسلم واحد من الشركة.'),
           'avgCommission = totalRevenue ÷ deliveredOrders'
+        ) +
+        _kpiMiniTip(
+          p9Txt('Total Delivered Sales', 'إجمالي المبيعات المستلمة'),
+          formatMoney(s.realDeliveredSales, true), '#00e676', '💰',
+          p9Txt('Total Delivered Sales', 'إجمالي المبيعات المستلمة'),
+          p9Txt('Actual customer sales value for delivered orders of this selected product only.', 'إجمالي قيمة المبيعات الفعلية للطلبات المستلمة لهذا المنتج المحدد فقط.'),
+          'totalDeliveredSales = sum(totalPrice) for delivered product orders'
+        ) +
+        _kpiMiniTip(
+          p9Txt('AOV (Delivered)', 'متوسط الطلب المستلم'),
+          toDisplay(s.realDeliveredAov).toFixed(2) + ' ' + viewCurrency, '#60a5fa', '🧾',
+          p9Txt('Average Order Value (Delivered)', 'متوسط قيمة الطلب المستلم'),
+          p9Txt('Average customer sales value per delivered order for this selected product only.', 'متوسط قيمة المبيعات لكل طلب مستلم لهذا المنتج المحدد فقط.'),
+          'deliveredAOV = totalDeliveredSales ÷ deliveredOrders'
         ) +
       '</div>';
 
@@ -735,7 +797,7 @@ window.renderSectionProductForecast = function (mountEl, data, ctx) {
             p9Txt('Net Delivery Rate (NDR)', 'نسبة التسليم (NDR)') + ' ' +
             _tip('📊',
               p9Txt('Net Delivery Rate (NDR)', 'نسبة التسليم (NDR)'),
-              p9Txt('Percentage of orders delivered to customers. Below 45% is critical, 60%+ is healthy, 75%+ is safe to scale.', 'نسبة الطلبات التي وصلت للعميل. أقل من 45% خطر، 60% فأعلى صحي، 75% فأعلى آمن للتوسع.'),
+              p9Txt('Percentage of orders delivered to customers. Below 20% is critical, 30%+ is healthy, 40%+ is top tier.', 'نسبة الطلبات التي وصلت للعميل. أقل من 20% خطر، 30% فأعلى صحي، 40% فأعلى أعلى مستوى.'),
               'NDR = deliveredOrders ÷ totalOrders × 100') +
           '</label>' +
           '<span style="font-size:11px;color:rgba(255,255,255,0.35);">' + p9Txt('Real: ', 'الفعلي: ') + formatPct(s.realNdr) + '</span>' +
@@ -745,9 +807,9 @@ window.renderSectionProductForecast = function (mountEl, data, ctx) {
           '<span class="sfe-input-unit2">%</span>' +
         '</div>' +
         '<div class="sfe-slider-markers" style="margin-top:6px;">' +
-          '<span class="sfe-marker sfe-marker--danger">' + p9Txt('DANGER', 'خطر') + '<br>45%</span>' +
-          '<span class="sfe-marker sfe-marker--mid">' + p9Txt('MARKET', 'السوق') + '<br>60%</span>' +
-          '<span class="sfe-marker sfe-marker--safe">' + p9Txt('SAFE', 'آمن') + '<br>75%+</span>' +
+          '<span class="sfe-marker sfe-marker--danger">' + p9Txt('DANGER', 'خطر') + '<br>20%</span>' +
+          '<span class="sfe-marker sfe-marker--mid">' + p9Txt('GOOD', 'جيد') + '<br>30%</span>' +
+          '<span class="sfe-marker sfe-marker--safe">' + p9Txt('TOP', 'الأعلى') + '<br>40%+</span>' +
         '</div>' +
       '</div>';
 
@@ -782,7 +844,7 @@ window.renderSectionProductForecast = function (mountEl, data, ctx) {
           '<input type="number" class="s9-sim-spend-input sfe-input2" min="0" step="1" value="' + Math.round(toDisplay(s.adSpend)) + '" placeholder="0" style="direction:ltr;">' +
           '<span class="sfe-input-unit2">' + viewCurrency + '</span>' +
         '</div>' +
-        (s.syncedAdSpend ? '<div style="font-size:10px;color:#2dd4bf;font-weight:800;margin-top:8px">' + p9Txt('Real spend loaded from TikTok for ', 'تم تحميل الإنفاق الفعلي من تيك توك للفترة ') + productSyncPeriodLabel() + '. ' + p9Txt('Edit this scenario freely; Reset to Real Data restores it.', 'يمكنك تعديل السيناريو بحرية؛ زر الرجوع للبيانات الحقيقية يعيد القيمة الفعلية.') + '</div>' : '') +
+        (s.syncedAdSpend ? '<div style="font-size:10px;color:#2dd4bf;font-weight:800;margin-top:8px">' + p9Txt('Real spend loaded from marketing platforms for ', 'تم تحميل الإنفاق الفعلي من منصات التسويق للفترة ') + productSyncPeriodLabel() + '. ' + p9Txt('Edit this scenario freely; Reset to Real Data restores it.', 'يمكنك تعديل السيناريو بحرية؛ زر الرجوع للبيانات الحقيقية يعيد القيمة الفعلية.') + '</div>' : '') +
       '</div>';
 
     var ordersInputHtml =
@@ -835,12 +897,12 @@ window.renderSectionProductForecast = function (mountEl, data, ctx) {
         '</div>'
       : '';
 
-    // ── 4 KPI cards ───────────────────────────────────────────────────────────
+    // ── KPI cards ─────────────────────────────────────────────────────────────
     var npClass = c.netProfit < 0 ? 's9-profit-negative' : c.netProfit > 0 ? 's9-profit-positive' : 's9-profit-zero';
     var isLight = document.documentElement.getAttribute('data-theme') === 'light';
     var npColor = c.netProfit < 0 ? '#ef4444' : (c.netProfit > 0 ? (isLight ? '#10b981' : '#00e676') : (isLight ? '#6b7280' : 'rgba(255,255,255,0.6)'));
     var kpiCardsHtml =
-      '<div style="display:grid;grid-template-columns:repeat(4,1fr);gap:12px;">' +
+      '<div style="display:grid;grid-template-columns:repeat(5,1fr);gap:12px;">' +
         // Net Profit
         '<div class="s7-card">' +
           '<div style="font-size:11px;color:#00e676;font-weight:700;display:flex;align-items:center;gap:4px;">' + p9Txt('Net Profit', 'صافي الربح') + ' ' + _tip('🪙', p9Txt('Net Profit', 'الربح الصافي'), p9Txt('Net profit after deducting ad spend from revenue.', 'الربح بعد خصم الإنفاق من الإيراد.'), 'netProfit = revenue − adSpend') + '</div>' +
@@ -856,7 +918,13 @@ window.renderSectionProductForecast = function (mountEl, data, ctx) {
         // CPA
         '<div class="s7-card">' +
           '<div style="font-size:11px;color:#a855f7;font-weight:700;display:flex;align-items:center;gap:4px;">CPA ' + _tip('🎯', p9Txt('Cost Per Acquisition (CPA)', 'تكلفة الطلب (CPA)'), p9Txt('Cost per acquired order. Should be lower than avg commission for profitability.', 'تكلفة الحصول على طلب واحد. يجب أن تكون أقل من العمولة لضمان الربح.'), 'CPA = adSpend ÷ totalOrders') + '</div>' +
-          '<div style="font-size:17px;font-weight:900;color:#fff;" dir="ltr">' + formatMoney(c.cpa) + '</div>' +
+          '<div style="font-size:17px;font-weight:900;color:#fff;" dir="ltr">' + formatMoney(c.cpa, false, 2) + '</div>' +
+          '<div style="font-size:10px;color:rgba(255,255,255,0.4);background:rgba(255,255,255,0.06);padding:2px 8px;border-radius:10px;">' + viewCurrency + '</div>' +
+        '</div>' +
+        // Break-even CPA
+        '<div class="s7-card">' +
+          '<div style="font-size:11px;color:#f59e0b;font-weight:700;display:flex;align-items:center;gap:4px;">' + p9Txt('Break-even CPA', 'تكلفة التعادل') + ' ' + _tip('⚖️', p9Txt('Break-even CPA', 'تكلفة الاكتساب عند التعادل'), p9Txt('Maximum CPA before this product starts losing money. It equals average commission multiplied by NDR.', 'أعلى تكلفة اكتساب قبل أن يبدأ هذا المنتج بالخسارة. تساوي متوسط العمولة مضروبا في نسبة التسليم الصافي.'), 'Break-even CPA = avgCommission × NDR') + '</div>' +
+          '<div class="s9-kpi-breakeven" style="font-size:17px;font-weight:900;color:' + (c.cpa > c.breakEvenCpa ? '#ef4444' : '#f59e0b') + ';" dir="ltr">' + formatMoney(c.breakEvenCpa, false, 2) + '</div>' +
           '<div style="font-size:10px;color:rgba(255,255,255,0.4);background:rgba(255,255,255,0.06);padding:2px 8px;border-radius:10px;">' + viewCurrency + '</div>' +
         '</div>' +
         // Delivered Orders
@@ -969,7 +1037,7 @@ window.renderSectionProductForecast = function (mountEl, data, ctx) {
     // NDR markers
     '.sfe-slider-markers{display:flex;justify-content:space-between;margin-top:4px}' +
     '.sfe-marker{font-size:9px;font-weight:700;text-align:center;line-height:1.3}' +
-    '.sfe-marker--danger{color:#ff3b5c}.sfe-marker--mid{color:#f5a623}.sfe-marker--safe{color:#00e5a0}' +
+    '.sfe-marker--danger{color:#ff3b5c}.sfe-marker--mid{color:#f5a623}.sfe-marker--safe{color:#22d3ee}' +
 
     // Tooltip badge
     '.s7-tip-badge{width:17px;height:17px;border-radius:50%;background:' + (document.documentElement.getAttribute('data-theme') === 'light' ? 'rgba(40, 79, 143, 0.28)' : 'rgba(255,255,255,0.06)') + ';border:1px solid rgba(255,255,255,0.14);color:rgba(255,255,255,0.38);font-size:9.5px;font-weight:900;display:inline-flex;align-items:center;justify-content:center;cursor:default;transition:background .18s,border-color .18s,color .18s;font-family:system-ui,sans-serif;flex-shrink:0;vertical-align:middle;line-height:1;user-select:none}' +
@@ -994,6 +1062,7 @@ window.renderSectionProductForecast = function (mountEl, data, ctx) {
     '.sfe-insight-text{font-size:12px;color:#8b8fa8;line-height:1.55}' +
     '.sfe-insight-text strong{color:#f0f1f3;font-weight:600}' +
     '.sfe-insight-text .hi-green{color:#00e5a0;font-weight:600}' +
+    '.sfe-insight-text .hi-cyan{color:#22d3ee;font-weight:600}' +
     '.sfe-insight-text .hi-red{color:#ff3b5c;font-weight:600}' +
     '.sfe-insight-text .hi-yellow{color:#f5a623;font-weight:600}' +
 
@@ -1068,7 +1137,7 @@ window.renderSectionProductForecast = function (mountEl, data, ctx) {
 
     // KPI cards — update text nodes only
     var cards = mountEl.querySelectorAll('.s7-card');
-    if (cards.length >= 4) {
+    if (cards.length >= 5) {
       // Net Profit — update text AND color (class + inline important)
       var npEl = cards[0].querySelector('.s9-kpi-netprofit');
       if (npEl) {
@@ -1080,9 +1149,15 @@ window.renderSectionProductForecast = function (mountEl, data, ctx) {
       if (revEl) revEl.textContent = formatMoney(c.revenue);
       // CPA
       var cpaEl = cards[2].querySelector('div:nth-child(2)');
-      if (cpaEl) cpaEl.textContent = formatMoney(c.cpa);
+      if (cpaEl) cpaEl.textContent = formatMoney(c.cpa, false, 2);
+      // Break-even CPA
+      var beEl = cards[3].querySelector('.s9-kpi-breakeven');
+      if (beEl) {
+        beEl.textContent = formatMoney(c.breakEvenCpa, false, 2);
+        beEl.style.color = c.cpa > c.breakEvenCpa ? '#ef4444' : '#f59e0b';
+      }
       // Delivered
-      var delEl = cards[3].querySelector('div:nth-child(2)');
+      var delEl = cards[4].querySelector('div:nth-child(2)');
       if (delEl) delEl.textContent = p9Num(Math.round(c.deliveredOrders));
     }
 
@@ -1094,6 +1169,8 @@ window.renderSectionProductForecast = function (mountEl, data, ctx) {
       if (metricVals[1]) metricVals[1].textContent = p9Num(Math.round(c.deliveredOrders));
       if (metricVals[2]) metricVals[2].textContent = Math.round(s.ndr * 100) + '%';
       if (metricVals[3]) metricVals[3].textContent = toDisplay(s.avgCommission).toFixed(2) + ' ' + viewCurrency;
+      if (metricVals[4]) metricVals[4].textContent = formatMoney(s.realDeliveredSales, true);
+      if (metricVals[5]) metricVals[5].textContent = toDisplay(s.realDeliveredAov).toFixed(2) + ' ' + viewCurrency;
     }
 
     var totalInput = mountEl.querySelector('.s9-total-orders-input');
@@ -1154,6 +1231,26 @@ window.renderSectionProductForecast = function (mountEl, data, ctx) {
         tableSortDir = 'desc';
         currentPage = 1;
         renderAll();
+      });
+    }
+
+    var productSearch = mountEl.querySelector('#s9-product-search');
+    if (productSearch) {
+      productSearch.addEventListener('input', function () {
+        tableSearchQuery = productSearch.value || '';
+        currentPage = 1;
+        if (tableSearchTimer) clearTimeout(tableSearchTimer);
+        tableSearchTimer = setTimeout(function () {
+          renderAll();
+        }, 120);
+      });
+      productSearch.addEventListener('focus', function () {
+        productSearch.style.borderColor = '#3b82f6';
+        productSearch.style.boxShadow = '0 0 0 2px rgba(59,130,246,0.16)';
+      });
+      productSearch.addEventListener('blur', function () {
+        productSearch.style.borderColor = 'rgba(255,255,255,0.10)';
+        productSearch.style.boxShadow = 'none';
       });
     }
 

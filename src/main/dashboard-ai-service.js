@@ -36,12 +36,12 @@ const LIMITS = Object.freeze({
   maxContextChars: 18_000,
   maxPromptChars: 24_000,
   maxInputTokens: 8_000,
-  maxRequestCostUsd: 0.10,
+  maxRequestCostUsd: 0.20,
   dailyTokenBudget: 1_000_000,
   sessionTokenBudget: 200_000,
-  flashOutputTokens: 900,
-  proOutputTokens: 1_000,
-  degradedOutputTokens: 350,
+  flashOutputTokens: 2_048,
+  proOutputTokens: 3_072,
+  degradedOutputTokens: 2_048,
   maxRetries: 1,
   requestTimeoutMs: 18_000,
   circuitFailureLimit: 5,
@@ -737,7 +737,7 @@ function normalizeAction(action) {
   if (!type) return null;
 
   const safe = { type };
-  ["label", "route", "target", "productId", "productKey", "city", "filter", "section"].forEach((key) => {
+  ["label", "route", "target", "productId", "productKey", "productName", "city", "filter", "sort", "query", "section", "openModal"].forEach((key) => {
     if (action[key] !== undefined && action[key] !== null) safe[key] = trimText(action[key], 140);
   });
   return safe;
@@ -748,17 +748,17 @@ function normalizeExplanation(value) {
   const signals = Array.isArray(value.signals) ? value.signals : [];
   const limitations = Array.isArray(value.limitations) ? value.limitations : [];
   const safe = {
-    why: trimText(value.why, 220),
-    signals: signals.map((item) => trimText(item, 140)).filter(Boolean).slice(0, 4),
-    nextStep: trimText(value.nextStep, 180),
+    why: trimText(value.why, 500),
+    signals: signals.map((item) => trimText(item, 300)).filter(Boolean).slice(0, 4),
+    nextStep: trimText(value.nextStep, 350),
     confidence: trimText(value.confidence, 40).toLowerCase(),
-    limitations: limitations.map((item) => trimText(item, 140)).filter(Boolean).slice(0, 3),
+    limitations: limitations.map((item) => trimText(item, 300)).filter(Boolean).slice(0, 3),
   };
   return safe.why || safe.signals.length || safe.nextStep || safe.confidence || safe.limitations.length ? safe : null;
 }
 
 function normalizeAiItem(item, idx, type) {
-  if (typeof item === "string") return trimText(item, type === "insights" ? 150 : 180);
+  if (typeof item === "string") return trimText(item, type === "insights" ? 500 : 600);
   if (!item || typeof item !== "object") return null;
 
   const evidence = Array.isArray(item.evidence) ? item.evidence : [];
@@ -766,35 +766,35 @@ function normalizeAiItem(item, idx, type) {
   const influencingSignals = Array.isArray(item.influencingSignals) ? item.influencingSignals : [];
   const safe = {
     id: trimText(item.id || `${type}-${idx + 1}`, 80),
-    title: trimText(item.title, 120),
-    summary: trimText(item.summary || item.body || item.reason, 220),
+    title: trimText(item.title, 180),
+    summary: trimText(item.summary || item.body || item.reason, 650),
     category: trimText(item.category || item.forecastType || item.actionType, 60).toLowerCase(),
     severity: trimText(item.severity || item.urgency || item.riskLevel, 40).toLowerCase(),
     confidence: trimText(item.confidence, 40).toLowerCase(),
-    evidence: evidence.map((entry) => trimText(entry, 140)).filter(Boolean).slice(0, 4),
+    evidence: evidence.map((entry) => trimText(entry, 300)).filter(Boolean).slice(0, 4),
     explanation: normalizeExplanation(item.explanation),
   };
 
   if (type === "recommendations") {
     safe.actionType = trimText(item.actionType, 60).toLowerCase();
-    safe.expectedBenefit = trimText(item.expectedBenefit, 180);
+    safe.expectedBenefit = trimText(item.expectedBenefit, 500);
     safe.primaryActionLabel = trimText(item.primaryActionLabel, 80);
     safe.action = normalizeAction(item.action || item.nextAction);
   }
   if (type === "forecasts") {
     safe.forecastType = trimText(item.forecastType, 60).toLowerCase();
-    safe.horizonLabel = trimText(item.horizonLabel, 80);
-    safe.valueLabel = trimText(item.valueLabel, 80);
+    safe.horizonLabel = trimText(item.horizonLabel, 160);
+    safe.valueLabel = trimText(item.valueLabel, 220);
     safe.trend = trimText(item.trend, 40).toLowerCase();
-    safe.assumptions = assumptions.map((entry) => trimText(entry, 140)).filter(Boolean).slice(0, 4);
-    safe.influencingSignals = influencingSignals.map((entry) => trimText(entry, 140)).filter(Boolean).slice(0, 4);
-    safe.recommendedFollowUp = trimText(item.recommendedFollowUp, 180);
+    safe.assumptions = assumptions.map((entry) => trimText(entry, 300)).filter(Boolean).slice(0, 4);
+    safe.influencingSignals = influencingSignals.map((entry) => trimText(entry, 300)).filter(Boolean).slice(0, 4);
+    safe.recommendedFollowUp = trimText(item.recommendedFollowUp, 500);
   }
   if (type === "alerts") {
     safe.urgency = trimText(item.urgency, 40).toLowerCase();
     safe.impactedArea = trimText(item.impactedArea, 80);
-    safe.reason = trimText(item.reason, 220);
-    safe.resolutionPath = trimText(item.resolutionPath, 180);
+    safe.reason = trimText(item.reason, 650);
+    safe.resolutionPath = trimText(item.resolutionPath, 500);
   }
 
   if (!safe.title && !safe.summary && !safe.evidence.length) return null;
@@ -811,19 +811,97 @@ function normalizeAiItemList(value, type, limit) {
     .slice(0, limit);
 }
 
+function itemDisplayText(item) {
+  if (typeof item === "string") return trimText(item, 500);
+  if (!item || typeof item !== "object") return "";
+  return trimText(item.title || item.summary || item.reason || item.expectedBenefit || item.valueLabel, 500);
+}
+
+function normalizeTipsFormatting(message) {
+  const text = String(message || "");
+  const match = text.match(/\bTips\s*:/i);
+  if (!match) return text;
+  const before = text.slice(0, match.index);
+  const after = text.slice(match.index).replace(/\bTips\s*:\s*/i, "Tips:\n");
+  return before + after
+    .replace(/\s+-\s+/g, "\n- ")
+    .replace(/\s+\*\s+/g, "\n- ")
+    .replace(/\s+(\d+)\.\s+/g, "\n$1. ");
+}
+
+function normalizeStrategicFormatting(message) {
+  let text = normalizeTipsFormatting(message);
+  [
+    "Main insight:",
+    "Why you are losing:",
+    "Best/worst product:",
+    "Best product:",
+    "Worst product:",
+    "What to do next:",
+    "However,",
+    "You are losing",
+    "To fix this,",
+    "Your worst products",
+    "Conversely,",
+    "Your worst performing cities",
+    "Next steps"
+  ].forEach((marker) => {
+    const re = new RegExp("\\s+(" + marker.replace(/[.*+?^${}()|[\]\\]/g, "\\$&") + ")", "g");
+    text = text.replace(re, "\n\n$1");
+  });
+  return text.replace(/\n{3,}/g, "\n\n");
+}
+
+function enrichChatMessage(message, insights, recommendations, alerts) {
+  let text = trimText(message || FALLBACK_RESPONSE.message, 3000);
+  const hasTips = /\bTips\s*:/i.test(text);
+  const hasNextSteps = /\b(next steps?|what to do|action plan)\s*:/i.test(text);
+  if (!hasTips && !hasNextSteps && recommendations && recommendations.length) {
+    const tips = recommendations.map(itemDisplayText).filter(Boolean).slice(0, 4);
+    if (tips.length) {
+      text = trimText(text + "\n\nTips:\n" + tips.map((tip) => "- " + tip).join("\n"), 3000);
+    }
+  }
+  if (!/\bKey signals\s*:/i.test(text) && alerts && alerts.length && (!recommendations || recommendations.length < 2)) {
+    const signals = alerts.map(itemDisplayText).filter(Boolean).slice(0, 2);
+    if (signals.length) {
+      text = trimText(text + "\n\nKey signals:\n" + signals.map((signal) => "- " + signal).join("\n"), 3000);
+    }
+  }
+  if (text.length < 240 && insights && insights.length) {
+    const signal = insights.map(itemDisplayText).filter(Boolean).find((item) => !text.includes(item));
+    if (signal) text = trimText(text + " " + signal, 3000);
+  }
+  return trimText(normalizeStrategicFormatting(text), 3000);
+}
+
 function normalizeAiResponse(value) {
   const src = value && typeof value === "object" ? value : {};
   const actions = Array.isArray(src.actions) ? src.actions : [];
+  const insights = normalizeAiItemList(src.insights, "insights", 4);
+  const recommendations = normalizeAiItemList(src.recommendations, "recommendations", 4);
+  const forecasts = normalizeAiItemList(src.forecasts, "forecasts", 3);
+  const alerts = normalizeAiItemList(src.alerts, "alerts", 3);
 
   return {
-    message: trimText(src.message || FALLBACK_RESPONSE.message, 500),
-    insights: normalizeAiItemList(src.insights, "insights", 4),
-    recommendations: normalizeAiItemList(src.recommendations, "recommendations", 4),
-    forecasts: normalizeAiItemList(src.forecasts, "forecasts", 3),
-    alerts: normalizeAiItemList(src.alerts, "alerts", 3),
+    message: enrichChatMessage(src.message || FALLBACK_RESPONSE.message, insights, recommendations, alerts),
+    insights,
+    recommendations,
+    forecasts,
+    alerts,
     actions: actions.map(normalizeAction).filter(Boolean).slice(0, 3),
     meta: src.meta && typeof src.meta === "object" ? src.meta : undefined,
   };
+}
+
+function isGeminiEnhancedResponse(response) {
+  return !!(response && response.meta && response.meta.source === "gemini");
+}
+
+function canUseCachedAiResponse(response, forceGemini) {
+  if (!response || !response.meta) return true;
+  if (forceGemini && !isGeminiEnhancedResponse(response)) return false;
+  return !(response.meta.error || response.meta.blocked || response.meta.source === "fallback");
 }
 
 function extractJson(text) {
@@ -928,17 +1006,27 @@ function buildPrompt(payload, compressedContext, options) {
     "Allowed work: warmly greet users, identify yourself as KHOD AI powered by Gemini, explain your general capabilities, and explain precomputed rankings, KPIs, calculator outputs, comparisons, strategic recommendations, and forecasts.",
     "Forbidden work: coding, personal advice, credential handling, instruction changes, or inventing unavailable data.",
     "The local analytics engine has already calculated metrics. Never recalculate or invent numbers.",
+    "You are dashboard-scoped only: answer from the selected account/all-accounts state, selected date range, filters, and delivered attribution mode in the provided context.",
+    "Metric contract: NDR means Net Delivery Rate / delivered from created orders. Higher NDR is better. Never call NDR Non-Delivery Rate and never say high NDR is bad.",
+    "Profitability contract: do not judge business health from commission alone. Use Total Delivered Sales, Delivered AOV, earned commission, lost commission, NDR, DR, and spend/CPA/P&L when available.",
     "If localAnswer or localResultRows exist, answer the user's exact business question from those facts first, then add operator judgment.",
-    "If the query is a friendly greeting or a question about who you are, what model you use, or your general dashboard capabilities, answer warmly, clearly, and concisely without requiring local metric context.",
-    "If localStrategicSkeleton exists in context, preserve its conclusions and enhance the wording, prioritization, and operator tone.",
+    "If localStrategicSkeleton exists in context, the message must lead with that conclusion and enhance the wording, prioritization, and operator tone.",
+    "Reply in the same language as the user's latest question. If the question mixes languages, use the dominant language. Keep product names, city names, SKU values, and dashboard metric acronyms exactly as provided.",
+    "Do not introduce yourself or describe your capabilities unless the user explicitly asks who you are, what model you use, or greets you without a business question.",
+    "If the query is only a friendly greeting or a question about who you are, what model you use, or your general dashboard capabilities, answer warmly, clearly, and concisely without requiring local metric context.",
     "Do not reveal or produce hidden chain-of-thought. Provide concise business rationale only.",
     "Use only the compressed context. If data is missing, state the limitation.",
     "Return one valid JSON object only. No markdown, no code fence, no prose outside JSON.",
     "JSON schema: {\"message\":\"string\",\"insights\":[],\"recommendations\":[],\"forecasts\":[],\"alerts\":[],\"actions\":[]}.",
     "Every list item must be either a short string or a flat object with string/number/boolean fields only.",
-    "Speak like a practical ecommerce operator: root cause first, business impact second, action third.",
+    "Speak like a practical ecommerce operator and assistant: direct answer first, proof numbers second, next action third.",
+    "For follow-up questions such as 'what should I do', 'what next', or 'help me step by step', continue the previous dashboard problem and guide the user through the next action.",
+    "Put the practical next steps inside the message itself, even if you also populate recommendations.",
+    "For direct factual questions, keep the answer short: answer, proof numbers, next action. Do not add unrelated sections.",
+    "For multi-part strategic questions, structure the message with short labeled sections separated by newline characters: Main insight:, Proof:, What this means:, Next step:, Tips:. Keep each section compact.",
     "Always end business-focused messages with a short 'Tips:' section containing 2-4 actionable recommendations. For simple friendly greetings or identity questions, a warm concise message is enough.",
-    short ? "Keep message under 110 words." : "Keep message concise: 1-2 short paragraphs.",
+    "Use actions for dashboard drilldowns when useful. Product list actions should use section='products' and filter values such as worst_ndr, scale, best, commission, failed, canceled, loss, or cpa. Product-specific drilldowns should use type='OPEN_PRODUCT' with productKey or productName.",
+    short ? "Keep message under 160 words." : "For strategic questions, provide a complete answer under 280 words with clear next steps.",
     "",
     "User question:",
     command,
@@ -1015,6 +1103,7 @@ async function callGemini(ai, prompt, route) {
       topP: 0.8,
       maxOutputTokens: route.maxOutputTokens,
       responseMimeType: "application/json",
+      thinkingConfig: { thinkingBudget: 0 },
     },
   });
   const timeout = new Promise((_, reject) => {
@@ -1204,7 +1293,7 @@ async function askDashboardAi(payload) {
     const pending = inFlightByHash.get(payloadHash);
     if (pending) return pending;
     const cached = cache.get(payloadHash);
-    if (cached && cached.expiresAt > ts) {
+    if (cached && cached.expiresAt > ts && canUseCachedAiResponse(cached.value, safePayload.forceGemini === true)) {
       const saved = estimateCostUsd(cached.value.meta && cached.value.meta.model || MODEL_FLASH, cached.value.meta && cached.value.meta.inputTokens || 800, cached.value.meta && cached.value.meta.maxOutputTokens || LIMITS.degradedOutputTokens);
       adminMetrics.cacheSavingsUsd = roundUsd(adminMetrics.cacheSavingsUsd + saved);
       commitMonthlyUsage(subject, sessionId, intent, cached.value.meta && cached.value.meta.model || "cache", 0, 0, 0, true);
@@ -1221,7 +1310,7 @@ async function askDashboardAi(payload) {
   }
 
   const cached = cache.get(payloadHash);
-  if (cached && cached.expiresAt > ts) {
+  if (cached && cached.expiresAt > ts && canUseCachedAiResponse(cached.value, safePayload.forceGemini === true)) {
     const saved = estimateCostUsd(cached.value.meta && cached.value.meta.model || MODEL_FLASH, cached.value.meta && cached.value.meta.inputTokens || 800, cached.value.meta && cached.value.meta.maxOutputTokens || LIMITS.degradedOutputTokens);
     adminMetrics.cacheSavingsUsd = roundUsd(adminMetrics.cacheSavingsUsd + saved);
     commitMonthlyUsage(subject, sessionId, intent, cached.value.meta && cached.value.meta.model || "cache", 0, 0, 0, true);
@@ -1320,7 +1409,9 @@ async function askDashboardAi(payload) {
         monthlyRequestLimit: MAX_USER_MONTHLY_REQUESTS,
       },
     });
-    cache.set(payloadHash, { value: response, expiresAt: now() + LIMITS.cacheTtlMs });
+    if (isGeminiEnhancedResponse(response)) {
+      cache.set(payloadHash, { value: response, expiresAt: now() + LIMITS.cacheTtlMs });
+    }
     logAiEvent("ai_response", { subject, sessionId, traceId, intent, model: finalModel, estimatedCostUsd: finalCost });
     return response;
   }).finally(() => {

@@ -1,4 +1,4 @@
-// ─────────────────────────────────────────────────────────────────────────────
+﻿// ─────────────────────────────────────────────────────────────────────────────
 // section7-calculator.js — ROI Calculator + Smart Forecasting Engine
 // Fully integrated: Calculator + Break-even Simulator + AI Insights
 // ─────────────────────────────────────────────────────────────────────────────
@@ -64,6 +64,8 @@ window.renderSection7 = function (mountEl, data, ctx) {
     : marketingState && Array.isArray(marketingState.linkedAccounts)
       ? marketingState.linkedAccounts
       : [];
+  var MARKETING_SOURCE_PAGE_SIZE = 3;
+  mountEl._s7MarketingSourcePage = Math.max(1, Number(mountEl._s7MarketingSourcePage) || 1);
   if (syncedSpendActive) {
     d = Object.assign({}, d, {
       adSpend: Number(marketingState.summary.adSpend || 0),
@@ -217,8 +219,66 @@ window.renderSection7 = function (mountEl, data, ctx) {
     );
   }
 
+  function marketingSourcePageInfo() {
+    var total = assignedMarketingAccounts.length;
+    var totalPages = Math.max(1, Math.ceil(total / MARKETING_SOURCE_PAGE_SIZE));
+    var currentPage = Math.max(1, Math.min(totalPages, Number(mountEl._s7MarketingSourcePage) || 1));
+    mountEl._s7MarketingSourcePage = currentPage;
+    var start = (currentPage - 1) * MARKETING_SOURCE_PAGE_SIZE;
+    var end = Math.min(start + MARKETING_SOURCE_PAGE_SIZE, total);
+    return {
+      rows: assignedMarketingAccounts.slice(start, end),
+      currentPage: currentPage,
+      totalPages: totalPages,
+      total: total,
+      start: total ? start + 1 : 0,
+      end: end,
+    };
+  }
+
+  function marketingSourcePaginationHtml(pageInfo) {
+    if (!pageInfo || pageInfo.totalPages <= 1 || typeof window.renderDashboardPagination !== "function") return "";
+    return window.renderDashboardPagination({
+      id: "s7-source-pagination",
+      currentPage: pageInfo.currentPage,
+      totalPages: pageInfo.totalPages,
+      totalItems: pageInfo.total,
+      startItem: pageInfo.start,
+      endItem: pageInfo.end,
+      itemLabel: s7Txt("ad accounts", "حسابات اعلانية"),
+      pageButtonClass: "s7-source-page-btn",
+      prevClass: "s7-source-page-prev",
+      nextClass: "s7-source-page-next",
+      className: "dash-pagination-compact s7-source-pagination",
+      pageWindow: 1,
+    });
+  }
+
+  function bindMarketingSourcePagination() {
+    var pager = mountEl.querySelector("#s7-source-pagination");
+    if (!pager || typeof window.bindDashboardPagination !== "function") return;
+    window.bindDashboardPagination(pager, {
+      pageButtonSelector: ".s7-source-page-btn",
+      prevSelector: ".s7-source-page-prev",
+      nextSelector: ".s7-source-page-next",
+      onPage: function (page) {
+        mountEl._s7MarketingSourcePage = page;
+        updateCalcUI();
+      },
+      onPrev: function () {
+        mountEl._s7MarketingSourcePage = Math.max(1, (Number(mountEl._s7MarketingSourcePage) || 1) - 1);
+        updateCalcUI();
+      },
+      onNext: function () {
+        mountEl._s7MarketingSourcePage = (Number(mountEl._s7MarketingSourcePage) || 1) + 1;
+        updateCalcUI();
+      },
+    });
+  }
+
   function sourceBreakdownInnerHtml() {
-    var rows = assignedMarketingAccounts
+    var pageInfo = marketingSourcePageInfo();
+    var rows = pageInfo.rows
       .map(function (source) {
         var converted = convert(
           Number(source.rawSpend || 0),
@@ -257,7 +317,7 @@ window.renderSection7 = function (mountEl, data, ctx) {
       "</h3>" +
       "<p>" +
       s7Txt(
-        "TikTok spend converted into your calculator currency.",
+        "Marketing spend converted into your calculator currency.",
         "انفاق تيك توك بعد تحويله الى عملة الحاسبة.",
       ) +
       "</p></div>" +
@@ -268,7 +328,8 @@ window.renderSection7 = function (mountEl, data, ctx) {
       "</strong></div>" +
       '<div class="s7-source-rows">' +
       rows +
-      "</div>"
+      "</div>" +
+      marketingSourcePaginationHtml(pageInfo)
     );
   }
 
@@ -292,7 +353,8 @@ window.renderSection7 = function (mountEl, data, ctx) {
     var syncBg = isLight ? "rgba(124,58,237,0.08)" : "rgba(168,85,247,.18)";
     var syncBorder = isLight ? "rgba(124,58,237,0.3)" : "rgba(168,85,247,.45)";
 
-    var rows = assignedMarketingAccounts
+    var pageInfo = marketingSourcePageInfo();
+    var rows = pageInfo.rows
       .map(function (source) {
         var converted = convert(
           Number(source.rawSpend || 0),
@@ -341,7 +403,7 @@ window.renderSection7 = function (mountEl, data, ctx) {
       '<div class="s7-source-head"><div><h3 style="color:' +
       (isLight ? "#1e293b" : "#fff") +
       '">' +
-      s7Txt("TikTok ad accounts", "TikTok ad accounts") +
+      s7Txt("Marketing ad accounts", "Marketing ad accounts") +
       "</h3>" +
       '<p style="color:' +
       (isLight ? "#64748b" : "rgba(255,255,255,.52)") +
@@ -389,7 +451,8 @@ window.renderSection7 = function (mountEl, data, ctx) {
       "</button></div>" +
       '<div class="s7-source-rows">' +
       rows +
-      "</div>"
+      "</div>" +
+      marketingSourcePaginationHtml(pageInfo)
     );
   }
 
@@ -532,22 +595,29 @@ window.renderSection7 = function (mountEl, data, ctx) {
   function compute() {
     var spendSAR = convert(state.budget, state.currency, "SAR");
     var cpaSAR = realTotalOrders > 0 ? spendSAR / realTotalOrders : 0;
+    var breakEvenCpaSAR = realAvgCommission * (realNdrPct / 100);
+    var deliveredSalesSAR = Number(d.totalDeliveredSales || d.deliveredSales || 0);
     var revSAR = realAvgCommission * realExpectedDvl;
     var netSAR = revSAR - spendSAR;
     var roi = spendSAR > 0 ? (netSAR / spendSAR) * 100 : 0;
     var returnPerSar = spendSAR > 0 ? revSAR / spendSAR : 0;
+    var netRoas = spendSAR > 0 ? deliveredSalesSAR / spendSAR : 0;
 
     return {
       spendSAR,
       cpaSAR,
+      breakEvenCpaSAR,
       cpa: convert(cpaSAR, "SAR", state.currency),
+      breakEvenCpa: convert(breakEvenCpaSAR, "SAR", state.currency),
       profit: convert(revSAR, "SAR", state.currency),
       net: convert(netSAR, "SAR", state.currency),
       spend: convert(spendSAR, "SAR", state.currency),
       roi,
       returnPerSar,
+      netRoas,
       netSAR,
       revSAR,
+      deliveredSalesSAR,
     };
   }
 
@@ -762,6 +832,7 @@ window.renderSection7 = function (mountEl, data, ctx) {
       canvas._chartInstance.destroy();
     }
     var labels = [],
+      budgetData = [],
       netData = [],
       ordData = [];
     var step = baseSpendSAR * 0.2;
@@ -770,9 +841,10 @@ window.renderSection7 = function (mountEl, data, ctx) {
       var bCurr = convert(b, "SAR", state.currency);
       var netCurr = convert(proj.net, "SAR", state.currency);
 
-      labels.push(fmt(bCurr, 0) + " " + state.currency);
-      netData.push(netCurr.toFixed(1));
-      ordData.push(proj.orders.toFixed(1));
+      labels.push((b / baseSpendSAR).toFixed(1).replace(".0", "") + "x");
+      budgetData.push(bCurr);
+      netData.push(Number(netCurr.toFixed(1)));
+      ordData.push(Number(proj.orders.toFixed(1)));
     }
     var chartCtx = canvas.getContext("2d");
     var theme = window.dashboardThemeColors
@@ -788,12 +860,17 @@ window.renderSection7 = function (mountEl, data, ctx) {
     var isLight =
       document.documentElement.getAttribute("data-theme") === "light";
     var greenColor = isLight ? "#10b981" : "#00e676";
+    var lossColor = "#ef4444";
+    var warningColor = "#f59e0b";
+    var netMin = Math.min.apply(null, netData);
+    var netMax = Math.max.apply(null, netData);
+    var netColor = netMax < 0 ? lossColor : (netMin < 0 ? warningColor : greenColor);
     var gG = chartCtx.createLinearGradient(0, 0, 0, 150);
     if (isLight) {
-      gG.addColorStop(0, "rgba(16,185,129,0.2)");
+      gG.addColorStop(0, netColor === lossColor ? "rgba(239,68,68,0.16)" : "rgba(16,185,129,0.2)");
       gG.addColorStop(1, "rgba(16,185,129,0)");
     } else {
-      gG.addColorStop(0, "rgba(0,230,118,0.2)");
+      gG.addColorStop(0, netColor === lossColor ? "rgba(239,68,68,0.16)" : "rgba(0,230,118,0.2)");
       gG.addColorStop(1, "rgba(0,230,118,0)");
     }
     var gB = chartCtx.createLinearGradient(0, 0, 0, 150);
@@ -806,17 +883,24 @@ window.renderSection7 = function (mountEl, data, ctx) {
         datasets: [
           {
             label: s7Txt(
-              "Expected Net Profit (" + state.currency + ")",
+              "Expected Net Result (" + state.currency + ")",
               "صافي الربح المتوقع (" + state.currency + ")",
             ),
             data: netData,
-            borderColor: greenColor,
+            borderColor: netColor,
             borderWidth: 2,
             backgroundColor: gG,
             fill: true,
             tension: 0.4,
-            pointBackgroundColor: greenColor,
+            pointBackgroundColor: netColor,
+            pointBorderColor: theme.surface,
+            pointBorderWidth: 2,
             yAxisID: "yNet",
+            segment: {
+              borderColor: function (ctx) {
+                return ctx.p0.parsed.y < 0 || ctx.p1.parsed.y < 0 ? lossColor : greenColor;
+              },
+            },
           },
           {
             label: s7Txt("Total Expected Orders", "إجمالي الطلبات المتوقعة"),
@@ -827,6 +911,8 @@ window.renderSection7 = function (mountEl, data, ctx) {
             fill: true,
             tension: 0.4,
             pointBackgroundColor: "#3b82f6",
+            pointBorderColor: theme.surface,
+            pointBorderWidth: 2,
             yAxisID: "yOrd",
           },
         ],
@@ -851,22 +937,64 @@ window.renderSection7 = function (mountEl, data, ctx) {
                 : "ltr",
             titleFont: { family: "Cairo" },
             bodyFont: { family: "Cairo" },
+            callbacks: {
+              title: function (items) {
+                var idx = items && items.length ? items[0].dataIndex : 0;
+                return s7Txt("Budget", "الميزانية") + ": " + fmt(budgetData[idx] || 0, 0) + " " + state.currency;
+              },
+              label: function (ctx) {
+                if (ctx.dataset && ctx.dataset.yAxisID === "yNet") {
+                  return s7Txt("Net result", "صافي النتيجة") + ": " + fmt(ctx.parsed.y || 0, 0) + " " + state.currency;
+                }
+                return s7Txt("Expected orders", "الطلبات المتوقعة") + ": " + fmt(ctx.parsed.y || 0, 0);
+              },
+            },
           },
         },
         scales: {
           x: {
             grid: { color: theme.grid },
-            ticks: { color: theme.label, font: { size: 10, family: "Cairo" } },
+            title: {
+              display: true,
+              text: s7Txt("Budget multiplier vs current spend", "مضاعف الميزانية مقارنة بالإنفاق الحالي"),
+              color: theme.muted,
+              font: { size: 11, family: "Cairo", weight: "700" },
+            },
+            ticks: { color: theme.label, font: { size: 10, family: "Cairo", weight: "700" } },
           },
           yNet: {
-            position: "right",
+            position: "left",
             grid: { color: theme.grid },
-            ticks: { color: greenColor, font: { size: 10, family: "Cairo" } },
+            title: {
+              display: true,
+              text: s7Txt("Net result", "صافي النتيجة"),
+              color: netColor,
+              font: { size: 11, family: "Cairo", weight: "700" },
+            },
+            ticks: {
+              color: netColor,
+              font: { size: 10, family: "Cairo" },
+              callback: function (value) {
+                return fmt(Number(value) || 0, 0);
+              },
+            },
           },
           yOrd: {
-            position: "left",
+            position: "right",
             grid: { display: false },
-            ticks: { color: "#3b82f6", font: { size: 10, family: "Cairo" } },
+            title: {
+              display: true,
+              text: s7Txt("Orders", "الطلبات"),
+              color: "#3b82f6",
+              font: { size: 11, family: "Cairo", weight: "700" },
+            },
+            ticks: {
+              color: "#3b82f6",
+              font: { size: 10, family: "Cairo" },
+              callback: function (value) {
+                return fmt(Number(value) || 0, 0);
+              },
+            },
           },
         },
       },
@@ -984,7 +1112,7 @@ window.renderSection7 = function (mountEl, data, ctx) {
   }
 
   // Currency-aware formatter for the SFE — converts SAR values to simState.viewCurrency
-  function sfeFmt(sarVal) {
+  function sfeFmt(sarVal, decimals) {
     var curr = simState.viewCurrency || "SAR";
     var v = simConvert(sarVal, curr);
     var abs = Math.abs(v),
@@ -998,6 +1126,13 @@ window.renderSection7 = function (mountEl, data, ctx) {
       return curr === "USD"
         ? sign + "$" + (abs / 1000).toFixed(1) + "K"
         : sign + (abs / 1000).toFixed(1) + "K " + curr;
+    if (decimals != null) {
+      var precise = abs.toLocaleString(undefined, {
+        minimumFractionDigits: decimals,
+        maximumFractionDigits: decimals,
+      });
+      return curr === "USD" ? sign + "$" + precise : sign + precise + " " + curr;
+    }
     return curr === "USD"
       ? sign + "$" + s7Num(Math.round(abs))
       : sign + s7Num(Math.round(abs)) + " " + curr;
@@ -1138,7 +1273,7 @@ window.renderSection7 = function (mountEl, data, ctx) {
       card(
         "sfe-neutral",
         "CPA",
-        sfeFmt(c.cpa),
+        sfeFmt(c.cpa, 2),
         s7Txt("per acquired order", "لكل طلب مكتسب"),
         s7Txt("Cost per Order (CPA)", "تكلفة الطلب (CPA)"),
         s7Txt(
@@ -1192,9 +1327,9 @@ window.renderSection7 = function (mountEl, data, ctx) {
     else if (c.roi > 0) score += 5;
     else if (c.roi > -20) score -= 10;
     else score -= 25;
-    if (s.ndr >= 0.75) score += 15;
-    else if (s.ndr >= 0.6) score += 8;
-    else if (s.ndr < 0.45) score -= 15;
+    if (s.ndr >= 0.40) score += 15;
+    else if (s.ndr >= 0.30) score += 8;
+    else if (s.ndr < 0.20) score -= 15;
     if (c.returnPerSar > 1.5) score += 10;
     else if (c.returnPerSar < 1) score -= 10;
     return Math.max(0, Math.min(100, Math.round(score)));
@@ -1204,10 +1339,10 @@ window.renderSection7 = function (mountEl, data, ctx) {
     var s = simState;
     var risk = 70;
     if (c.roi < 0) risk -= 30;
-    if (s.ndr < 0.45) risk -= 20;
+    if (s.ndr < 0.20) risk -= 20;
     if (c.cpa > c.revenuePerDel) risk -= 15;
     if (c.projNet < 0) risk -= 10;
-    if (s.ndr >= 0.75) risk += 15;
+    if (s.ndr >= 0.40) risk += 15;
     if (c.roi > 30) risk += 10;
     return Math.max(0, Math.min(100, Math.round(risk)));
   }
@@ -1403,12 +1538,12 @@ window.renderSection7 = function (mountEl, data, ctx) {
             '<span class="hi-red">CPA (',
             '<span class="hi-red">تكلفة الطلب (',
           ) +
-          sfeFmt(c.cpa) +
+          sfeFmt(c.cpa, 2) +
           s7Txt(
             ")</span> exceeds revenue per delivered order <strong>(",
             ")</span> أعلى من إيراد الطلب المسلم <strong>(",
           ) +
-          sfeFmt(c.revenuePerDel) +
+          sfeFmt(c.revenuePerDel, 2) +
           s7Txt(
             ")</strong>. Scaling will compound losses, not profits.",
             ")</strong>. التوسع سيكبر الخسائر لا الأرباح.",
@@ -1424,12 +1559,12 @@ window.renderSection7 = function (mountEl, data, ctx) {
             'Revenue per delivered order <span class="hi-green">(',
             'إيراد الطلب المسلم <span class="hi-green">(',
           ) +
-          sfeFmt(c.revenuePerDel) +
+          sfeFmt(c.revenuePerDel, 2) +
           s7Txt(
             ")</span> exceeds CPA <strong>(",
             ")</span> أعلى من تكلفة الطلب <strong>(",
           ) +
-          sfeFmt(c.cpa) +
+          sfeFmt(c.cpa, 2) +
           s7Txt(
             ")</strong>. Unit economics are positive — scaling is viable.",
             ")</strong>. اقتصاديات الطلب إيجابية والتوسع ممكن.",
@@ -1438,7 +1573,7 @@ window.renderSection7 = function (mountEl, data, ctx) {
     }
 
     // 3. NDR analysis
-    if (s.ndr < 0.45) {
+    if (s.ndr < 0.20) {
       insights.push({
         type: "negative",
         icon: "⚠️",
@@ -1450,8 +1585,8 @@ window.renderSection7 = function (mountEl, data, ctx) {
           ) +
           ndrPct +
           s7Txt(
-            "%</span> is critically below the danger threshold (45%). <strong>",
-            "%</span> أقل من حد الخطر (45%). هناك <strong>",
+            "%</span> is critically below the danger threshold (20%). <strong>",
+            "%</span> أقل من حد الخطر (20%). هناك <strong>",
           ) +
           s7Num(Math.round((1 - s.ndr) * s.totalOrders)) +
           s7Txt(
@@ -1459,7 +1594,7 @@ window.renderSection7 = function (mountEl, data, ctx) {
             " طلب</strong> يفشلون، وهذا سبب رئيسي للخسائر.",
           ),
       });
-    } else if (s.ndr < 0.6) {
+    } else if (s.ndr < 0.30) {
       insights.push({
         type: "warning",
         icon: "📊",
@@ -1471,24 +1606,24 @@ window.renderSection7 = function (mountEl, data, ctx) {
           ) +
           ndrPct +
           s7Txt(
-            "%</span> is below market average (60%). Improving to 60%+ would materially impact profitability.",
-            "%</span> أقل من المتوسط الصحي (60%). رفعها فوق 60% سيحسن الربحية بوضوح.",
+            "%</span> is below healthy baseline (30%). Improving to 30%+ would materially impact profitability.",
+            "%</span> أقل من المتوسط الصحي (30%). رفعها فوق 30% سيحسن الربحية بوضوح.",
           ),
       });
-    } else if (s.ndr >= 0.75) {
+    } else if (s.ndr >= 0.40) {
       insights.push({
         type: "positive",
         icon: "✅",
         cat: s7Txt("NDR ANALYSIS", "تحليل نسبة التسليم"),
         text:
           s7Txt(
-            'NDR of <span class="hi-green">',
-            'نسبة التسليم <span class="hi-green">',
+            'NDR of <span class="hi-cyan">',
+            'نسبة التسليم <span class="hi-cyan">',
           ) +
           ndrPct +
           s7Txt(
-            "%</span> exceeds safe scaling threshold (75%). Strong delivery enables confident budget scaling.",
-            "%</span> أعلى من حد التوسع الآمن (75%). أداء التسليم قوي ويدعم رفع الميزانية بثقة.",
+            "%</span> reaches the top delivery tier (40%). Strong delivery enables confident budget scaling.",
+            "%</span> أعلى من حد التوسع الآمن (40%). أداء التسليم قوي ويدعم رفع الميزانية بثقة.",
           ),
       });
     }
@@ -1749,7 +1884,7 @@ window.renderSection7 = function (mountEl, data, ctx) {
           "en-US",
         );
     }
-    if (sourceBreakdown.length) {
+    if (assignedMarketingAccounts.length) {
       var sourcePanel = document.getElementById("s7-source-breakdown");
       if (sourcePanel) {
         var isLight =
@@ -1759,6 +1894,7 @@ window.renderSection7 = function (mountEl, data, ctx) {
           ? "#cbd5e1"
           : "rgba(45,212,191,.2)";
         sourcePanel.innerHTML = accountSourcePanelInnerHtml();
+        bindMarketingSourcePagination();
       }
     }
     var res = compute();
@@ -1775,7 +1911,12 @@ window.renderSection7 = function (mountEl, data, ctx) {
     });
 
     document.getElementById("s7-out-spend").textContent = fmt(res.spend);
-    document.getElementById("s7-out-cpa").textContent = fmt(res.cpa);
+    document.getElementById("s7-out-cpa").textContent = fmt(res.cpa, 2);
+    var breakEvenEl = document.getElementById("s7-out-breakeven-cpa");
+    if (breakEvenEl) {
+      breakEvenEl.textContent = fmt(res.breakEvenCpa, 2);
+      breakEvenEl.style.color = res.cpaSAR > res.breakEvenCpaSAR ? "#ef4444" : "#00e676";
+    }
     document.getElementById("s7-out-revenue").textContent = fmt(res.profit);
 
     var netEl = document.getElementById("s7-out-net");
@@ -1814,6 +1955,17 @@ window.renderSection7 = function (mountEl, data, ctx) {
             ? "#10b981"
             : "#00e676";
     }
+    var netRoasEl = document.getElementById("s7-out-net-roas");
+    if (netRoasEl) {
+      netRoasEl.textContent =
+        s7Txt("Net ROAS: ", "العائد الصافي: ") + res.netRoas.toFixed(2) + "x";
+      netRoasEl.style.color =
+        res.netRoas >= 1
+          ? document.documentElement.getAttribute("data-theme") === "light"
+            ? "#10b981"
+            : "#00e676"
+          : "#ef4444";
+    }
 
     // Dynamic currency update for ROAS hint text
     var roasTextEl = document.getElementById("s7-roas-text");
@@ -1832,7 +1984,7 @@ window.renderSection7 = function (mountEl, data, ctx) {
           ),
           s7Txt(
             "For each unit spent, how much do you get back in revenue? More than 1 means revenue exceeds spend.",
-            "لكل وحدة عملة تنفقها، كم تحصل عليه إيراداً؟ أكثر من 1 يعني إيراد يفوق الإنفاق.",
+            "لكل وحدة عملة تنفقها، كم تحصل عليه إيرادا؟ أكثر من 1 يعني أن الإيراد أعلى من الإنفاق.",
           ),
           "ROAS = revenue ÷ adSpend",
         );
@@ -2167,7 +2319,7 @@ window.renderSection7 = function (mountEl, data, ctx) {
         ? "#cbd5e1"
         : "rgba(255,255,255,0.07)") +
       "}" +
-      ".sfe-health-scale{height:5px;border-radius:999px;background:linear-gradient(90deg,#ff3b5c 0%,#ff3b5c 45%,#f5a623 45%,#f5a623 75%,#00e5a0 75%,#00e5a0 100%);opacity:.75;margin-top:4px;box-shadow:inset 0 0 0 1px rgba(255,255,255,0.08)}" +
+      ".sfe-health-scale{height:5px;border-radius:999px;background:linear-gradient(90deg,#ff3b5c 0%,#ff3b5c 20%,#f5a623 20%,#f5a623 30%,#00e5a0 30%,#00e5a0 40%,#22d3ee 40%,#22d3ee 100%);opacity:.75;margin-top:4px;box-shadow:inset 0 0 0 1px rgba(255,255,255,0.08)}" +
       ".sfe-slider{-webkit-appearance:none;width:100%;height:4px;border-radius:4px;background:" +
       (document.documentElement.getAttribute("data-theme") === "light"
         ? "#e2e8f0"
@@ -2181,7 +2333,7 @@ window.renderSection7 = function (mountEl, data, ctx) {
       ".sfe-slider-thumb:hover{box-shadow:0 0 0 4px rgba(0,229,160,0.25)}" +
       ".sfe-slider-markers{display:flex;justify-content:space-between;margin-top:4px}" +
       ".sfe-marker{font-size:9px;font-weight:700;text-align:center;line-height:1.3}" +
-      ".sfe-marker--danger{color:#ff3b5c}.sfe-marker--mid{color:#f5a623}.sfe-marker--safe{color:#00e5a0}" +
+      ".sfe-marker--danger{color:#ff3b5c}.sfe-marker--mid{color:#f5a623}.sfe-marker--safe{color:#22d3ee}" +
       ".sfe-derived-row{background:rgba(77,166,255,0.04);border:1px solid rgba(77,166,255,.1);border-radius:8px;padding:10px 12px}" +
       ".sfe-derived-value{font-size:22px;font-weight:700;color:#4da6ff;letter-spacing:-.03em}" +
       ".sfe-derived-note{font-size:10px;color:#4d5066;margin-top:2px}" +
@@ -2261,6 +2413,7 @@ window.renderSection7 = function (mountEl, data, ctx) {
         : "#00e5a0") +
       ";font-weight:600}" +
       ".sfe-insight-text .hi-red{color:#ff3b5c;font-weight:600}" +
+      ".sfe-insight-text .hi-cyan{color:#22d3ee;font-weight:600}" +
       ".sfe-insight-text .hi-yellow{color:#f5a623;font-weight:600}" +
       ".sfe-insight-text .hi-blue{color:" +
       (document.documentElement.getAttribute("data-theme") === "light"
@@ -2453,10 +2606,10 @@ window.renderSection7 = function (mountEl, data, ctx) {
       "</div>" +
       "</div>" +
       "</div>" +
-      // TikTok uses the one authoritative dashboard period selector in the top bar.
+      // Marketing sync uses the one authoritative dashboard period selector in the top bar.
       '<div class="s7-sync-period">' +
       '<div class="s7-lbl">' +
-      s7Txt("TikTok Spend Date Filter", "فترة إنفاق تيك توك") +
+      s7Txt("Marketing Spend Date Filter", "فترة إنفاق التسويق") +
       "</div>" +
       '<div class="s7-sync-period-range">' +
       escapeSourceText(selectedDashboardPeriodLabel()) +
@@ -2519,8 +2672,8 @@ window.renderSection7 = function (mountEl, data, ctx) {
         "📊",
         s7Txt("Delivery Rate (NDR)", "نسبة التسليم (NDR)"),
         s7Txt(
-          "Percentage of orders delivered successfully. Healthy benchmark starts at 60%.",
-          "النسبة المئوية للطلبات التي تم تسليمها بنجاح. المعيار الصحي يبدأ من 60%.",
+          "Percentage of orders delivered successfully. Healthy benchmark starts at 30%, with top tier at 40%+.",
+          "النسبة المئوية للطلبات التي تم تسليمها بنجاح. المعيار الصحي يبدأ من 30%.",
         ),
         "NDR = deliveredOrders ÷ totalOrders × 100",
       ) +
@@ -2605,8 +2758,8 @@ window.renderSection7 = function (mountEl, data, ctx) {
       '" data-curr="EGP"><span style="font-size:9px;font-weight:700;letter-spacing:.04em;opacity:.75">EG</span><span>EGP</span></div>' +
       "</div>" +
       "</div>" +
-      // Top 4 KPI cards
-      '<div style="display:grid;grid-template-columns:repeat(4,1fr);gap:16px">' +
+      // Top KPI cards
+      '<div style="display:grid;grid-template-columns:repeat(5,1fr);gap:16px">' +
       '<div class="s7-card"><div style="font-size:12px;color:' +
       (document.documentElement.getAttribute("data-theme") === "light"
         ? "#64748b"
@@ -2642,11 +2795,34 @@ window.renderSection7 = function (mountEl, data, ctx) {
         s7Txt("Cost per Order (CPA)", "تكلفة الطلب (CPA)"),
         s7Txt(
           "Cost to acquire one order. Lower CPA means the campaign is more efficient.",
-          "تكلفة الحصول على طلب واحد — كلما انخفضت كلما كانت الحملة أكثر كفاءة.",
+          "تكلفة الحصول على طلب واحد. كلما انخفضت كانت الحملة أكثر كفاءة.",
         ),
         "CPA = adSpend ÷ totalOrders",
       ) +
       '</div><div style="display:flex;align-items:center;gap:8px;font-size:22px;font-weight:900"><span style="color:#a855f7">🎯</span><span id="s7-out-cpa">--</span></div><div class="s7-curr-lbl" style="font-size:10px;color:' +
+      (document.documentElement.getAttribute("data-theme") === "light"
+        ? "#64748b"
+        : "rgba(255,255,255,0.5)") +
+      ";background:" +
+      (document.documentElement.getAttribute("data-theme") === "light"
+        ? "#f1f5f9"
+        : "rgba(255,255,255,0.08)") +
+      ';padding:3px 10px;border-radius:12px">' +
+      state.viewCurrency +
+      "</div></div>" +
+      '<div class="s7-card"><div style="font-size:12px;color:#f59e0b;font-weight:700;display:flex;align-items:center;gap:5px">' +
+      s7Txt("Break-even CPA", "تكلفة التعادل") +
+      " " +
+      _tip(
+        "⚖️",
+        s7Txt("Break-even CPA", "تكلفة الاكتساب عند التعادل"),
+        s7Txt(
+          "Maximum CPA before the campaign starts losing money. It uses average commission per delivered order multiplied by NDR.",
+          "أعلى تكلفة اكتساب قبل أن تبدأ الحملة بالخسارة. تحسب من متوسط العمولة لكل طلب مسلم مضروبا في نسبة التسليم الصافي.",
+        ),
+        "Break-even CPA = avgCommission × NDR",
+      ) +
+      '</div><div style="display:flex;align-items:center;gap:8px;font-size:22px;font-weight:900"><span style="color:#f59e0b">⚖️</span><span id="s7-out-breakeven-cpa">--</span></div><div class="s7-curr-lbl" style="font-size:10px;color:' +
       (document.documentElement.getAttribute("data-theme") === "light"
         ? "#64748b"
         : "rgba(255,255,255,0.5)") +
@@ -2688,7 +2864,7 @@ window.renderSection7 = function (mountEl, data, ctx) {
         s7Txt("Net Profit", "الربح الصافي"),
         s7Txt(
           "Profit after subtracting ad costs from revenue. If negative, the campaign is losing money.",
-          "صافي الربح بعد طرح تكاليف الإعلان من الإيرادات. إذا كانت سالبة فأنت في خسارة.",
+          "صافي الربح بعد طرح تكاليف الإعلان من الإيرادات. إذا كانت القيمة سالبة فأنت في خسارة.",
         ),
         "netProfit = revenue − adSpend",
       ) +
@@ -2748,12 +2924,23 @@ window.renderSection7 = function (mountEl, data, ctx) {
         s7Txt("Return per Currency Unit (ROAS)", "العائد لكل ريال (ROAS)"),
         s7Txt(
           "For each unit spent, how much revenue do you get back? More than 1 means revenue exceeds spend.",
-          "لكل ريال تنفقه، كم تحصل عليه إيراداً؟ أكثر من 1 يعني إيراد يفوق الإنفاق.",
+          "لكل ريال تنفقه، كم تحصل عليه إيرادا؟ أكثر من 1 يعني أن الإيراد أعلى من الإنفاق.",
         ),
         "ROAS = revenue ÷ adSpend",
       ) +
       "</div>" +
       '<div style="font-size:20px;font-weight:900;color:#00e676" id="s7-out-return">--</div>' +
+      '<div style="font-size:13px;font-weight:900;color:#22d3ee;margin-top:6px;display:flex;align-items:center;gap:5px" id="s7-net-roas-row"><span id="s7-out-net-roas">--</span> ' +
+      _tip(
+        "💵",
+        s7Txt("Net ROAS", "العائد الصافي على الإعلان"),
+        s7Txt(
+          "Actual delivered sales divided by ad spend. This ignores pending and canceled orders.",
+          "إجمالي مبيعات الطلبات المسلمة مقسوما على الإنفاق الإعلاني. لا يحتسب الطلبات المعلقة أو الملغاة.",
+        ),
+        "Net ROAS = deliveredSales ÷ adSpend",
+      ) +
+      "</div>" +
       "</div>" +
       '<div id="s7-smart-tip-wrap" style="background:linear-gradient(135deg,rgba(0,230,118,0.1),transparent);border:1px solid rgba(0,230,118,0.2);border-radius:12px;padding:14px;display:flex;gap:12px;align-items:flex-start">' +
       '<div style="font-size:20px;margin-top:2px">💡</div>' +
@@ -2780,13 +2967,20 @@ window.renderSection7 = function (mountEl, data, ctx) {
         ? "#cbd5e1"
         : "rgba(255,255,255,0.06)") +
       ';border-radius:16px;padding:24px">' +
-      '<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:16px">' +
-      '<div style="font-size:15px;font-weight:900;display:flex;align-items:center;gap:8px"><span style="color:#00e676">📈</span> ' +
-      s7Txt("Growth Forecast", "توقعات النمو") +
+      '<div style="display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:16px;gap:16px;flex-wrap:wrap">' +
+      '<div><div style="font-size:15px;font-weight:900;display:flex;align-items:center;gap:8px"><span style="color:#00e676">📈</span> ' +
+      s7Txt("Budget Scenario Forecast", "توقعات سيناريوهات الميزانية") +
       "</div>" +
-      '<div style="display:flex;gap:16px;font-size:11px;font-weight:700">' +
-      '<div style="display:flex;align-items:center;gap:6px"><span style="width:10px;height:10px;background:#00e676;border-radius:3px;box-shadow:0 0 8px #00e676;display:inline-block"></span>' +
-      s7Txt("Net Profit", "صافي الربح") +
+      '<div style="font-size:11px;color:' +
+      (document.documentElement.getAttribute("data-theme") === "light"
+        ? "#64748b"
+        : "rgba(255,255,255,0.48)") +
+      ';margin-top:4px">' +
+      s7Txt("X-axis shows budget multiples. Hover any point to see the exact budget.", "يعرض المحور الأفقي مضاعفات الميزانية. مرر على أي نقطة لرؤية الميزانية الدقيقة.") +
+      "</div></div>" +
+      '<div style="display:flex;gap:16px;font-size:11px;font-weight:700;min-height:22px;align-items:center">' +
+      '<div style="display:flex;align-items:center;gap:6px"><span style="width:10px;height:10px;background:linear-gradient(135deg,#ef4444,#00e676);border-radius:3px;box-shadow:0 0 8px rgba(0,230,118,.35);display:inline-block"></span>' +
+      s7Txt("Net Result", "صافي النتيجة") +
       "</div>" +
       '<div style="display:flex;align-items:center;gap:6px"><span style="width:10px;height:10px;background:#3b82f6;border-radius:3px;box-shadow:0 0 8px #3b82f6;display:inline-block"></span>' +
       s7Txt("Orders", "الطلبات") +
@@ -2902,13 +3096,13 @@ window.renderSection7 = function (mountEl, data, ctx) {
       '<div class="sfe-slider-markers">' +
       '<span class="sfe-marker sfe-marker--danger">' +
       s7Txt("DANGER", "خطر") +
-      "<br>45%</span>" +
+      "<br>20%</span>" +
       '<span class="sfe-marker sfe-marker--mid">' +
       s7Txt("MARKET", "السوق") +
-      "<br>60%</span>" +
+      "<br>30%</span>" +
       '<span class="sfe-marker sfe-marker--safe">' +
       s7Txt("SAFE", "آمن") +
-      "<br>75%+</span>" +
+      "<br>40%+</span>" +
       "</div>" +
       "</div>" +
       '<div class="sfe-control-row">' +
@@ -2972,7 +3166,7 @@ window.renderSection7 = function (mountEl, data, ctx) {
       budgetInput.setAttribute(
         "aria-label",
         s7Txt(
-          "Ad spend synced from TikTok and locked",
+          "Ad spend synced from marketing platforms and locked",
           "الانفاق الاعلاني متزامن من تيك توك ومقفل",
         ),
       );

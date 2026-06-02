@@ -37,10 +37,17 @@ function renderOrdersExplorer(container, runs, allRuns) {
   const accountMap = new Map();
   orders.forEach(o => {
     const key = accountKey(o);
-    if (key && !accountMap.has(key)) accountMap.set(key, accountDisplay(o));
+    if (key && !accountMap.has(key)) accountMap.set(key, {
+      label: accountDisplay(o),
+      email: o.accountEmail || ""
+    });
   });
   const accounts = [...accountMap.entries()]
-    .map(([value, label]) => ({ value, label }))
+    .map(([value, info]) => ({
+      value,
+      label: info.label || info.email || value,
+      subLabel: info.email && info.email !== info.label ? info.email : ""
+    }))
     .sort((a, b) => a.label.localeCompare(b.label));
 
   container.innerHTML = `

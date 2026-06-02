@@ -106,6 +106,10 @@
           ${t('expired.btn_continue')}
         </button>
 
+        <button id="eo-support-btn" class="eo-btn eo-btn--secondary">
+          ${t('expired.btn_support') !== 'expired.btn_support' ? t('expired.btn_support') : ((window._kbotLang || 'en') === 'ar' ? 'تواصل مع الدعم' : 'Contact Support')}
+        </button>
+
         <!-- Error message (hidden by default) -->
         <div id="eo-error" class="eo-error" style="display:none"></div>
 
@@ -270,6 +274,17 @@
           cursor: not-allowed;
         }
 
+        .eo-btn--secondary {
+          background: transparent;
+          color: #c4cad6;
+          border: 1px solid #2a3347;
+          box-shadow: none;
+        }
+        .eo-btn--secondary:hover {
+          border-color: #7c6af7;
+          color: #e8eaf0;
+        }
+
         /* Error */
         .eo-error {
           font-size: 12px;
@@ -332,13 +347,22 @@
         [data-theme="light"] .eo-meta   { border-color: #d0d5e0; }
         [data-theme="light"] .eo-meta-label { color: #6b7280; }
         [data-theme="light"] .eo-meta-value { color: #111827; }
+        [data-theme="light"] .eo-btn--secondary { color: #4b5563; border-color: #d0d5e0; }
+        [data-theme="light"] .eo-btn--secondary:hover { color: #111827; border-color: #7c6af7; }
       </style>
     `;
 
     // Wire up the Continue button
     const continueBtn = el.querySelector('#eo-continue-btn');
+    const supportBtn  = el.querySelector('#eo-support-btn');
     const errorEl     = el.querySelector('#eo-error');
     const badge       = el.querySelector('.eo-badge');
+
+    supportBtn.addEventListener('click', () => {
+      if (window.api && typeof window.api.openExternalUrl === 'function') {
+        window.api.openExternalUrl('https://khod-whaaat-portal.vercel.app/').catch(() => {});
+      }
+    });
 
     continueBtn.addEventListener('click', async () => {
       if (_revalidating) return;
@@ -367,6 +391,12 @@
             if (_onResumeCallback) _onResumeCallback(result);
           }, 900);
         } else {
+          const invalidReason = String((result && result.reason) || '').toLowerCase();
+          if ((invalidReason.includes('not found') || invalidReason.includes('no license key')) &&
+              typeof window.returnToLicensePage === 'function') {
+            window.returnToLicensePage();
+            return;
+          }
           // ❌ Still expired
           continueBtn.textContent = t('expired.btn_continue');
           continueBtn.disabled    = false;
@@ -432,7 +462,7 @@
     if (e.key === 'Tab') return;
     e.stopPropagation();
     // Don't preventDefault on keydown/keyup for the button itself
-    if (e.target && e.target.id === 'eo-continue-btn') return;
+    if (e.target && (e.target.id === 'eo-continue-btn' || e.target.id === 'eo-support-btn')) return;
     e.preventDefault();
   }
 

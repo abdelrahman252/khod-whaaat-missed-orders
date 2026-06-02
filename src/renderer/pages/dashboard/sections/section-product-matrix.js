@@ -151,20 +151,23 @@
       var skuHtml = (p.sku && p.sku !== p.name) ? '<div style="font-size:10px;font-weight:600;color:rgba(255,255,255,0.4);word-break:break-all;margin-top:2px" title="' + p.sku + '">' + p.sku + '</div>' : '';
       
       var overallDr = p.deliveryPct || 0;
-      var drColor = overallDr >= 70 ? '#00e676' : overallDr >= 55 ? '#f59e0b' : '#ef4444';
+      var drColor = window.dashboardRateColor ? window.dashboardRateColor(overallDr) : (overallDr >= 40 ? '#22d3ee' : overallDr >= 30 ? '#00e676' : overallDr >= 20 ? '#f59e0b' : '#ef4444');
       var activeDr = p.drRate || 0;
-      var activeDrColor = activeDr >= 70 ? '#00e676' : activeDr >= 55 ? '#f59e0b' : '#ef4444';
+      var activeDrColor = window.dashboardRateColor ? window.dashboardRateColor(activeDr) : (activeDr >= 40 ? '#22d3ee' : activeDr >= 30 ? '#00e676' : activeDr >= 20 ? '#f59e0b' : '#ef4444');
+      var productAvgCommission = (p.deliveredCount || 0) > 0 ? ((Number(p.commission) || 0) / p.deliveredCount) : 0;
+      var productBreakEvenCpa = productAvgCommission * ((Number(p.ndrPct || p.deliveryRate || 0)) / 100);
       var drBadge = '<div style="display:flex;flex-direction:column;gap:4px;align-items:center">' +
           '<div style="font-size:10px;font-weight:700;color:' + drColor + ';background:' + drColor + '18;padding:2px 6px;border-radius:12px;border:1px solid ' + drColor + '44">' + overallDr.toFixed(1) + '% <span style="opacity:0.5;font-size:9px">NDR</span></div>' +
           '<div style="font-size:10px;font-weight:700;color:' + activeDrColor + ';background:' + activeDrColor + '18;padding:2px 6px;border-radius:12px;border:1px solid ' + activeDrColor + '44">' + activeDr.toFixed(1) + '% <span style="opacity:0.5;font-size:9px">DR</span></div>' +
+          '<div style="font-size:9px;font-weight:800;color:#c084fc;margin-top:2px;" title="' + sTx('Break-even CPA = avg commission × NDR', 'تكلفة التعادل = متوسط العمولة × NDR') + '">BE: ' + productBreakEvenCpa.toFixed(2) + ' SAR</div>' +
         '</div>';
 
       function cityBadge(cityObj) {
         if (!cityObj) return '<span style="color:rgba(255,255,255,0.15);font-size:11px">-</span>';
         var cNdr = (cityObj.ndr * 100);
-        var cNdrColor = cNdr >= 70 ? '#00e676' : cNdr >= 55 ? '#f59e0b' : '#ef4444';
+        var cNdrColor = window.dashboardRateColor ? window.dashboardRateColor(cNdr) : (cNdr >= 40 ? '#22d3ee' : cNdr >= 30 ? '#00e676' : cNdr >= 20 ? '#f59e0b' : '#ef4444');
         var cDr = (cityObj.dr * 100);
-        var cDrColor = cDr >= 70 ? '#00e676' : cDr >= 55 ? '#f59e0b' : '#ef4444';
+        var cDrColor = window.dashboardRateColor ? window.dashboardRateColor(cDr) : (cDr >= 40 ? '#22d3ee' : cDr >= 30 ? '#00e676' : cDr >= 20 ? '#f59e0b' : '#ef4444');
         return '<div class="insight-city-btn" data-city="' + cityObj.name + '" style="cursor:pointer;display:inline-flex;flex-direction:column;align-items:center;background:rgba(255,255,255,0.03);border:1px solid rgba(255,255,255,0.06);padding:6px 12px;border-radius:6px;transition:background 0.2s">' +
           '<div style="font-size:11px;font-weight:700;color:rgba(255,255,255,0.85);max-width:120px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis" title="' + cityObj.name + '">' + cityObj.name + '</div>' +
           '<div style="display:flex;gap:6px;margin-top:4px">' +

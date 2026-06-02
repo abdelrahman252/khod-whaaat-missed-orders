@@ -149,7 +149,11 @@ function renderOpsProductPerf(container, allRuns) {
     const accountOptions = [{ value: "", label: `${window.t_ops('productPerf.allAccounts')}  ${allOrderCount.toLocaleString()} ${window.t_ops('accountPerf.ordersCount')}` }]
       .concat(accounts.map(a => {
         const count = _opsFlattenRuns((allRuns || []).filter(r => _opsAccountMatches(r, a.key))).length;
-        return { value: a.key, label: `${_opsShortEmail(a.label)}  ${count.toLocaleString()} ${window.t_ops('accountPerf.ordersCount')}` };
+        return {
+          value: a.key,
+          label: `${a.label || a.email || a.key}  ${count.toLocaleString()} ${window.t_ops('accountPerf.ordersCount')}`,
+          subLabel: a.email && a.email !== a.label ? a.email : "",
+        };
       }));
 
     container.innerHTML = `

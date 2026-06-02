@@ -55,9 +55,10 @@
       return Object.assign({}, settings, {
         adSpend: Number(marketing.summary.adSpend || 0),
         currency: String(marketing.summary.currency || settings.currency || "SAR").toUpperCase(),
-        source: "syncedTiktok",
+        source: "syncedMarketing",
         marketing: {
-          platform: "tiktok",
+          platform: marketing.platform || "combined",
+          platforms: marketing.summary.platformBreakdown || [],
           status: marketing.status,
           lastSyncAt: marketing.lastSyncAt || marketing.summary.lastSyncAt || "",
           campaignCount: Number(marketing.summary.campaignCount || 0),
@@ -76,6 +77,33 @@
     return sar;
   }
 
+  function breakEvenCpaSar(avgCommissionSar, ndrPct) {
+    return Number(avgCommissionSar || 0) * (Number(ndrPct || 0) / 100);
+  }
+
+  function accountBreakEvenContext(data, settings) {
+    var roi = data && data.roi ? data.roi : {};
+    var avgCommissionSar = Number(roi.avgCommission || 0);
+    var ndrPct = Number(roi.ndrPct || 0);
+    var breakEvenSar = breakEvenCpaSar(avgCommissionSar, ndrPct);
+    var breakEvenInCurrency = convertCommissionFromSar(breakEvenSar, settings || roi);
+    var cpa = Number(settings && settings.adSpend || roi.adSpend || 0) > 0 && Number(roi.totalOrders || 0) > 0
+      ? Number(settings && settings.adSpend || roi.adSpend || 0) / Number(roi.totalOrders || 1)
+      : Number(roi.avgCPA || 0);
+    return {
+      formula: "breakEvenCpa = avgCommissionPerDeliveredOrder * NDR",
+      meaning: "Maximum CPA before this account scope starts losing money. If actual CPA is above this by even a small amount, the campaign is losing.",
+      accountScope: data && data.meta && data.meta.activeAccountId && data.meta.activeAccountId !== "__all__" ? "single_account" : "all_accounts",
+      avgCommissionSar: num(avgCommissionSar, 2),
+      ndrPct: num(ndrPct, 1),
+      breakEvenCpaSar: num(breakEvenSar, 2),
+      breakEvenCpa: num(breakEvenInCurrency, 2),
+      actualCpa: num(cpa, 2),
+      currency: String(settings && settings.currency || roi.currency || "SAR").toUpperCase(),
+      isActualCpaAboveBreakEven: cpa > 0 && breakEvenInCurrency > 0 ? cpa > breakEvenInCurrency : null
+    };
+  }
+
   function compactProduct(p, financials) {
     financials = financials || {};
     var placed = Number(p.placedCount || 0);
@@ -85,18 +113,27 @@
     var cpa = placed > 0 ? allocatedSpend / placed : 0;
     var commissionInCurrency = convertCommissionFromSar(p.commission || 0, financials);
     var profitLoss = commissionInCurrency - allocatedSpend;
+    var delivered = Number(p.deliveredCount || p.units || 0);
+    var ndrPct = num(p.ndrPct || p.deliveryRate || 0, 1);
+    var avgCommissionSar = delivered > 0 ? Number(p.commission || 0) / delivered : 0;
+    var breakEvenSar = breakEvenCpaSar(avgCommissionSar, ndrPct);
+    var breakEvenInCurrency = convertCommissionFromSar(breakEvenSar, financials);
     return {
       id: String(p.key || p.sku || p.name || ""),
       name: p.name || p.key || "Unknown product",
       sku: p.sku || "",
       orders: Number(p.placedCount || 0),
-      delivered: Number(p.deliveredCount || p.units || 0),
-      ndrPct: num(p.ndrPct || p.deliveryRate || 0, 1),
+      delivered: delivered,
+      ndrPct: ndrPct,
       drPct: num(p.drRate || p.deliveryPct || 0, 1),
       cancelPct: num(p.cancelPct || 0, 1),
       commission: num(p.commission || 0, 2),
+      avgCommissionSar: num(avgCommissionSar, 2),
       allocatedAdSpend: num(allocatedSpend, 2),
       cpa: num(cpa, 2),
+      breakEvenCpa: num(breakEvenInCurrency, 2),
+      breakEvenCpaSar: num(breakEvenSar, 2),
+      cpaStatus: cpa > 0 && breakEvenInCurrency > 0 ? (cpa > breakEvenInCurrency ? "above_break_even_losing" : "below_break_even_safe") : "unknown",
       profitLoss: num(profitLoss, 2),
       financialCurrency: String(financials.currency || "SAR").toUpperCase(),
       topCities: (p.cityBreakdown || []).slice(0, 4).map(function (c) {
@@ -115,8 +152,12 @@
       orders: Number(city.count || 0),
       activeOrders: Number((city.shippingCount || 0) + (city.confirmedCount || 0) + (city.processingCount || 0)),
       delivered: Number(city.deliveredOrders || 0),
-      ndrPct: pct(city.count ? (city.deliveredOrders || 0) / city.count : 0),
-      drPct: pct(city.drBaseOrders ? (city.deliveredOrders || 0) / city.drBaseOrders : 0),
+      ndrPct: typeof city.ndrPct === "number"
+        ? num(city.ndrPct, 1)
+        : pct(city.count ? (city.deliveredOrders || 0) / city.count : 0),
+      drPct: typeof city.drPct === "number"
+        ? num(city.drPct, 1)
+        : pct(city.drBaseOrders ? (city.deliveredOrders || 0) / city.drBaseOrders : 0),
       codPct: pct(city.count ? (city.codCount || 0) / city.count : 0),
       prepaidPct: pct(city.count ? (city.prepaidCount || 0) / city.count : 0),
       earnedCommission: num(city.earnedCommission || 0, 2),
@@ -133,6 +174,7 @@
       var avgCommission = delivered > 0 ? Number(p.commission || 0) / delivered : Number(roi && roi.avgCommission || 0);
       var ndr = orders > 0 ? delivered / orders : 0;
       var expectedRevenue = delivered * avgCommission;
+      var breakEvenCpa = avgCommission * ndr;
       return {
         productId: String(p.key || p.sku || p.name || ""),
         name: p.name || p.key || "Unknown product",
@@ -140,6 +182,8 @@
         currentNdrPct: pct(ndr),
         avgCommission: num(avgCommission, 2),
         expectedRevenue: num(expectedRevenue, 2),
+        breakEvenCpaSar: num(breakEvenCpa, 2),
+        breakEvenFormula: "avgCommission * NDR",
         cpaBaseline: orders > 0 && adSpend > 0 ? num(adSpend / orders, 2) : 0,
       };
     });
@@ -171,7 +215,7 @@
       accountOptions: accountOptions.slice(0, 40).map(function (acc) {
         return {
           id: acc.id,
-          label: acc.label || acc.name || "",
+          label: acc.memberName || acc.easyEmail || acc.email || acc.khodEmail || acc.label || acc.name || "",
           orderCount: Number(acc.orderCount || 0),
           rawOrderCount: Number(acc.rawOrderCount || 0),
           hasSnapshot: !!acc.hasSnapshot
@@ -182,7 +226,12 @@
 
   function visibleMetrics(data, section) {
     data = data || {};
-    if (section === "calculator") return data.roi || {};
+    if (section === "calculator") {
+      var settings = currentRoiSettings(data);
+      return Object.assign({}, data.roi || {}, {
+        breakEven: accountBreakEvenContext(data, settings)
+      });
+    }
     if (section === "pipeline") return data.pipeline ? data.pipeline.metrics : {};
     if (section === "cod") return data.cod || {};
     if (section === "commission") return data.commissionTrend || {};
@@ -247,6 +296,7 @@
         accountAdSpend: Number(productFinancials.adSpend || 0),
         currency: String(productFinancials.currency || "SAR").toUpperCase(),
         egpRate: Number(productFinancials.egpRate || 52),
+        accountBreakEven: accountBreakEvenContext(data, productFinancials),
       },
       filters: window.DashboardFilterBus && window.DashboardFilterBus.getState ? window.DashboardFilterBus.getState() : {},
       selectedProduct: opts.productId || (window.DashboardFilterBus && window.DashboardFilterBus.getState ? window.DashboardFilterBus.getState().selectedProduct : null),
@@ -318,12 +368,12 @@
     var ndr = Number(product.ndrPct || product.deliveryPct || 0);
     var cancel = Number(product.cancelPct || 0);
     var commission = Number(product.commission || 0);
-    var tone = ndr < 45 || cancel >= 40 ? "danger" : (ndr >= 70 ? "profit" : "city");
-    var message = ndr < 45
+    var tone = ndr < 20 || cancel >= 40 ? "danger" : (ndr >= 40 ? "profit" : "city");
+    var message = ndr < 20
       ? tr("ai.productAdvisor.unsafeNdr", null, "Unsafe scaling: NDR is below the safe zone.")
       : (cancel >= 40
         ? tr("ai.productAdvisor.cancelRisk", null, "Cancellation risk is too high for aggressive spend.")
-        : (ndr >= 70 ? tr("ai.productAdvisor.safeScale", null, "Safe to test controlled scaling.") : tr("ai.productAdvisor.liftNdr", null, "Best lever: lift NDR before scaling.")));
+        : (ndr >= 40 ? tr("ai.productAdvisor.safeScale", null, "Safe to test controlled scaling.") : tr("ai.productAdvisor.liftNdr", null, "Best lever: lift NDR before scaling.")));
     var commissionText = Math.round(commission).toLocaleString(window.dashboardI18n ? window.dashboardI18n.locale() : "en-US");
     var sub = commission > 0 ? tr("ai.productAdvisor.commission", { value: commissionText }, "Commission: " + commissionText + " SAR") : tr("ai.productAdvisor.needsCommission", null, "Needs live commission signal");
     return '<div class="ai-inline-advisor ' + tone + '">' +
@@ -337,10 +387,10 @@
     if (!city) return "";
     var ndr = Number(city.deliveryRate || city.ndrPct || 0);
     var active = Number(city.activeOrders || 0);
-    var tone = ndr < 55 ? "danger" : (ndr >= 70 ? "profit" : "city");
-    var message = ndr < 55
+    var tone = ndr < 20 ? "danger" : (ndr >= 40 ? "profit" : "city");
+    var message = ndr < 20
       ? city.name + " has weak delivery quality."
-      : (ndr >= 70 ? city.name + " is a strong scale candidate." : city.name + " needs tighter delivery control.");
+      : (ndr >= 40 ? city.name + " is a strong scale candidate." : city.name + " needs tighter delivery control.");
     return '<div class="ai-inline-advisor ' + tone + '">' +
       '<span>AI city advisor</span>' +
       '<strong>' + message + '</strong>' +

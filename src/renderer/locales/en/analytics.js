@@ -25,12 +25,34 @@
     },
     empty: {
       title: "No runs yet",
-      desc: "Complete a bot run first — data will appear here automatically after each run."
+      desc: "Complete a bot run first — data will appear here automatically after each run.",
+      bannerTitle: "Analytics is ready",
+      bannerDesc: "Run the bot once to start filling these sections with real orders, revenue, COD, delivery, and failure data.",
+      runAction: "Go to Run"
     },
     account: {
       label: "Account",
       allAccounts: "All Accounts",
       orders: "orders"
+    },
+    tour: {
+      common: {
+        quickGuide: "Quick Guide"
+      },
+      analytics: {
+        kpis: {
+          title: "Top KPI Blocks",
+          body: "The KPI row aggregates orders, revenue, COD, delivery percentage, failed percentage, and time saved for the active date and account filters."
+        },
+        charts: {
+          title: "Interactive Trend Curves",
+          body: "The Chart.js canvases show dynamic daily distributions. Hover over nodes and bars to inspect day-by-day order, revenue, status, city, and product patterns."
+        },
+        table: {
+          title: "Filterable Reporting Grid",
+          body: "The table turns the chart data into custom reporting: filter, isolate runs, review order rows, and use it as the audit trail beneath the trend layer."
+        }
+      }
     },
     kpi: {
       totalOrders: "Total Orders",

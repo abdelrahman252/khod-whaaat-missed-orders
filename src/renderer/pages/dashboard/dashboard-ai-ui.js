@@ -20,6 +20,60 @@
       .replace(/'/g, "&#39;");
   }
 
+  function metricTone(label, value) {
+    label = String(label || "").toLowerCase();
+    value = Number(value || 0);
+    if (/\b(cancel|canceled|failed|lost|loss|cpa)\b/.test(label)) {
+      return value >= 30 ? "bad" : value >= 15 ? "warn" : "good";
+    }
+    if (/\b(ndr|delivery|delivered|dr|confirmation|profit|earned|commission)\b/.test(label)) {
+      return value >= 40 ? "top" : value >= 30 ? "good" : value >= 20 ? "warn" : "bad";
+    }
+    return "info";
+  }
+
+  function formatAiMessageHtml(text) {
+    var html = esc(layoutAiMessageText(text || ""));
+    html = html.replace(/\b((?:Net Delivery Rate\s*\(NDR\)|Delivery Rate\s*\(DR\)|NDR|DR|Delivery Rate|Cancel Rate|Cancellation Rate|Confirm Rate|Confirmation Rate)[^0-9%-]{0,50})(-?\d+(?:\.\d+)?%)/gi, function (_, label, value) {
+      var tone = metricTone(label, parseFloat(value));
+      return label + '<mark class="aii-metric-token ' + tone + '">' + value + '</mark>';
+    });
+    html = html.replace(/\b(lost commission|loss|lost)\s*(\(?-?\d[\d,.]*(?:\s*(?:SAR|USD|EGP))?\)?)/gi, function (_, label, value) {
+      return label + ' <mark class="aii-metric-token bad">' + value + '</mark>';
+    });
+    html = html.replace(/\b(earned profit|earned commission|profit|commission)\s*(\(?-?\d[\d,.]*(?:\s*(?:SAR|USD|EGP))?\)?)/gi, function (_, label, value) {
+      return label + ' <mark class="aii-metric-token good">' + value + '</mark>';
+    });
+    return html;
+  }
+
+  function layoutAiMessageText(text) {
+    text = String(text || "").replace(/\r\n/g, "\n").replace(/\s+\n/g, "\n").trim();
+    text = text.replace(/\bTips\s*:\s*/i, "Tips:\n");
+    text = text.replace(/\s+-\s+/g, "\n- ");
+    text = text.replace(/\s+\*\s+/g, "\n- ");
+    text = text.replace(/\s+(\d+)\.\s+/g, "\n$1. ");
+    [
+      "Main insight:",
+      "Why you are losing:",
+      "Best/worst product:",
+      "Best product:",
+      "Worst product:",
+      "What to do next:",
+      "However,",
+      "You are losing",
+      "To fix this,",
+      "Your worst products",
+      "Conversely,",
+      "Your worst performing cities",
+      "Next steps"
+    ].forEach(function (marker) {
+      var re = new RegExp("\\s+(" + marker.replace(/[.*+?^${}()|[\]\\]/g, "\\$&") + ")", "g");
+      text = text.replace(re, "\n\n$1");
+    });
+    return text.replace(/\n{3,}/g, "\n\n");
+  }
+
   function icon(name) {
     if (window.icon) return window.icon(name, { size: 15, color: "currentColor" });
     return "";
@@ -94,39 +148,84 @@
     }, 280);
   }
 
+  function withProductsApi(callback, attempts) {
+    attempts = attempts == null ? 12 : attempts;
+    if (window.DashboardProductsActions) {
+      callback(window.DashboardProductsActions);
+      return;
+    }
+    if (attempts <= 0) return;
+    setTimeout(function () { withProductsApi(callback, attempts - 1); }, 120);
+  }
+
+  function productActionPayload(action) {
+    var inferredFilter = action.filter || action.sort || "";
+    var route = String(action.route || "");
+    var label = String(action.label || action.target || "");
+    var sortMatch = route.match(/[?&](?:sort|filter)=([^&]+)/i);
+    if (!inferredFilter && sortMatch) inferredFilter = decodeURIComponent(sortMatch[1] || "");
+    if (!inferredFilter && /\b(worst|weak|danger|risk|risky|low ndr)\b/i.test(label)) inferredFilter = "worst_ndr";
+    if (!inferredFilter && /\b(scale|scaling)\b/i.test(label)) inferredFilter = "scale";
+    if (!inferredFilter && /\b(best|top|winner)\b/i.test(label)) inferredFilter = "best";
+    return {
+      filter: inferredFilter,
+      productId: action.productId || "",
+      productKey: action.productKey || "",
+      productName: action.productName || "",
+      query: action.query || action.target || ""
+    };
+  }
+
+  function runProductFilter(action) {
+    navigate("products");
+    var detail = productActionPayload(action);
+    window.dispatchEvent(new CustomEvent("dashboard-ai-filter-products", { detail: detail }));
+    withProductsApi(function (api) {
+      api.applyAiFilter(detail.filter || detail.query, detail);
+    });
+  }
+
+  function runProductOpen(action) {
+    navigate("products");
+    var detail = productActionPayload(action);
+    if (window.DashboardFilterBus) {
+      window.DashboardFilterBus.setState({
+        selectedProduct: detail.productKey || detail.productId || detail.productName,
+        mapMode: window.DashboardFilterBus.MODES.PRODUCT
+      });
+    }
+    withProductsApi(function (api) {
+      var opened = api.openProduct(detail.productKey || detail.productId || detail.productName || detail.query, { search: true });
+      if (!opened) highlightProduct(detail.productKey || detail.productId || detail.productName);
+    });
+  }
+
   function runAction(action) {
     if (!action || !action.type) return;
     var type = String(action.type).toUpperCase();
 
     if (type === "NAVIGATE" || type === "OPEN_PAGE") {
-      navigate(action.section || sectionForTarget(action.target));
+      var section = action.section || sectionForTarget(action.target || action.route);
+      if (section === "products" && (action.filter || action.sort || action.productId || action.productKey || action.productName || /[?&](?:sort|filter)=/i.test(String(action.route || "")) || /\b(worst|weak|danger|risk|scale|best|top|winner)\b/i.test(String(action.label || action.target || "")))) {
+        if (action.productId || action.productKey || action.productName) runProductOpen(action);
+        else runProductFilter(action);
+        return;
+      }
+      navigate(section);
       if (action.productId && window.DashboardFilterBus) {
         window.DashboardFilterBus.setState({ selectedProduct: action.productId, mapMode: window.DashboardFilterBus.MODES.PRODUCT });
       }
       if (action.city && window.DashboardFilterBus) {
         window.DashboardFilterBus.setState({ selectedCity: action.city });
       }
-      if (action.filter) {
-        window.dispatchEvent(new CustomEvent("dashboard-ai-filter-products", { detail: { filter: action.filter } }));
-      }
       return;
     }
 
-    if (type === "OPEN_PRODUCT") {
-      var product = findProductById(action.productId || action.productKey);
+    if (type === "OPEN_PRODUCT" || type === "OPEN_PRODUCT_DETAILS" || type === "VIEW_PRODUCT") {
+      var product = findProductById(action.productId || action.productKey || action.productName);
       var key = product ? (product.key || product.sku || product.name) : (action.productKey || action.productId);
-      if (window.DashboardFilterBus) {
-        window.DashboardFilterBus.setState({ selectedProduct: key, mapMode: window.DashboardFilterBus.MODES.PRODUCT });
-      }
-      navigate("products");
-      if (key) {
-        highlightProduct(key);
-        setTimeout(function () {
-          if (typeof window.openProductModal === "function") {
-            window.openProductModal(key);
-          }
-        }, 320);
-      }
+      action.productKey = key || action.productKey;
+      runProductOpen(action);
       return;
     }
 
@@ -138,8 +237,7 @@
     }
 
     if (type === "FILTER_PRODUCTS") {
-      navigate("products");
-      window.dispatchEvent(new CustomEvent("dashboard-ai-filter-products", { detail: { filter: action.filter || "" } }));
+      runProductFilter(action);
     }
   }
 
@@ -273,7 +371,7 @@
     var state = msg.state || "complete";
     return '<div class="ai-message ' + esc(sender) + ' ' + esc(state) + '">' +
       '<div class="ai-message-bubble">' +
-        '<div>' + esc(msg.text || "") + '</div>' +
+        '<div>' + (sender === "ai" ? formatAiMessageHtml(msg.text || "") : esc(msg.text || "")) + '</div>' +
         renderPopupActions(msg.actions, msgIdx) +
       '</div>' +
     '</div>';
@@ -357,6 +455,10 @@
     refresh();
   }
 
+  function nextUiTick() {
+    return new Promise(function (resolve) { setTimeout(resolve, 0); });
+  }
+
   function localFallbackMessage(context) {
     context = context || {};
     var local = context.localSummary || {};
@@ -379,6 +481,7 @@
       requestId: requestId,
     });
     refresh();
+    await nextUiTick();
 
     var dashboardData = dataRef || window.dashboardGeoData || {};
     var context = {};
@@ -398,6 +501,15 @@
         analyticsResult = orchestration.analyticsResult;
         context = orchestration.context || {};
         localStrategic = orchestration.localStrategic || null;
+        if (localStrategic && localStrategic.message) {
+          setPopupAssistant(
+            requestId,
+            "pending",
+            localStrategic.message + "\n\n" + tr("ai.finalizing", "Finalizing assistant wording..."),
+            localStrategic.actions || []
+          );
+          await nextUiTick();
+        }
       } else if (window.KhodAiIntentDetector && window.KhodAiAnalyticsEngine && window.KhodAiContextCompressor && window.KhodAiSessionMemory) {
         parsedIntent = window.KhodAiIntentDetector.parse(text, dashboardData, window.KhodAiSessionMemory.get());
         window.KhodAiSessionMemory.update(parsedIntent);

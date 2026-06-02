@@ -5,6 +5,7 @@
   var selectedDetail = null;
   var activeStream = null;
   var chatMessages = [];
+  var chatBusy = false;
   var injectedAi = { insights: [], recommendations: [], forecasts: [], alerts: [] };
   var _mountEl = null;
 
@@ -33,6 +34,64 @@
       .replace(/>/g, "&gt;")
       .replace(/"/g, "&quot;")
       .replace(/'/g, "&#39;");
+  }
+
+  function metricTone(label, value) {
+    label = String(label || "").toLowerCase();
+    value = Number(value || 0);
+    if (/\b(cancel|canceled|failed|lost|loss|cpa)\b/.test(label)) {
+      return value >= 30 ? "bad" : value >= 15 ? "warn" : "good";
+    }
+    if (/\b(ndr|delivery|delivered|dr|confirmation|profit|earned|commission)\b/.test(label)) {
+      return value >= 40 ? "top" : value >= 30 ? "good" : value >= 20 ? "warn" : "bad";
+    }
+    return "info";
+  }
+
+  function formatAiMessageHtml(text) {
+    var html = esc(layoutAiMessageText(text || ""));
+    html = html.replace(/\b((?:Net Delivery Rate\s*\(NDR\)|Delivery Rate\s*\(DR\)|NDR|DR|Delivery Rate|Cancel Rate|Cancellation Rate|Confirm Rate|Confirmation Rate)[^0-9%-]{0,50})(-?\d+(?:\.\d+)?%)/gi, function (_, label, value) {
+      var tone = metricTone(label, parseFloat(value));
+      return label + '<mark class="aii-metric-token ' + tone + '">' + value + '</mark>';
+    });
+    html = html.replace(/\b(lost commission|loss|lost)\s*(\(?-?\d[\d,.]*(?:\s*(?:SAR|USD|EGP))?\)?)/gi, function (_, label, value) {
+      return label + ' <mark class="aii-metric-token bad">' + value + '</mark>';
+    });
+    html = html.replace(/\b(earned profit|earned commission|profit|commission)\s*(\(?-?\d[\d,.]*(?:\s*(?:SAR|USD|EGP))?\)?)/gi, function (_, label, value) {
+      return label + ' <mark class="aii-metric-token good">' + value + '</mark>';
+    });
+    return html;
+  }
+
+  function nextUiTick() {
+    return new Promise(function (resolve) { setTimeout(resolve, 0); });
+  }
+
+  function layoutAiMessageText(text) {
+    text = String(text || "").replace(/\r\n/g, "\n").replace(/\s+\n/g, "\n").trim();
+    text = text.replace(/\bTips\s*:\s*/i, "Tips:\n");
+    text = text.replace(/\s+-\s+/g, "\n- ");
+    text = text.replace(/\s+\*\s+/g, "\n- ");
+    text = text.replace(/\s+(\d+)\.\s+/g, "\n$1. ");
+    [
+      "Main insight:",
+      "Why you are losing:",
+      "Best/worst product:",
+      "Best product:",
+      "Worst product:",
+      "What to do next:",
+      "However,",
+      "You are losing",
+      "To fix this,",
+      "Your worst products",
+      "Conversely,",
+      "Your worst performing cities",
+      "Next steps"
+    ].forEach(function (marker) {
+      var re = new RegExp("\\s+(" + marker.replace(/[.*+?^${}()|[\]\\]/g, "\\$&") + ")", "g");
+      text = text.replace(re, "\n\n$1");
+    });
+    return text.replace(/\n{3,}/g, "\n\n");
   }
 
   function icon(name) {
@@ -93,7 +152,7 @@
       avatar +
       '<div class="aii-chat-msg-body">' +
         '<span>' + esc(name) + '</span>' +
-        '<p>' + esc(msg.text) + '</p>' +
+        '<p>' + (msg.sender === "assistant" ? formatAiMessageHtml(msg.text) : esc(msg.text)) + '</p>' +
         actionButtons(msg.actions, msgIdx) +
       '</div>' +
     '</div>';
@@ -168,8 +227,8 @@
         return '<button type="button" class="aii-chip" data-aii-prompt="' + esc(item) + '">' + esc(item) + '</button>';
       }).join("") + '</div>' +
       '<form id="aii-chat-form" class="aii-chat-form">' +
-        '<input id="aii-chat-input" type="text" autocomplete="off" placeholder="' + esc(tr("aii.chatPlaceholder", null, "Ask Khod Whaat AI to analyze your data...")) + '" aria-label="' + esc(tr("aii.chatPlaceholder", null, "Ask AI...")) + '">' +
-        '<button type="submit"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="22" y1="2" x2="11" y2="13"></line><polygon points="22 2 15 22 11 13 2 9 22 2"></polygon></svg></button>' +
+        '<input id="aii-chat-input" type="text" autocomplete="off" placeholder="' + esc(tr("aii.chatPlaceholder", null, "Ask Khod Whaat AI to analyze your data...")) + '" aria-label="' + esc(tr("aii.chatPlaceholder", null, "Ask AI...")) + '"' + (chatBusy ? ' disabled' : '') + '>' +
+        '<button type="submit"' + (chatBusy ? ' disabled aria-busy="true"' : '') + '><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="22" y1="2" x2="11" y2="13"></line><polygon points="22 2 15 22 11 13 2 9 22 2"></polygon></svg></button>' +
       '</form>' +
       '<div class="aii-ai-disclaimer" style="font-size:11px;color:var(--text-muted,#888);margin-top:12px;text-align:center;line-height:1.4;">' +
         esc(tr("aii.disclaimer.metrics", null, "Controlled business copilot: local-first metrics with guarded AI reasoning.")) + '<br>' +
@@ -229,8 +288,11 @@
 
     state.recommendations.forEach(function(item, idx) {
       var sev = (item.riskLevel || "").toLowerCase();
-      if (sev === 'critical' || sev === 'high') {
+      var type = (item.actionType || "").toLowerCase();
+      if (sev === 'critical' || sev === 'high' || type === 'pause_product') {
         groups.risks.items.push({item: item, type: 'recommendations', idx: idx});
+      } else if (type === 'optimize_shipping' || type === 'improve_cod') {
+        groups.operations.items.push({item: item, type: 'recommendations', idx: idx});
       } else {
         groups.opportunities.items.push({item: item, type: 'recommendations', idx: idx});
       }
@@ -443,10 +505,17 @@
     }
     var snapshot = captureScrollState();
     var input = _mountEl.querySelector("#aii-chat-input");
+    var button = _mountEl.querySelector("#aii-chat-form button");
     var hadFocus = document.activeElement === input;
     log.innerHTML = chatLogHtml(chatMessages);
     wireChatActionEvents(_mountEl);
     log.scrollTop = log.scrollHeight;
+    if (input) input.disabled = chatBusy;
+    if (button) {
+      button.disabled = chatBusy;
+      if (chatBusy) button.setAttribute("aria-busy", "true");
+      else button.removeAttribute("aria-busy");
+    }
     if (hadFocus && input) {
       try { input.focus({ preventScroll: true }); } catch (_) { try { input.focus(); } catch (_) {} }
     }
@@ -546,18 +615,16 @@
 
   async function ask(prompt) {
     var text = String(prompt || "").trim();
-    if (!text) return;
+    if (!text || chatBusy) return;
 
     // [KHOD AI DEBUG] ──────────────────────────────────────────────
-    console.log("[KhodAI-Debug] ask() called with:", text.slice(0, 80));
-    console.log("[KhodAI-Debug] window.api present:", !!window.api);
-    console.log("[KhodAI-Debug] dashboardAiQuery type:", typeof (window.api && window.api.dashboardAiQuery));
-    console.log("[KhodAI-Debug] window.dashboardGeoData present:", !!window.dashboardGeoData);
     // ─────────────────────────────────────────────────────────────
 
     chatMessages.push({ sender: "user", state: "complete", text: text });
-    chatMessages.push({ sender: "assistant", state: "pending", text: tr("ai.thinking", null, "Analyzing dashboard intelligence...") });
+    chatMessages.push({ sender: "assistant", state: "pending", text: tr("ai.thinking", null, "Reading current dashboard state...") });
+    chatBusy = true;
     updateChatOnly();
+    await nextUiTick();
 
     var context = {};
     var parsedIntent = null;
@@ -567,9 +634,9 @@
     if (window.KhodAiBusinessOrchestrator && window.KhodAiBusinessOrchestrator.orchestrate) {
       var orchestration = window.KhodAiBusinessOrchestrator.orchestrate(text, window.dashboardGeoData || {});
       if (orchestration.mode === "followup" || orchestration.mode === "local") {
-        console.log("[KhodAI-Debug] Intent:", orchestration.parsedIntent && orchestration.parsedIntent.intent, "| Response source:", orchestration.mode === "local" ? "LOCAL_ONLY" : "LOCAL_DEPENDENCY_FOLLOWUP", "| No Gemini call");
         chatMessages.pop();
         chatMessages.push({ sender: "assistant", state: orchestration.mode === "followup" ? "pending-input" : "complete", text: orchestration.message, actions: orchestration.actions || [] });
+        chatBusy = false;
         updateChatOnly();
         return;
       }
@@ -577,13 +644,21 @@
       analyticsResult = orchestration.analyticsResult;
       context = orchestration.context || {};
       localStrategic = orchestration.localStrategic || null;
-      console.log("[KhodAI-Debug] Business Orchestrator executed. Intent:", parsedIntent && parsedIntent.intent, "| Source: LOCAL_STRATEGY_BASE -> Gemini enhancement attempt");
+      if (localStrategic && localStrategic.message) {
+        chatMessages[chatMessages.length - 1] = {
+          sender: "assistant",
+          state: "pending",
+          text: tr("ai.analyzing", null, "🧠 Analyzing metrics & formulating strategy..."),
+          actions: []
+        };
+        updateChatOnly();
+        await nextUiTick();
+      }
     } else if (window.KhodAiIntentDetector && window.KhodAiAnalyticsEngine && window.KhodAiContextCompressor && window.KhodAiSessionMemory) {
       parsedIntent = window.KhodAiIntentDetector.parse(text, window.dashboardGeoData, window.KhodAiSessionMemory.get());
       window.KhodAiSessionMemory.update(parsedIntent);
       analyticsResult = window.KhodAiAnalyticsEngine.processIntent(parsedIntent, window.dashboardGeoData || {});
       context = window.KhodAiContextCompressor.compress(parsedIntent, analyticsResult);
-      console.log("[KhodAI-Debug] Local Engine Pipeline executed. Intent:", parsedIntent.intent);
     } else {
       context = window.getDashboardAiContext ? window.getDashboardAiContext({ data: window.dashboardGeoData || {} }) : (window.buildDashboardAiContext ? window.buildDashboardAiContext({ data: window.dashboardGeoData || {} }) : {});
     }
@@ -594,30 +669,19 @@
         : tr("ai.localFallback", null, "Use local dashboard insights for now.");
       chatMessages.pop();
       chatMessages.push({ sender: "assistant", state: parsedIntent.blockedReason ? "error" : "complete", text: localText });
+      chatBusy = false;
       updateChatOnly();
       return;
     }
-
-    // [KHOD AI DEBUG]
-    try {
-      var _ctxStr = JSON.stringify(context);
-      console.log("[KhodAI-Debug] Context built. Size:", (_ctxStr.length / 1024).toFixed(1), "KB");
-      if (_ctxStr.length > 150000) {
-        console.warn("[KhodAI-Debug] ⚠️  Context is VERY LARGE:", (_ctxStr.length / 1024).toFixed(1), "KB — will likely fail Gemini token limit!");
-      }
-    } catch (_) {}
 
     if (!window.api || typeof window.api.dashboardAiQuery !== "function") {
-      // [KHOD AI DEBUG]
-      console.error("[KhodAI-Debug] ❌ window.api.dashboardAiQuery is NOT available — AI offline branch triggered");
       chatMessages.pop();
       chatMessages.push({ sender: "assistant", state: "error", text: tr("ai.unavailableMessage", null, "AI systems offline. Using cached intelligence models.") });
+      chatBusy = false;
       updateChatOnly();
       return;
     }
     try {
-      // [KHOD AI DEBUG]
-      console.log("[KhodAI-Debug] Calling window.api.dashboardAiQuery ...");
       var response = await window.api.dashboardAiQuery({
         command: text,
         context: context,
@@ -628,15 +692,14 @@
         })
       });
       // [KHOD AI DEBUG]
-      console.log("[KhodAI-Debug] Raw IPC response:", JSON.stringify(response).slice(0, 400));
       var normalized = window.KhodAiIntelligenceData ? window.KhodAiIntelligenceData.normalizeAiResponse(response) : { message: "" };
       chatMessages.pop();
       var meta = response && response.meta ? response.meta : {};
       var shouldUseLocal = localStrategic && (meta.blocked || meta.error || (meta.source === "fallback" && response.message === "AI service is not available. I am showing local dashboard guidance instead."));
-      console.log("[KhodAI-Debug] Response source:", shouldUseLocal ? "LOCAL_STRATEGIC_FALLBACK" : "GEMINI_ENHANCED", "| meta:", meta);
       var answerText = shouldUseLocal ? localStrategic.message : (normalized.message || (localStrategic && localStrategic.message) || tr("ai.contextReady", null, "Analysis complete."));
       var answerActions = shouldUseLocal ? (localStrategic.actions || []) : ((normalized.actions && normalized.actions.length ? normalized.actions : (localStrategic && localStrategic.actions)) || []);
       chatMessages.push({ sender: "assistant", state: "complete", text: answerText, actions: answerActions });
+      chatBusy = false;
       if (shouldUseLocal && localStrategic) {
         normalized = {
           message: localStrategic.message,
@@ -651,8 +714,6 @@
       if (normalized.forecasts && normalized.forecasts.length) injectedAi.forecasts = normalized.forecasts.concat(injectedAi.forecasts).slice(0, 6);
       if (normalized.alerts && normalized.alerts.length) injectedAi.alerts = normalized.alerts.concat(injectedAi.alerts).slice(0, 6);
     } catch (err) {
-      // [KHOD AI DEBUG]
-      console.error("[KhodAI-Debug] ❌ dashboardAiQuery threw:", err && err.message ? err.message : String(err));
       chatMessages.pop();
       if (localStrategic) {
         chatMessages.push({ sender: "assistant", state: "complete", text: localStrategic.message, actions: localStrategic.actions || [] });
@@ -663,6 +724,7 @@
         chatMessages.push({ sender: "assistant", state: "error", text: tr("ai.requestFailed", null, "AI request failed.") + " " + (err && err.message ? err.message : "") });
       }
     }
+    chatBusy = false;
     updateChatOnly();
   }
 

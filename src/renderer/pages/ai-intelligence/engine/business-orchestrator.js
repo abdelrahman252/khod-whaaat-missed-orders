@@ -107,7 +107,8 @@
         egpRate: stored && stored.egpRate || fallback.egpRate || 52
       });
       synced.hasExplicitSpend = true;
-      synced.source = "syncedTiktok";
+      synced.source = "syncedMarketing";
+      synced.platforms = marketing.summary.platformBreakdown || [];
       synced.lastSyncAt = marketing.lastSyncAt || syncedSummary.lastSyncAt || null;
       return synced;
     }
@@ -158,6 +159,24 @@
     if (currency === "دولار") return "USD";
     if (currency === "جنيه") return "EGP";
     return currency || null;
+  }
+
+  function roiEgpRate(data) {
+    var roi = data && data.roi ? data.roi : {};
+    var settings = readAccountRoiSettings(data || {});
+    return Number(settings.egpRate || roi.egpRate || 52) || 52;
+  }
+
+  function sarToCurrency(valueSar, currency, data) {
+    var sar = num(valueSar);
+    currency = normalizeCurrency(currency || "SAR") || "SAR";
+    if (currency === "USD") return sar / 3.75;
+    if (currency === "EGP") return (sar / 3.75) * roiEgpRate(data || {});
+    return sar;
+  }
+
+  function breakEvenCpaSar(avgCommissionSar, ndrPct) {
+    return num(avgCommissionSar) * (pct(ndrPct) / 100);
   }
 
   function maybeResolvePending(text, memory) {
@@ -221,6 +240,31 @@
     return {
       mode: "resume",
       text: pending.originalQuestion || memory.lastStrategicQuestion || text
+    };
+  }
+
+  function isVagueActionFollowUp(text) {
+    var cleaned = clean(text, 240).toLowerCase().replace(/[?؟!.]+$/g, "").trim();
+    return /^(what\s+should\s+i\s+do|what\s+do\s+i\s+do|what\s+next|next|and\s+now|now\s+what|how\s+to\s+fix\s+it|fix\s+it|help\s+me|help\s+me\s+do\s+it|do\s+it|start)$/i.test(cleaned) ||
+      /^(اعمل ايه|اعمل ماذا|ايه الحل|ما الحل|وبعدين|الخطوة التالية|ساعدني|ابدأ)$/i.test(cleaned);
+  }
+
+  function isStepByStepFollowUp(text) {
+    var cleaned = clean(text, 300).toLowerCase().replace(/[?؟!.]+$/g, "").trim();
+    return /\b(step\s*by\s*step|steps?|walk\s+me\s+through|guide\s+me|one\s+by\s+one|next\s+step)\b/i.test(cleaned) ||
+      /خطوة|خطوات|بالتدريج|واحدة واحدة|دلني|ارشدني/.test(cleaned);
+  }
+
+  function resolveAssistantFollowUp(text, memory) {
+    memory = memory || {};
+    if (!memory.lastStrategicQuestion) return { text: text, actionFollowUp: false, stepByStep: isStepByStepFollowUp(text) };
+    var actionFollowUp = isVagueActionFollowUp(text);
+    var stepByStep = isStepByStepFollowUp(text);
+    if (!actionFollowUp && !stepByStep) return { text: text, actionFollowUp: false, stepByStep: false };
+    return {
+      text: memory.lastStrategicQuestion + " " + text,
+      actionFollowUp: actionFollowUp,
+      stepByStep: stepByStep
     };
   }
 
@@ -300,14 +344,20 @@
     };
   }
 
-  function productSummary(product, spend) {
+  function productSummary(product, spend, data) {
     if (!product) return null;
     var orders = num(product.placedCount || product.orders);
     var delivered = num(product.deliveredCount || product.units);
     var commission = num(product.commission);
+    var deliveredSales = num(product.deliveredSales || product.totalDeliveredSales);
+    var deliveredAov = num(product.deliveredAov || (delivered ? deliveredSales / Math.max(1, delivered) : 0));
     var ndr = pct(product.ndrPct || product.deliveryPct || (orders ? delivered / orders : 0));
     var cancel = pct(product.cancelPct || 0);
     var cpa = spend && spend.amount && orders ? spend.amount / orders : null;
+    var avgCommissionSar = delivered > 0 ? commission / Math.max(1, delivered) : 0;
+    var breakEvenSar = breakEvenCpaSar(avgCommissionSar, ndr);
+    var breakEvenCurrency = spend && spend.currency || data && data.roi && data.roi.currency || "SAR";
+    var breakEven = sarToCurrency(breakEvenSar, breakEvenCurrency, data);
     var profit = spend && spend.amount ? commission - spend.amount : null;
     var margin = profit != null && commission ? (profit / commission) * 100 : null;
     return {
@@ -318,8 +368,15 @@
       ndr: Math.round(ndr * 10) / 10,
       cancelRate: Math.round(cancel * 10) / 10,
       commission: Math.round(commission * 100) / 100,
+      deliveredSales: Math.round(deliveredSales * 100) / 100,
+      deliveredAov: Math.round(deliveredAov * 100) / 100,
       spend: spend || null,
       cpa: cpa == null ? null : Math.round(cpa * 100) / 100,
+      avgCommissionSar: Math.round(avgCommissionSar * 100) / 100,
+      breakEvenCpaSar: Math.round(breakEvenSar * 100) / 100,
+      breakEvenCpa: Math.round(breakEven * 100) / 100,
+      breakEvenCurrency: breakEvenCurrency,
+      isCpaAboveBreakEven: cpa == null || !breakEven ? null : cpa > breakEven,
       profit: profit == null ? null : Math.round(profit * 100) / 100,
       marginPct: margin == null ? null : Math.round(margin * 10) / 10,
       spendSource: spend && spend.source || null,
@@ -367,7 +424,7 @@
   }
 
   function productMetricResponse(product, data, dependency) {
-    var summary = productSummary(product, dependency && dependency.spend);
+    var summary = productSummary(product, dependency && dependency.spend, data);
     if (!summary) return "No matching product record was found in the current dashboard mode.";
     var currency = summary.spend && summary.spend.currency || dependency && dependency.currency || "";
     if (!summary.spend || !summary.spend.amount) {
@@ -377,6 +434,8 @@
         fmt(summary.delivered) + " delivered, " +
         summary.ndr + "% NDR, " +
         summary.cancelRate + "% cancel rate, " +
+        fmt(summary.deliveredSales) + " SAR delivered sales, " +
+        fmt(summary.deliveredAov) + " SAR delivered AOV, " +
         fmt(summary.commission) + " SAR commission." +
         "\n\nSend the spend like 500 SAR, 120 USD, or 8000 EGP and I will calculate CPA and P&L from the current dashboard data.";
     }
@@ -385,6 +444,9 @@
       : "";
     var cpaLine = summary.cpa != null
       ? ", CPA " + summary.cpa.toLocaleString("en-US") + (currency ? " " + currency : "")
+      : "";
+    var breakEvenLine = summary.breakEvenCpa
+      ? ", break-even CPA " + summary.breakEvenCpa.toLocaleString("en-US") + " " + (summary.breakEvenCurrency || currency || "SAR")
       : "";
     var profitLine = summary.profit != null
       ? ", P&L " + summary.profit.toLocaleString("en-US") + (currency ? " " + currency : "")
@@ -396,9 +458,11 @@
       fmt(summary.delivered) + " delivered, " +
       summary.ndr + "% NDR, " +
       summary.cancelRate + "% cancel rate, " +
+      fmt(summary.deliveredSales) + " SAR delivered sales, " +
+      fmt(summary.deliveredAov) + " SAR delivered AOV, " +
       fmt(summary.commission) + " SAR commission" +
-      spendLine + cpaLine + profitLine + "." +
-      "\n\nWhat it means: if this CPA is higher than the commission you earn per delivered order, scaling this product will likely increase losses. If it is lower, then the next thing to check is delivery quality, because low NDR can still kill profit even when CPA looks acceptable." +
+      spendLine + cpaLine + breakEvenLine + profitLine + "." +
+      "\n\nWhat it means: break-even CPA is the maximum CPA before this product loses money. It equals average commission per delivered order multiplied by NDR. If actual CPA is above break-even CPA, scaling this product will likely increase losses. If it is lower, then the next thing to check is delivery quality, because low NDR can still kill profit even when CPA looks acceptable." +
       "\n\nNext steps:\n- Compare this product against your best product by CPA, NDR, and P&L.\n- If P&L is negative, reduce spend or pause until delivery quality improves.\n- Switch the top mode between Created At and Last Updated when you want the delivered numbers recalculated by that mode.";
   }
 
@@ -406,6 +470,7 @@
     if (!city) return null;
     var orders = num(city.count || city.orders);
     var delivered = num(city.deliveredOrders);
+    var deliveredSales = num(city.totalRevenue || city.deliveredSales || city.sales);
     return {
       name: city.name,
       orders: orders,
@@ -413,6 +478,8 @@
       ndr: Math.round(pct(orders ? delivered / orders : city.ndrPct || city.drPct || 0) * 10) / 10,
       deliveryRate: Math.round(pct(city.drBaseOrders ? delivered / city.drBaseOrders : city.drPct || 0) * 10) / 10,
       commission: Math.round(num(city.earnedCommission) * 100) / 100,
+      deliveredSales: Math.round(deliveredSales * 100) / 100,
+      deliveredAov: Math.round(num(city.deliveredAov || (delivered ? deliveredSales / Math.max(1, delivered) : 0)) * 100) / 100,
       codPct: Math.round(pct(orders ? num(city.codCount) / orders : city.codPct || 0) * 10) / 10,
       riskScore: Math.round(num(city.riskScore)),
       scalingScore: Math.round(num(city.scalingScore))
@@ -421,10 +488,10 @@
 
   function detectIssues(accountHealth, product, city) {
     var issues = [];
-    if (accountHealth.metrics.ndr && accountHealth.metrics.ndr < 55) issues.push("Low account NDR is limiting profitability.");
-    if (product && product.ndr < 55) issues.push("Selected product has weak delivery quality.");
+    if (accountHealth.metrics.ndr && accountHealth.metrics.ndr < 20) issues.push("Low account NDR is limiting profitability.");
+    if (product && product.ndr < 20) issues.push("Selected product has weak delivery quality.");
     if (product && product.profit != null && product.profit < 0) issues.push("Selected product is not covering ad spend.");
-    if (product && product.cpa != null && product.delivered > 0 && product.cpa > product.commission / Math.max(1, product.delivered)) issues.push("CPA is high relative to delivered commission.");
+    if (product && product.isCpaAboveBreakEven === true) issues.push("Product CPA is above break-even CPA, so every acquired order is losing money.");
     if (city && city.riskScore >= 65) issues.push("Selected city has elevated delivery/COD risk.");
     return issues.slice(0, 5);
   }
@@ -437,7 +504,7 @@
     (accountHealth.bestCities || []).slice(0, 2).forEach(function (c) {
       opportunities.push("Strong city signal: " + c.name + " with meaningful commission.");
     });
-    if (product && product.ndr >= 65 && (!product.profit || product.profit > 0)) opportunities.push("Selected product can be tested for controlled scaling.");
+    if (product && product.ndr >= 40 && product.isCpaAboveBreakEven !== true && (!product.profit || product.profit > 0)) opportunities.push("Selected product can be tested for controlled scaling if CPA stays below break-even.");
     if (city && city.scalingScore >= 60) opportunities.push("Selected city may be a scale candidate if CPA stays controlled.");
     return opportunities.slice(0, 5);
   }
@@ -457,7 +524,7 @@
     }, data).data;
     var productName = parsedIntent.entities.products[0] || getMemory().currentProduct;
     var cityName = parsedIntent.entities.cities[0] || getMemory().currentCity;
-    var product = productSummary(findProduct(data, productName), dependency && dependency.spend);
+    var product = productSummary(findProduct(data, productName), dependency && dependency.spend, data);
     var city = citySummary(findCity(data, cityName));
     var mainIssues = detectIssues(accountHealth, product, city);
     var opportunities = detectOpportunities(accountHealth, product, city);
@@ -469,10 +536,18 @@
     var accountCpa = accountSpend && accountSpend.amount && data && data.overview && data.overview.totalOrders
       ? Math.round((num(accountSpend.amount) / Math.max(1, num(data.overview.totalOrders.value || data.overview.totalOrders))) * 100) / 100
       : null;
+    var roi = data && data.roi || {};
+    var accountBreakEvenSar = breakEvenCpaSar(roi.avgCommission || accountHealth.metrics.avgCommission || 0, roi.ndrPct || accountHealth.metrics.ndr || 0);
+    var accountBreakEvenCurrency = accountSpend && accountSpend.currency || roi.currency || "SAR";
+    var accountBreakEvenCpa = accountBreakEvenSar ? sarToCurrency(accountBreakEvenSar, accountBreakEvenCurrency, data) : 0;
     var localAnswer = window.KhodAiAnalyticsEngine && window.KhodAiAnalyticsEngine.localResponse
       ? window.KhodAiAnalyticsEngine.localResponse(parsedIntent, analyticsResult || {})
       : "";
     var exactRows = analyticsResult && analyticsResult.data;
+    var overview = data && data.overview || {};
+    var accountDeliveredSales = overview.totalDeliveredSales ? num(overview.totalDeliveredSales.value) : num(accountHealth.metrics.deliveredSales);
+    var accountDeliveredAov = overview.deliveredAov ? num(overview.deliveredAov.value) : num(accountHealth.metrics.deliveredAov);
+    var meta = data && data.meta || {};
 
     return {
       intent: parsedIntent.intent,
@@ -483,14 +558,25 @@
       sessionFocus: {
         product: productName || null,
         city: cityName || null,
-        timeframe: getMemory().currentTimeframe || null
+        timeframe: getMemory().currentTimeframe || null,
+        account: meta.activeAccountName || meta.activeAccountLabel || meta.activeAccountId || null,
+        accountScope: meta.activeAccountId && meta.activeAccountId !== "__all__" ? "single_account" : "all_accounts",
+        deliveredDateMode: meta.deliveredDateMode === "createdAt" ? "Created At" : "Last Updated"
       },
       accountHealth: {
         revenue: accountHealth.metrics.revenue,
         profit: product && product.profit != null ? product.profit : accountHealth.metrics.profit,
         lostCommission: accountHealth.metrics.lostCommission,
+        deliveredSales: accountDeliveredSales,
+        deliveredAov: accountDeliveredAov,
         ndr: accountHealth.metrics.ndr,
         deliveryRate: accountHealth.metrics.deliveryRate,
+        breakEvenCpa: Math.round(accountBreakEvenCpa * 100) / 100,
+        breakEvenCpaSar: Math.round(accountBreakEvenSar * 100) / 100,
+        breakEvenCurrency: accountBreakEvenCurrency,
+        actualCpa: accountCpa,
+        isActualCpaAboveBreakEven: accountCpa != null && accountBreakEvenCpa > 0 ? accountCpa > accountBreakEvenCpa : null,
+        breakEvenFormula: "avgCommission * NDR",
         mainIssues: mainIssues
       },
       selectedProduct: product,
@@ -505,10 +591,13 @@
         missingInputs: dependency && dependency.missing || [],
         accountProfit: accountProfit,
         accountCpa: accountCpa,
+        accountBreakEvenCpa: Math.round(accountBreakEvenCpa * 100) / 100,
+        accountBreakEvenCurrency: accountBreakEvenCurrency,
+        accountBreakEvenFormula: "avgCommission * NDR",
         profitComputedLocally: !!(product && product.profit != null),
         cpaComputedLocally: !!(product && product.cpa != null)
       },
-      operatorInstruction: "Explain root causes, relationships between KPIs, priorities, and end with actionable Tips."
+      operatorInstruction: "Answer only from current dashboard state. Use delivered sales, delivered AOV, earned commission, lost commission, NDR, DR, CPA, and break-even CPA together before judging business health. Break-even CPA means max CPA before losing money, formula avgCommission * NDR. NDR means Net Delivery Rate / delivery from created orders, so higher NDR is better."
     };
   }
 
@@ -572,6 +661,58 @@
     return text + "\n\nTips:\n- " + tips.slice(0, 3).join("\n- ");
   }
 
+  function buildGuidedWorkflow(strategicContext, parsedIntent, actionFollowUp) {
+    strategicContext = strategicContext || {};
+    var h = strategicContext.accountHealth || {};
+    var product = strategicContext.selectedProduct && strategicContext.selectedProduct.name;
+    var city = strategicContext.selectedCity && strategicContext.selectedCity.name;
+    var actions = window.KhodAiLocalReasoningEngine && window.KhodAiLocalReasoningEngine.actionSet
+      ? window.KhodAiLocalReasoningEngine.actionSet(strategicContext)
+      : [];
+    var lead = actionFollowUp
+      ? "Start with the biggest leak first, then decide whether to scale."
+      : "I will guide you step by step from the current dashboard state.";
+    var proof = [];
+    if (h.deliveredSales) proof.push("delivered sales " + fmt(h.deliveredSales) + " SAR");
+    if (h.deliveredAov) proof.push("delivered AOV " + fmt(h.deliveredAov) + " SAR");
+    if (h.revenue) proof.push("earned commission " + fmt(h.revenue) + " SAR");
+    if (h.lostCommission) proof.push("lost commission " + fmt(h.lostCommission) + " SAR");
+    if (h.ndr) proof.push("NDR " + Math.round(num(h.ndr) * 10) / 10 + "%");
+    if (h.breakEvenCpa) proof.push("break-even CPA " + Math.round(num(h.breakEvenCpa) * 100) / 100 + " " + (h.breakEvenCurrency || "SAR"));
+    var focus = product ? "Product focus: " + product + "." : (city ? "City focus: " + city + "." : "Account focus: current selected dashboard scope.");
+    var steps = [
+      "Step 1: Confirm the current scope: selected account/date range and delivered counted by " + ((strategicContext.sessionFocus && strategicContext.sessionFocus.deliveredDateMode) || "Last Updated") + ".",
+      "Step 2: Read commercial health together: " + (proof.length ? proof.join(", ") : "delivered sales, delivered AOV, earned commission, lost commission, NDR, DR, CPA, and break-even CPA") + ".",
+      "Step 3: Open the worst products or weakest cities and find the segment with order volume plus low delivery quality.",
+      "Step 4: Pause or reduce traffic only on the dangerous segment while you check confirmation, product promise, and delivery issues.",
+      "Step 5: Recheck NDR, DR, delivered sales, delivered AOV, commission, and lost commission before increasing spend again."
+    ];
+    if (parsedIntent && parsedIntent.intent === "SCALE_ANALYSIS") {
+      steps[3] = "Step 4: Do not scale anything unless it has enough orders, enough delivered orders, stable NDR, healthy delivered AOV, positive commission/P&L, and CPA below break-even CPA.";
+    }
+    return {
+      message: lead + "\n\n" + focus + "\n\n" + steps.join("\n") + "\n\nTips:\n- Make one change at a time so the next dashboard refresh proves whether it worked.\n- Do not increase ads while delivery quality is weak or CPA is above break-even CPA.\n- Use the action buttons to open the exact dashboard section for the next step.",
+      actions: actions,
+      insights: [],
+      recommendations: steps.slice(2, 5).map(function (step, idx) {
+        return {
+          id: "guided-step-" + idx,
+          title: step.replace(/^Step\s+\d+:\s*/, ""),
+          actionType: "guided_workflow",
+          expectedBenefit: "Moves the client from diagnosis to the next dashboard action.",
+          riskLevel: idx === 0 ? "medium" : "low",
+          confidence: "medium"
+        };
+      }),
+      alerts: [],
+      forecasts: [],
+      assistantWorkflow: {
+        type: parsedIntent && parsedIntent.intent === "SCALE_ANALYSIS" ? "product_scaling" : "profit_recovery",
+        step: 1
+      }
+    };
+  }
+
   function rememberMissingInputsForGemini(text, dependency, calculatorDependency) {
     if (!window.KhodAiSessionMemory || typeof window.KhodAiSessionMemory.setPending !== "function") return;
     if (calculatorDependency && calculatorDependency.ok === false) {
@@ -606,9 +747,16 @@
 
   function orchestrate(text, data) {
     var memory = getMemory();
-    var pendingResolution = maybeResolvePending(text, memory);
-    if (pendingResolution && pendingResolution.mode === "followup") return pendingResolution;
-    if (pendingResolution && pendingResolution.mode === "resume") text = pendingResolution.text;
+    var followUp = resolveAssistantFollowUp(text, memory);
+    if (!followUp.actionFollowUp && !followUp.stepByStep) {
+      var pendingResolution = maybeResolvePending(text, memory);
+      if (pendingResolution && pendingResolution.mode === "followup") return pendingResolution;
+      if (pendingResolution && pendingResolution.mode === "resume") text = pendingResolution.text;
+      followUp = resolveAssistantFollowUp(text, getMemory());
+    } else if (window.KhodAiSessionMemory && typeof window.KhodAiSessionMemory.clearPending === "function") {
+      window.KhodAiSessionMemory.clearPending();
+    }
+    text = followUp.text;
 
     var parsedIntent = window.KhodAiIntentDetector.parse(text, data, getMemory());
     var analyticsResult = window.KhodAiAnalyticsEngine.processIntent(parsedIntent, data || {});
@@ -617,7 +765,6 @@
     var needsProductClarification = isProductMetricIntentWithoutProduct(parsedIntent);
     if (needsProductClarification) {
       // Allow conversational/business queries to proceed to Gemini instead of strictly blocking or clarifying
-      console.log("[KhodAI-Orchestrator] Product metric query without product, proceeding to AI mode.");
       rememberProductLookupForGemini(text, parsedIntent);
     }
 
@@ -661,6 +808,12 @@
         type: "product",
         candidates: parsedIntent.entities && parsedIntent.entities.productCandidates || []
       };
+    }
+    if (followUp.stepByStep || followUp.actionFollowUp) {
+      localStrategic = buildGuidedWorkflow(strategicContext, parsedIntent, followUp.actionFollowUp);
+      if (window.KhodAiSessionMemory && typeof window.KhodAiSessionMemory.setWorkflow === "function") {
+        window.KhodAiSessionMemory.setWorkflow(localStrategic.assistantWorkflow);
+      }
     }
     localStrategic.message = ensureTips(localStrategic.message, parsedIntent, localStrategic.actions || []);
     strategicContext.localStrategicSkeleton = {

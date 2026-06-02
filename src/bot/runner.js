@@ -14,11 +14,18 @@ const {
   buildProductCatalog,
   resolveMissedOrders,
   mergeAndDeduplicate,
+  normalizeProductName,
 } = require("./parser");
 const { buildOutputExcel, buildFailedExcel, buildSkippedExcel } = require("./output");
 
 const config = JSON.parse(process.env.BOT_CONFIG || "{}");
 const log = (msg) => process.stdout.write(msg + "\n");
+
+// Set to true after a successful verifyEasyOrdersIdentity at phase1.
+// assertEasyOrdersSession skips the full identity check (which opens the
+// account menu on every order) once this flag is set.
+// Reset to false whenever we re-login so the next login always re-verifies.
+let easyOrdersIdentityVerified = false;
 
 
 // ════════════════════════════════════════
@@ -113,6 +120,61 @@ async function withSessionGuard(page, actionFn, reloginFn, siteName) {
 
     throw err; // not a session issue — bubble up normally
   }
+}
+
+function isNetworkNavigationError(error) {
+  const message = String(error && error.message || error || "");
+  return message.includes("ERR_CONNECTION") ||
+    message.includes("net::") ||
+    message.toLowerCase().includes("timeout");
+}
+
+async function gotoWithNetworkRetries(page, url, label, options = {}) {
+  const attempts = options.attempts || 3;
+  const timeout = options.timeout || 45000;
+  const waitMs = options.waitMs || 5000;
+
+  for (let attempt = 1; attempt <= attempts; attempt++) {
+    try {
+      log(`[NAV] → ${url}${attempt > 1 ? ` (retry ${attempt}/${attempts})` : ""}`);
+      await page.goto(url, { waitUntil: "domcontentloaded", timeout });
+      return;
+    } catch (error) {
+      if (!isNetworkNavigationError(error) || attempt >= attempts) {
+        throw error;
+      }
+      log(`⚠️ ${label} navigation timeout/network error (${attempt}/${attempts}): ${error.message} — retrying in ${Math.round(waitMs / 1000)}s...`);
+      await page.waitForTimeout(waitMs);
+    }
+  }
+}
+
+async function reloadWithNetworkRetries(page, label, options = {}) {
+  const attempts = options.attempts || 3;
+  const timeout = options.timeout || 45000;
+  const waitMs = options.waitMs || 5000;
+
+  for (let attempt = 1; attempt <= attempts; attempt++) {
+    try {
+      log(`🔄 ${label}${attempt > 1 ? ` (retry ${attempt}/${attempts})` : ""}...`);
+      await page.reload({ waitUntil: "domcontentloaded", timeout });
+      return;
+    } catch (error) {
+      if (!isNetworkNavigationError(error) || attempt >= attempts) {
+        throw error;
+      }
+      log(`⚠️ ${label} reload timeout/network error (${attempt}/${attempts}): ${error.message} — retrying in ${Math.round(waitMs / 1000)}s...`);
+      await page.waitForTimeout(waitMs);
+    }
+  }
+}
+
+function friendlyErrorMessage(error) {
+  const message = String(error && error.message || error || "");
+  if (isNetworkNavigationError(message)) {
+    return "INTERNET_ISSUE: Internet connection or website timeout. Please check your internet, restart the app, and launch the run again.";
+  }
+  return message;
 }
 
 // ════════════════════════════════════════
@@ -326,7 +388,7 @@ async function triggerEasyOrdersExport(page, exportFromDate, keyword) {
 
     // ── 1. Navigate to the orders/missed-orders page ──
     log(`[NAV] → ${pageUrl}`);
-    await page.goto(pageUrl, { waitUntil: "domcontentloaded" });
+    await gotoWithNetworkRetries(page, pageUrl, `Easy-Orders ${keyword} page`);
     await page.waitForTimeout(1500);
 
     const landedUrl = page.url();
@@ -339,8 +401,10 @@ async function triggerEasyOrdersExport(page, exportFromDate, keyword) {
       log(`⚠️ Easy-Orders SESSION_DESYNC before export: ${sessionErr.message}`);
       await debugScreenshot(page, `easy-orders-export-session-fail-${n}`);
       await phase1_easyOrdersLogin(page);
-      await page.goto(pageUrl, { waitUntil: "domcontentloaded" });
+      await gotoWithNetworkRetries(page, pageUrl, `Easy-Orders ${keyword} page after re-login`);
       await page.waitForTimeout(1500);
+      const switchedDesync = await ensureEasyOrdersEnglish(page);
+      if (switchedDesync) await page.waitForTimeout(2000);
     }
 
     const switchedLang = await ensureEasyOrdersEnglish(page);
@@ -359,10 +423,10 @@ async function triggerEasyOrdersExport(page, exportFromDate, keyword) {
         log(`⚠️ Page not ready (reload ${reload}/3): ${e.message}`);
         if (reload < 3) {
           log(`🔄 Reloading page and trying again...`);
-          await page.goto(pageUrl, { waitUntil: "domcontentloaded" });
+          await gotoWithNetworkRetries(page, pageUrl, `Easy-Orders ${keyword} reload`);
           await page.waitForTimeout(4000);
-          const switched2 = await ensureEasyOrdersEnglish(page);
-          if (switched2) await page.waitForTimeout(2000);
+          const switchedInner = await ensureEasyOrdersEnglish(page);
+          if (switchedInner) await page.waitForTimeout(2000);
         } else {
           throw new Error(`Export page failed to load after 3 reloads for "${keyword}": ${e.message}`);
         }
@@ -377,6 +441,8 @@ async function triggerEasyOrdersExport(page, exportFromDate, keyword) {
     await pageExportBtn.waitFor({ state: "visible", timeout: 10000 });
     const pageExportText = await pageExportBtn.innerText().catch(() => "?");
     log(`   Found page Export button — text: "${pageExportText.replace(/\s+/g, " ").trim()}" — clicking`);
+    await page.keyboard.press("Escape").catch(() => {});
+    await page.waitForTimeout(300);
     await pageExportBtn.click();
     await page.waitForTimeout(1500);
 
@@ -486,22 +552,43 @@ async function triggerEasyOrdersExport(page, exportFromDate, keyword) {
       log(`[NAV] URL after export: ${urlAfterExport}`);
       if (!urlAfterExport.includes("notifications")) {
         log(`[NAV] Not redirected automatically — navigating to notifications...`);
-        await page.goto("https://app.easy-orders.net/#/notifications", { waitUntil: "domcontentloaded" });
+        await gotoWithNetworkRetries(page, "https://app.easy-orders.net/#/notifications", "Easy-Orders notifications");
         await page.waitForTimeout(1000);
+        const switchedNotif = await ensureEasyOrdersEnglish(page);
+        if (switchedNotif) await page.waitForTimeout(2000);
       } else {
         log(`[NAV] Easy-Orders redirected to notifications automatically ✅`);
       }
 
       // ── 8. Two guaranteed reloads before grabbing ──
-      log(`🔄 Reload #1 of notifications...`);
-      await page.reload({ waitUntil: "domcontentloaded" });
-      await page.waitForTimeout(2500);
-      log(`✅ Reload #1 done — URL: ${page.url()}`);
+      // Each reload retries up to 3x on network errors (ERR_CONNECTION_TIMED_OUT etc.)
+      async function safeReload(label) {
+        for (let attempt = 1; attempt <= 3; attempt++) {
+          try {
+            await reloadWithNetworkRetries(page, label, { attempts: 3, timeout: 30000, waitMs: 5000 });
+            log(`✅ ${label} done — URL: ${page.url()}`);
+            return;
+          } catch (e) {
+            const isNetwork = e.message.includes("ERR_CONNECTION") || e.message.includes("net::") || e.message.includes("timeout");
+            if (isNetwork && attempt < 3) {
+              log(`⚠️ ${label} network error (attempt ${attempt}/3): ${e.message} — retrying in 5s...`);
+              await page.waitForTimeout(5000);
+            } else {
+              throw e;
+            }
+          }
+        }
+      }
 
-      log(`🔄 Reload #2 of notifications...`);
-      await page.reload({ waitUntil: "domcontentloaded" });
+      await safeReload("Reload #1 of notifications");
       await page.waitForTimeout(2500);
-      log(`✅ Reload #2 done — URL: ${page.url()}`);
+      const switchedR1 = await ensureEasyOrdersEnglish(page);
+      if (switchedR1) await page.waitForTimeout(2000);
+
+      await safeReload("Reload #2 of notifications");
+      await page.waitForTimeout(2500);
+      const switchedR2 = await ensureEasyOrdersEnglish(page);
+      if (switchedR2) await page.waitForTimeout(2000);
 
       // ── 9. Grab the first matching card ──
       log(`🔍 Scanning notifications for first "${keyword}" card...`);
@@ -544,9 +631,22 @@ async function triggerEasyOrdersExport(page, exportFromDate, keyword) {
 // DOWNLOAD URL TO BUFFER
 // ════════════════════════════════════════
 async function downloadToBuffer(page, url) {
-  const response = await page.context().request.get(url);
-  const body     = await response.body();
-  return Buffer.from(body);
+  const MAX_DL_ATTEMPTS = 3;
+  for (let attempt = 1; attempt <= MAX_DL_ATTEMPTS; attempt++) {
+    try {
+      const response = await page.context().request.get(url, { timeout: 60000 });
+      const body     = await response.body();
+      return Buffer.from(body);
+    } catch (e) {
+      const isNetwork = e.message.includes("ETIMEDOUT") || e.message.includes("ERR_CONNECTION") || e.message.includes("net::") || e.message.includes("timeout");
+      if (isNetwork && attempt < MAX_DL_ATTEMPTS) {
+        log(`⚠️ File download failed (attempt ${attempt}/${MAX_DL_ATTEMPTS}): ${e.message} — retrying in 8s...`);
+        await new Promise(r => setTimeout(r, 8000));
+      } else {
+        throw e;
+      }
+    }
+  }
 }
 
 function normalizeEmail(value) {
@@ -679,26 +779,32 @@ async function readEasyOrdersCurrentStore(page, expectedEmail) {
   // They are build-generated and can change anytime; use aria-labels, text, roles, and stable structure only.
   await revealEasyOrdersIdentityMenu(page);
   await page.waitForTimeout(500);
-  return page.evaluate((email) => {
-    const normalize = (value) => String(value || "")
-      .replace(/[\u{1F300}-\u{1FAFF}]/gu, "")
-      .replace(/[\u200E\u200F\u061C]/g, "")
-      .replace(/\s+/g, " ")
-      .trim()
-      .toLowerCase();
-    const expectedEmail = normalize(email);
-    const texts = Array.from(document.querySelectorAll('[role="presentation"] p, [role="presentation"] span, [class*="MuiPopover-paper"] p, [class*="MuiPopover-paper"] span'))
-      .map(el => (el.innerText || el.textContent || "").trim())
-      .filter(Boolean);
-    const emailIndex = texts.findIndex(text => normalize(text) === expectedEmail);
-    if (emailIndex > 0) return normalize(texts[emailIndex - 1]);
-    const storeHeadingIndex = texts.findIndex(text => normalize(text).replace(/:$/, "") === "stores");
-    if (storeHeadingIndex >= 0) {
-      const candidate = texts.slice(storeHeadingIndex + 1).find(text => !/@/.test(text) && normalize(text) !== "add store");
-      if (candidate) return normalize(candidate);
-    }
-    return "";
-  }, expectedEmail);
+  try {
+    return await page.evaluate((email) => {
+      const normalize = (value) => String(value || "")
+        .replace(/[\u{1F300}-\u{1FAFF}]/gu, "")
+        .replace(/[\u200E\u200F\u061C]/g, "")
+        .replace(/\s+/g, " ")
+        .trim()
+        .toLowerCase();
+      const expectedEmail = normalize(email);
+      const texts = Array.from(document.querySelectorAll('[role="presentation"] p, [role="presentation"] span, [class*="MuiPopover-paper"] p, [class*="MuiPopover-paper"] span'))
+        .map(el => (el.innerText || el.textContent || "").trim())
+        .filter(Boolean);
+      const emailIndex = texts.findIndex(text => normalize(text) === expectedEmail);
+      if (emailIndex > 0) return normalize(texts[emailIndex - 1]);
+      const storeHeadingIndex = texts.findIndex(text => normalize(text).replace(/:$/, "") === "stores");
+      if (storeHeadingIndex >= 0) {
+        const candidate = texts.slice(storeHeadingIndex + 1).find(text => !/@/.test(text) && normalize(text) !== "add store");
+        if (candidate) return normalize(candidate);
+      }
+      return "";
+    }, expectedEmail);
+  } finally {
+    // The store/account popover can sit above the page and intercept the next Export click.
+    await page.keyboard.press("Escape").catch(() => {});
+    await page.waitForTimeout(300).catch(() => {});
+  }
 }
 
 async function verifyEasyOrdersIdentity(page, where = "session") {
@@ -733,6 +839,7 @@ async function verifyEasyOrdersIdentity(page, where = "session") {
     }
     assertIdentityMatch("EASY_ORDERS", "store", expectedStore, currentStore);
     log(`✅ Easy-Orders identity verified: ${expected} (${sources})`);
+    easyOrdersIdentityVerified = true;
     process.send && process.send({ type: "session-event", site: "easy-orders", event: "identity-verified", email: expected, store: config.easyStore, where });
     return true;
   }
@@ -759,8 +866,7 @@ async function phase1_easyOrdersLogin(page) {
   log("═══════════════════════════════════════\n");
 
   // Navigate to app root — if already logged in it redirects to dashboard/orders
-  log(`[NAV] → https://app.easy-orders.net/`);
-  await page.goto("https://app.easy-orders.net/", { waitUntil: "domcontentloaded" });
+  await gotoWithNetworkRetries(page, "https://app.easy-orders.net/", "Easy-Orders root");
   await page.waitForTimeout(2000);
 
   const landedUrl = page.url();
@@ -839,6 +945,8 @@ async function phase1_easyOrdersLogin(page) {
     await ensureEasyOrdersEnglish(page);
   }
 
+  // Reset flag so the full identity check always runs fresh at login/re-login.
+  easyOrdersIdentityVerified = false;
   await verifyEasyOrdersIdentity(page, "phase1");
 }
 
@@ -848,15 +956,14 @@ async function phase1_easyOrdersLogin(page) {
 // ════════════════════════════════════════
 async function doEasyOrdersLogin(page) {
   // Navigate to login page
-  log(`[NAV] → https://app.easy-orders.net/#/login`);
-  await page.goto("https://app.easy-orders.net/#/login", { waitUntil: "domcontentloaded" });
+  await gotoWithNetworkRetries(page, "https://app.easy-orders.net/#/login", "Easy-Orders login");
 
   // SPA needs time to mount the login form — wait for the actual input, not just DOM ready
   try {
     await page.waitForSelector('#username', { timeout: 15000 });
   } catch {
     log("⚠️ Login form didn't mount — reloading...");
-    await page.reload({ waitUntil: "domcontentloaded" });
+    await reloadWithNetworkRetries(page, "Easy-Orders login page");
     await page.waitForSelector('#username', { timeout: 15000 });
   }
 
@@ -1047,7 +1154,7 @@ const KHOD_RETRY_WAIT_MS = 6 * 60 * 1000; // 6 min (matches existing cooldown)
 
 async function khodLogin(page) {
   log(`[NAV] → https://khod-whaat.com/affiliate/auth/login`);
-  await page.goto("https://khod-whaat.com/affiliate/auth/login", { waitUntil: "domcontentloaded" });
+  await gotoWithNetworkRetries(page, "https://khod-whaat.com/affiliate/auth/login", "Khod Whaat login");
   await page.waitForTimeout(2000);
 
   const landedUrl   = page.url();
@@ -1090,7 +1197,7 @@ async function khodLogin(page) {
     // Clear sessionStorage to evict any stale client-side auth state
     await page.evaluate(() => { try { sessionStorage.clear(); } catch (_) {} });
     // Navigate to login page explicitly
-    await page.goto("https://khod-whaat.com/affiliate/auth/login", { waitUntil: "domcontentloaded" });
+    await gotoWithNetworkRetries(page, "https://khod-whaat.com/affiliate/auth/login", "Khod Whaat login after session probe");
     await page.waitForTimeout(2000);
   }
 
@@ -1131,7 +1238,7 @@ async function khodLogin(page) {
       log(`⚠️ Khod Whaat login form attempt ${loginAttempt}/3 failed: ${e.message}`);
       if (loginAttempt < 3) {
         log(`🔄 Reloading Khod Whaat login page and retrying...`);
-        await page.goto("https://khod-whaat.com/affiliate/auth/login", { waitUntil: "domcontentloaded" });
+        await gotoWithNetworkRetries(page, "https://khod-whaat.com/affiliate/auth/login", "Khod Whaat login retry");
         await page.waitForTimeout(3000);
       } else {
         log("❌ Khod Whaat login form not found after 3 attempts — proceeding to wait for manual login");
@@ -1269,6 +1376,19 @@ async function verifyKhodIdentity(page, where = "session") {
   return identity;
 }
 
+async function ensureKhodArabic(page, where = "session") {
+  log(`🌐 Khod Whaat: ensuring Arabic language is active (${where})...`);
+  try {
+    await gotoWithNetworkRetries(page, "https://khod-whaat.com/lang/sa", "Khod Whaat language");
+    await page.waitForTimeout(2000);
+    log("✅ Khod Whaat: Arabic language confirmed");
+    return true;
+  } catch (e) {
+    log(`⚠️ Khod Whaat: language set failed (non-fatal): ${e.message} — continuing`);
+    return false;
+  }
+}
+
 async function khodExportAttempt(page, exportFromDate, dateTo, attemptNum) {
   log(`\n🔄 Khod Whaat export attempt ${attemptNum}/${MAX_KHOD_ATTEMPTS}`);
 
@@ -1278,7 +1398,7 @@ async function khodExportAttempt(page, exportFromDate, dateTo, attemptNum) {
   for (let reload = 1; reload <= 3; reload++) {
     try {
       log(`[NAV] → https://khod-whaat.com/affiliate/orders/list/all`);
-      await page.goto("https://khod-whaat.com/affiliate/orders/list/all", { waitUntil: "domcontentloaded" });
+      await gotoWithNetworkRetries(page, "https://khod-whaat.com/affiliate/orders/list/all", "Khod Whaat orders page");
       await page.waitForTimeout(3000);
 
       const landedUrl = page.url();
@@ -1297,7 +1417,7 @@ async function khodExportAttempt(page, exportFromDate, dateTo, attemptNum) {
         await debugScreenshot(page, `khod-export-session-fail-${attemptNum}`);
         await khodLogin(page);
         log(`[NAV] → https://khod-whaat.com/affiliate/orders/list/all (post re-login)`);
-        await page.goto("https://khod-whaat.com/affiliate/orders/list/all", { waitUntil: "domcontentloaded" });
+        await gotoWithNetworkRetries(page, "https://khod-whaat.com/affiliate/orders/list/all", "Khod Whaat orders page after re-login");
         await page.waitForTimeout(3000);
         await assertKhodSession(page);
         await verifyKhodIdentity(page, `export-attempt-${attemptNum}-post-login`);
@@ -1315,7 +1435,7 @@ async function khodExportAttempt(page, exportFromDate, dateTo, attemptNum) {
           log(`🔐 Date picker missing — actually a session loss (URL: ${page.url()})`);
           await debugScreenshot(page, `khod-datepicker-session-fail-${attemptNum}`);
           await khodLogin(page);
-          await page.goto("https://khod-whaat.com/affiliate/orders/list/all", { waitUntil: "domcontentloaded" });
+          await gotoWithNetworkRetries(page, "https://khod-whaat.com/affiliate/orders/list/all", "Khod Whaat orders retry");
           await page.waitForTimeout(3000);
           await page.waitForSelector("#from_date + input", { timeout: 20000 });
         } else {
@@ -1454,14 +1574,7 @@ async function phase4_khod(page, exportFromDate, dateTo) {
   // ── Ensure Arabic language is active BEFORE any export attempt ──
   // We always navigate to /lang/sa first — this is idempotent (safe if already Arabic)
   // and eliminates the selector-based language detection which fails on some client machines.
-  log("🌐 Khod Whaat: ensuring Arabic language is active...");
-  try {
-    await page.goto("https://khod-whaat.com/lang/sa", { waitUntil: "domcontentloaded" });
-    await page.waitForTimeout(2000);
-    log("✅ Khod Whaat: Arabic language confirmed");
-  } catch (e) {
-    log(`⚠️ Khod Whaat: language set failed (non-fatal): ${e.message} — continuing`);
-  }
+  await ensureKhodArabic(page, "phase4");
 
   // ── Export with full fallback retry loop ──
   let lastError = null;
@@ -1515,7 +1628,7 @@ async function phase4_khod(page, exportFromDate, dateTo) {
 
         // Hard refresh before next attempt
         try {
-          await page.goto("https://khod-whaat.com/affiliate/orders/list/all", { waitUntil: "domcontentloaded" });
+          await gotoWithNetworkRetries(page, "https://khod-whaat.com/affiliate/orders/list/all", "Khod Whaat export hard refresh");
           await page.waitForTimeout(3000);
         } catch {}
 
@@ -1529,11 +1642,7 @@ async function phase4_khod(page, exportFromDate, dateTo) {
         } catch {}
 
         // Always re-set Arabic after a re-login or page reload
-        try {
-          await page.goto("https://khod-whaat.com/lang/sa", { waitUntil: "domcontentloaded" });
-          await page.waitForTimeout(2000);
-          log("🌐 Khod Whaat: Arabic language re-confirmed before next attempt");
-        } catch {}
+        await ensureKhodArabic(page, `retry-${attempt + 1}`);
       }
     }
   }
@@ -1683,7 +1792,14 @@ async function assertEasyOrdersSession(page) {
     const title = await page.title().catch(() => "");
     throw new Error(`SESSION_UNVERIFIED: URL ok (${url}) but no auth DOM found | title: "${title}"`);
   }
-  await verifyEasyOrdersIdentity(page, "assert");
+  // Identity was already fully verified at phase1 (email + store check).
+  // Skip re-running it on every order — it opens the account menu each time
+  // and adds unnecessary delay. If the session is ever lost the URL/DOM check
+  // above will catch it and trigger a re-login, which resets the flag and
+  // re-verifies from scratch.
+  if (!easyOrdersIdentityVerified) {
+    await verifyEasyOrdersIdentity(page, "assert");
+  }
 }
 async function phase5_createOrders(page, orders) {
   log("\n═══════════════════════════════════════");
@@ -1747,7 +1863,9 @@ async function phase5_createOrders(page, orders) {
       // Navigate back to orders list to reset state before next order
       try {
         // Navigate back to reset React state; next iteration goes straight to /create
-        await page.goto("https://app.easy-orders.net/#/orders", { waitUntil: "domcontentloaded" });
+        await gotoWithNetworkRetries(page, "https://app.easy-orders.net/#/orders", "Easy-Orders reset to orders list");
+        const switchedReset = await ensureEasyOrdersEnglish(page);
+        if (switchedReset) await page.waitForTimeout(2000);
       } catch {}
     }
 
@@ -1761,20 +1879,27 @@ async function phase5_createOrders(page, orders) {
 
 async function createSingleOrder(page, order, orderNum) {
   const MAX_ORDER_ATTEMPTS = 3;
+  const MAX_NETWORK_ORDER_ATTEMPTS = 5;
 
-  for (let attempt = 1; attempt <= MAX_ORDER_ATTEMPTS; attempt++) {
+  for (let attempt = 1; attempt <= MAX_NETWORK_ORDER_ATTEMPTS; attempt++) {
     try {
       await createSingleOrderAttempt(page, order, orderNum, attempt);
       return; // ✅ success
     } catch (err) {
-      log(`${orderNum} ⚠️ Attempt ${attempt}/${MAX_ORDER_ATTEMPTS} failed: ${err.message}`);
+      const networkError = isNetworkNavigationError(err);
+      const maxAttempts = networkError ? MAX_NETWORK_ORDER_ATTEMPTS : MAX_ORDER_ATTEMPTS;
+      log(`${orderNum} ⚠️ Attempt ${attempt}/${maxAttempts} failed: ${err.message}`);
 
-      if (attempt < MAX_ORDER_ATTEMPTS) {
+      if (attempt < maxAttempts) {
         log(`${orderNum} 🔄 Reloading page and retrying...`);
         try {
           // Hard reset: go to orders list first to fully clear React state
-          await page.goto("https://app.easy-orders.net/#/orders", { waitUntil: "domcontentloaded" });
+          await gotoWithNetworkRetries(page, "https://app.easy-orders.net/#/orders", "Easy-Orders retry reset to orders list");
           await page.waitForTimeout(2000);
+          if (!page.url().includes("login")) {
+            const switchedReset = await ensureEasyOrdersEnglish(page);
+            if (switchedReset) await page.waitForTimeout(2000);
+          }
           // Re-login if session was lost during the attempt
           if (page.url().includes("login")) {
             log(`${orderNum} 🔐 Session expired — re-logging in before retry...`);
@@ -1784,7 +1909,7 @@ async function createSingleOrder(page, order, orderNum) {
         await page.waitForTimeout(1500);
       } else {
         // All attempts exhausted — rethrow so phase5 records it as failed
-        throw err;
+        throw networkError ? new Error(friendlyErrorMessage(err)) : err;
       }
     }
   }
@@ -1802,7 +1927,7 @@ async function createSingleOrderAttempt(page, order, orderNum, attempt) {
 
   // ── 1. Navigate directly to create page ──
   log(`[NAV] → https://app.easy-orders.net/#/orders/create`);
-  await page.goto("https://app.easy-orders.net/#/orders/create", { waitUntil: "domcontentloaded" });
+  await gotoWithNetworkRetries(page, "https://app.easy-orders.net/#/orders/create", "Easy-Orders create order page");
 
   // ── Session probe: DOM-verified check before loading any protected selectors ──
   try {
@@ -1814,10 +1939,12 @@ async function createSingleOrderAttempt(page, order, orderNum, attempt) {
     await phase1_easyOrdersLogin(page);
     // Re-navigate to create page after re-login — the retry loop above will catch any
     // further failure and log the order as failed if all attempts are exhausted
-    await page.goto("https://app.easy-orders.net/#/orders/create", { waitUntil: "domcontentloaded" });
+    await gotoWithNetworkRetries(page, "https://app.easy-orders.net/#/orders/create", "Easy-Orders create order page after re-login");
     // Re-verify session is good now before proceeding
     await assertEasyOrdersSession(page);
   }
+  const switchedLang = await ensureEasyOrdersEnglish(page);
+  if (switchedLang) await page.waitForTimeout(2000);
 
   await page.waitForSelector('button:has-text("Choose Products")', { timeout: 15000 });
   await page.waitForTimeout(800);
@@ -1919,8 +2046,15 @@ async function createSingleOrderAttempt(page, order, orderNum, attempt) {
 //   3. First 3 Arabic words — handles long names that get truncated
 //   4. Longest single Arabic word — last-resort keyword search
 // ════════════════════════════════════════
+function compactProductSearchText(value) {
+  return normalizeProductName(value)
+    .replace(/\s+/g, "")
+    .replace(/[.,،:;؛"'`´()[\]{}<>|\\/!؟?_*~]+/g, "");
+}
+
 function buildSearchStrategies(productName) {
-  const full = productName.trim();
+  const full = normalizeProductName(productName);
+  const compact = compactProductSearchText(full);
 
   // Extract only Arabic words (Unicode Arabic block)
   const arabicWords = full.match(/[\u0600-\u06FF]+/g) || [];
@@ -1928,14 +2062,17 @@ function buildSearchStrategies(productName) {
   // Extract only English words
   const englishWords = full.match(/[a-zA-Z]+/g) || [];
 
-  const strategies = [full]; // always try full name first
+  const strategies = [full]; // always try normalized full name first
+  if (compact && compact !== full) strategies.push(compact);
 
   if (arabicWords.length > 0) {
     strategies.push(arabicWords.join(" "));            // all Arabic words
+    strategies.push(arabicWords.join(""));             // Arabic without spaces
     strategies.push(arabicWords.slice(0, 3).join(" ")); // first 3 Arabic words
+    strategies.push(arabicWords.slice(0, 3).join(""));  // first 3 Arabic words without spaces
     if (arabicWords.length > 3) {
       // Longest Arabic word — usually the most distinctive
-      const longest = arabicWords.sort((a, b) => b.length - a.length)[0];
+      const longest = [...arabicWords].sort((a, b) => b.length - a.length)[0];
       strategies.push(longest);
     }
   }
@@ -1986,16 +2123,21 @@ async function selectProductInModal(page, productName, orderNum) {
     }
 
     // Try to find the best matching row
-    const cleanTarget = productName.trim().toLowerCase();
+    const cleanTarget = normalizeProductName(productName).toLowerCase();
+    const compactTarget = compactProductSearchText(productName).toLowerCase();
     for (let i = 0; i < count; i++) {
       const row = rows.nth(i);
       const nameCell = row.locator('td[aria-label="product name"]');
-      const cellText = (await nameCell.innerText().catch(() => "")).trim().toLowerCase();
+      const cellText = normalizeProductName(await nameCell.innerText().catch(() => "")).toLowerCase();
+      const compactCellText = compactProductSearchText(cellText).toLowerCase();
 
       const isMatch =
         cellText === cleanTarget ||
+        compactCellText === compactTarget ||
         cellText.includes(cleanTarget) ||
         cleanTarget.includes(cellText) ||
+        (compactTarget.length >= 4 && compactCellText.includes(compactTarget)) ||
+        (compactCellText.length >= 4 && compactTarget.includes(compactCellText)) ||
         wordOverlap(cleanTarget, cellText) >= 0.5; // lowered from 0.6 → more forgiving
 
       if (isMatch) {
@@ -2114,12 +2256,8 @@ async function verifyFinalTotal(page, targetSubtotal, orderNum) {
   const dateFrom       = parseDate(config.dateFrom);
   const dateTo         = parseDate(config.dateTo);
   const exportFromDate = subtractDay(dateFrom); // -1 day so Easy-Orders export catches late-night orders and builds full product catalog
-  const nowForKhod     = new Date();
-  const reportingDataEnabled = !!config.reportingDataEnabled;
   const dashboardEnabled = !!config.dashboardEnabled;
-  const khodStartDate  = reportingDataEnabled
-    ? new Date(nowForKhod.getFullYear(), nowForKhod.getMonth(), 1)
-    : exportFromDate;
+  const khodStartDate  = exportFromDate; // always dateFrom-1, same offset as Easy-Orders
   const khodDateKey = (date) => `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, "0")}-${String(date.getDate()).padStart(2, "0")}`;
 
   log(`📅 Date range  : ${formatDataDay(dateFrom)} → ${formatDataDay(dateTo)}`);
@@ -2444,6 +2582,7 @@ async function verifyFinalTotal(page, targetSubtotal, orderNum) {
             unitPrice:          o.unitPrice   || "",
             subtotal:           o.subtotal    || 0,
             date:               o.date        || "",
+            createdAt:          o.createdAt   || "",
             source:             o.source      || "real",
             address:            o.address     || "",
             // ── Analytics fields (enriched) ──
@@ -2483,8 +2622,9 @@ async function verifyFinalTotal(page, targetSubtotal, orderNum) {
     });
 
   } catch (err) {
-    log(`❌ FATAL: ${err.message}`);
-    process.send && process.send({ type: "error", error: err.message });
+    const message = friendlyErrorMessage(err);
+    log(`❌ FATAL: ${message}`);
+    process.send && process.send({ type: "error", error: message });
   } finally {
     await context.close();
   }

@@ -821,7 +821,10 @@ function _analyticsOrderHourDate(order) {
     order && order.submittedAt,
     order && order.submitted_at,
     order && order.updatedAt,
-    order && order.updated_at
+    order && order.updated_at,
+    order && order.runStartedAt,
+    order && order.runTimestamp,
+    order && order.runDate
   ];
 
   for (var i = 0; i < candidates.length; i++) {

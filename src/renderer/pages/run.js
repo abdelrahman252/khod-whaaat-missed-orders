@@ -73,6 +73,11 @@ window.renderRun = function (dateFrom, dateTo, selectedAccountIds, onComplete, o
     return (value || "account").toString().trim().replace(/[^a-zA-Z0-9@._-]/g, "_") || "account";
   }
 
+  function accountDisplayName(acc, fallback = "") {
+    if (!acc) return fallback;
+    return acc.memberName || acc.easyEmail || acc.email || acc.khodEmail || acc.easyStore || acc.storeName || acc.label || acc.name || fallback;
+  }
+
   function selectedAccountEmailTag() {
     const accounts = window._kbotAccounts || [];
     const id = Array.isArray(selectedAccountIds) && selectedAccountIds.length === 1 ? selectedAccountIds[0] : null;
@@ -236,7 +241,10 @@ window.renderRun = function (dateFrom, dateTo, selectedAccountIds, onComplete, o
                   <button id="btn-preview-download" class="btn btn-primary" style="font-size:11px;padding:5px 12px">${t("run.download")}</button>
                 </div>
               </div>
-              <div style="overflow:auto;max-height:360px" id="preview-table-wrap"></div>
+              <div style="padding:8px 12px;border-bottom:1px solid var(--border);background:rgba(0,0,0,0.05)">
+                <input id="preview-search" type="text" placeholder="${t('run.search_orders_placeholder') || 'Search by name, phone or product…'}" style="width:100%;box-sizing:border-box;background:var(--bg);border:1px solid var(--border);border-radius:var(--radius-sm);padding:6px 10px;font-size:12px;color:var(--text);outline:none" oninput="window._filterPreviewTable(this.value)">
+              </div>
+              <div style="overflow:auto;max-height:340px" id="preview-table-wrap"></div>
             </div>
 
             <!-- Placeholder when no data yet -->
@@ -269,6 +277,39 @@ window.renderRun = function (dateFrom, dateTo, selectedAccountIds, onComplete, o
         </div>
       </div>
     `;
+
+    // Inject table + search styles for single-account path
+    if (!document.getElementById("run-preview-table-style")) {
+      const _runTableStyle = document.createElement("style");
+      _runTableStyle.id = "run-preview-table-style";
+      _runTableStyle.textContent = `
+        .orders-preview-table { border-collapse: collapse; width: 100%; }
+        .orders-preview-table th,
+        .orders-preview-table td {
+          padding: 7px 10px;
+          text-align: left;
+          border-bottom: 1px solid var(--border);
+          font-size: 12px;
+          overflow: hidden;
+          text-overflow: ellipsis;
+          white-space: nowrap;
+        }
+        .orders-preview-table th {
+          font-weight: 700;
+          font-size: 11px;
+          text-transform: uppercase;
+          letter-spacing: .04em;
+          color: var(--text2);
+          background: rgba(255,255,255,0.03);
+          position: sticky;
+          top: 0;
+          z-index: 1;
+        }
+        .orders-preview-table tbody tr:hover { background: rgba(79,142,247,0.05); }
+        .orders-preview-table tbody tr:last-child td { border-bottom: none; }
+      `;
+      document.head.appendChild(_runTableStyle);
+    }
 
     // Tab switcher
     let _logLineCount = 0;
@@ -457,30 +498,66 @@ window.renderRun = function (dateFrom, dateTo, selectedAccountIds, onComplete, o
 
       // Build selectable, copyable table
       const allRows = data.rows; // show ALL rows
+      window._previewAllRows = allRows; // store for search filtering
       const more = data.total > allRows.length ? `<div style="padding:8px 16px;font-size:11px;color:var(--text2)">+ ${data.total - allRows.length} more rows not shown</div>` : "";
-      if (tableWrap) {
-        tableWrap.innerHTML = `
-          <table class="orders-preview-table">
+
+      function buildPreviewTableHTML(rows) {
+        return `
+          <table class="orders-preview-table" style="width:100%;table-layout:fixed;border-collapse:collapse">
+            <colgroup>
+              <col style="width:38px">
+              <col style="width:auto">
+              <col style="width:50px">
+              <col style="width:72px">
+              <col style="width:80px">
+              <col style="width:90px">
+              <col style="width:110px">
+              <col style="width:120px">
+            </colgroup>
             <thead>
-              <tr>${cols.map(c => `<th>${c}</th>`).join("")}</tr>
+              <tr><th style="width:38px">#</th>${cols.map(c => `<th>${c}</th>`).join("")}</tr>
             </thead>
             <tbody>
-              ${allRows.map((r, i) => `
+              ${rows.map((r, i) => `
                 <tr>
-                  <td style="color:var(--text2)">${i + 1}</td>
-                  <td style="max-width:180px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="${(r.productName||"").replace(/"/g,"")}">${r.productName || "—"}</td>
-                  <td style="font-weight:700">${r.qty}</td>
+                  <td style="color:var(--text2);text-align:center">${i + 1}</td>
+                  <td style="overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="${(r.productName||"").replace(/"/g,"")}">${r.productName || "—"}</td>
+                  <td style="font-weight:700;text-align:center">${r.qty}</td>
                   <td style="color:var(--success);font-weight:600">${r.unitPrice || "—"}</td>
                   <td style="color:var(--text2)">${r.date || "—"}</td>
-                  <td style="direction:rtl">${r.city || "—"}</td>
-                  <td style="direction:rtl">${r.name || "—"}</td>
-                  <td style="font-family:monospace">${r.phone}</td>
+                  <td style="direction:rtl;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${r.city || "—"}</td>
+                  <td style="direction:rtl;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${r.name || "—"}</td>
+                  <td style="font-family:monospace;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${r.phone}</td>
                 </tr>
               `).join("")}
             </tbody>
           </table>
           ${more}
         `;
+      }
+
+      window._filterPreviewTable = function(query) {
+        if (!tableWrap) return;
+        const q = (query || "").trim().toLowerCase();
+        const filtered = q
+          ? (window._previewAllRows || []).filter(r =>
+              (r.name || "").toLowerCase().includes(q) ||
+              (r.phone || "").toLowerCase().includes(q) ||
+              (r.productName || "").toLowerCase().includes(q)
+            )
+          : (window._previewAllRows || []);
+        tableWrap.innerHTML = buildPreviewTableHTML(filtered);
+        const noResult = tableWrap.querySelector(".preview-no-results");
+        if (filtered.length === 0 && !noResult) {
+          tableWrap.innerHTML += `<div style="padding:16px;text-align:center;font-size:12px;color:var(--text2)">No orders match your search</div>`;
+        }
+      };
+
+      if (tableWrap) {
+        tableWrap.innerHTML = buildPreviewTableHTML(allRows);
+        // Clear search box when new data arrives
+        const searchEl = document.getElementById("preview-search");
+        if (searchEl) searchEl.value = "";
       }
       document.getElementById("btn-preview-download")?.addEventListener("click", async () => {
         if (!window._previewBuffer) return;
@@ -707,8 +784,9 @@ window.renderRun = function (dateFrom, dateTo, selectedAccountIds, onComplete, o
   const accountStates = selectedAccountIds.map((id, idx) => {
     const acct = _allAccounts.find(a => a.id === id);
     return {
+      ...(acct || {}),
       id,
-      label: (acct && acct.easyEmail) || (typeof t("run.acc_label_default") === "function" ? t("run.acc_label_default")(idx + 1) : `Account ${idx + 1}`),
+      label: (acct && (acct.memberName || acct.easyEmail || acct.label)) || (typeof t("run.acc_label_default") === "function" ? t("run.acc_label_default")(idx + 1) : `Account ${idx + 1}`),
       status: "running",
       logLines: [],
       phases: [0,1,2,3,4].map(() => ({ state: "waiting" })),
@@ -733,7 +811,7 @@ window.renderRun = function (dateFrom, dateTo, selectedAccountIds, onComplete, o
   function buildDropdownOptions() {
     let html = `<div class="mac-dd-item ${selectedPane === "__all__" ? "mac-dd-active" : ""}" data-pane="__all__">${t("run.all_accounts")}</div>`;
     for (const acc of accountStates) {
-      const accName = acc.easyEmail || acc.email || acc.khodEmail || acc.label;
+      const accName = accountDisplayName(acc);
       html += `<div class="mac-dd-item ${selectedPane === acc.id ? "mac-dd-active" : ""}" data-pane="${acc.id}">${statusIcon(acc.status)} ${accName}</div>`;
     }
     return html;
@@ -743,7 +821,7 @@ window.renderRun = function (dateFrom, dateTo, selectedAccountIds, onComplete, o
   function buildTriggerLabel() {
     if (selectedPane === "__all__") return t("run.all_accounts");
     const acc = accountStates.find(a => a.id === selectedPane);
-    const accName = acc ? (acc.easyEmail || acc.email || acc.khodEmail || acc.label) : "";
+    const accName = acc ? accountDisplayName(acc) : "";
     return acc ? `${statusIcon(acc.status)} ${accName}` : t("run.all_accounts");
   }
 
@@ -819,7 +897,7 @@ window.renderRun = function (dateFrom, dateTo, selectedAccountIds, onComplete, o
             return `
             <div style="background:var(--bg2);border:1px solid ${statusColor};border-radius:var(--radius);padding:14px;cursor:pointer" onclick="window._runMultiSelect('${acc.id}')">
               <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:10px">
-                <div style="font-size:13px;font-weight:700;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;max-width:65%">${acc.easyEmail || acc.email || acc.khodEmail || acc.label}</div>
+                <div style="font-size:13px;font-weight:700;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;max-width:65%">${accountDisplayName(acc)}</div>
                 <div style="font-size:12px;font-weight:700;color:${statusColor}">${statusText}</div>
               </div>
               <div style="font-size:11px;color:var(--text2);margin-bottom:6px">${currentPhaseLabel}</div>
@@ -843,7 +921,7 @@ window.renderRun = function (dateFrom, dateTo, selectedAccountIds, onComplete, o
     const phaseNames = [t("run.phase0"),t("run.phase1"),t("run.phase2"),t("run.phase3"),t("run.phase4")];
     const doneBanner = acc.status !== "running"
       ? `<div style="background:${acc.status==="done"?"rgba(0,214,143,0.1)":"rgba(255,77,109,0.1)"};border:1px solid ${acc.status==="done"?"var(--success)":"var(--danger)"};border-radius:var(--radius);padding:10px 16px;font-size:13px;font-weight:700;color:${acc.status==="done"?"var(--success)":"var(--danger)"}">
-          ${acc.status==="done" ? (()=>{const fn=t("run.acc_done_banner");const n=acc.easyEmail||acc.email||acc.khodEmail||acc.label;return typeof fn==="function"?fn(n):fn;})() : (()=>{const fn=t("run.acc_failed_banner");const n=acc.easyEmail||acc.email||acc.khodEmail||acc.label;return typeof fn==="function"?fn(n):fn;})()}
+          ${acc.status==="done" ? (()=>{const fn=t("run.acc_done_banner");const n=accountDisplayName(acc);return typeof fn==="function"?fn(n):fn;})() : (()=>{const fn=t("run.acc_failed_banner");const n=accountDisplayName(acc);return typeof fn==="function"?fn(n):fn;})()}
         </div>` : "";
 
     // Big upload progress for this account
@@ -879,25 +957,70 @@ window.renderRun = function (dateFrom, dateTo, selectedAccountIds, onComplete, o
       const headerFn = t("run.preview_header");
       const headerLabel = typeof headerFn === "function" ? headerFn(prevData.total) : headerFn;
       const rows = prevData.rows || [];
+      const searchId = `multi-preview-search-${acc.id}`;
+      const tableId  = `multi-preview-table-${acc.id}`;
+      // Store rows on window for search access
+      if (!window._multiPreviewRows) window._multiPreviewRows = {};
+      window._multiPreviewRows[acc.id] = rows;
+      window._filterMultiPreview = window._filterMultiPreview || function(accId, query) {
+        const allR = (window._multiPreviewRows || {})[accId] || [];
+        const q = (query || "").trim().toLowerCase();
+        const filtered = q ? allR.filter(r =>
+          (r.name || "").toLowerCase().includes(q) ||
+          (r.phone || "").toLowerCase().includes(q) ||
+          (r.productName || "").toLowerCase().includes(q)
+        ) : allR;
+        const wrap = document.getElementById(`multi-preview-table-${accId}`);
+        if (!wrap) return;
+        const colsL = window._t("run.preview_cols");
+        wrap.innerHTML = `
+          <table class="orders-preview-table" style="width:100%;table-layout:fixed;border-collapse:collapse">
+            <colgroup>
+              <col style="width:38px"><col style="width:auto"><col style="width:50px">
+              <col style="width:72px"><col style="width:80px"><col style="width:90px">
+              <col style="width:110px"><col style="width:120px">
+            </colgroup>
+            <thead><tr><th style="width:38px">#</th>${Array.isArray(colsL)?colsL.map(c=>`<th>${c}</th>`).join(""):""}</tr></thead>
+            <tbody>${filtered.map((r,i)=>`<tr>
+              <td style="color:var(--text2);text-align:center">${i+1}</td>
+              <td style="overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="${(r.productName||"").replace(/"/g,"")}">${r.productName||"—"}</td>
+              <td style="font-weight:700;text-align:center">${r.qty||1}</td>
+              <td style="color:var(--success);font-weight:600">${r.unitPrice||"—"}</td>
+              <td style="color:var(--text2)">${r.date||"—"}</td>
+              <td style="direction:rtl;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${r.city||"—"}</td>
+              <td style="direction:rtl;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${r.name||"—"}</td>
+              <td style="font-family:monospace;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${r.phone||"—"}</td>
+            </tr>`).join("")}
+            ${filtered.length===0?`<tr><td colspan="8" style="text-align:center;padding:14px;color:var(--text2);font-size:12px">No orders match your search</td></tr>`:""}</tbody>
+          </table>`;
+      };
       return `
       <div style="background:var(--bg2);border:1px solid var(--accent);border-radius:var(--radius);overflow:hidden">
         <div style="display:flex;align-items:center;justify-content:space-between;padding:10px 14px;border-bottom:1px solid var(--border)">
           <div style="font-size:12px;font-weight:700;color:var(--accent);text-transform:uppercase;letter-spacing:.06em">${headerLabel}</div>
           ${prevData.buffer ? `<button class="btn btn-primary" style="font-size:11px;padding:5px 12px" onclick="window._multiDownloadPreview('${acc.id}')">${t("run.download")}</button>` : ""}
         </div>
-        <div style="overflow:auto;max-height:320px">
-          <table class="orders-preview-table">
-            <thead><tr>${Array.isArray(cols) ? cols.map(c=>`<th>${c}</th>`).join("") : ""}</tr></thead>
+        <div style="padding:7px 10px;border-bottom:1px solid var(--border);background:rgba(0,0,0,0.05)">
+          <input id="${searchId}" type="text" placeholder="${t('run.search_orders_placeholder')||'Search by name, phone or product…'}" style="width:100%;box-sizing:border-box;background:var(--bg);border:1px solid var(--border);border-radius:var(--radius-sm);padding:5px 9px;font-size:12px;color:var(--text);outline:none" oninput="window._filterMultiPreview('${acc.id}',this.value)">
+        </div>
+        <div style="overflow:auto;max-height:300px" id="${tableId}">
+          <table class="orders-preview-table" style="width:100%;table-layout:fixed;border-collapse:collapse">
+            <colgroup>
+              <col style="width:38px"><col style="width:auto"><col style="width:50px">
+              <col style="width:72px"><col style="width:80px"><col style="width:90px">
+              <col style="width:110px"><col style="width:120px">
+            </colgroup>
+            <thead><tr><th style="width:38px">#</th>${Array.isArray(cols)?cols.map(c=>`<th>${c}</th>`).join(""):""}</tr></thead>
             <tbody>
               ${rows.map((r,i)=>`<tr>
-                <td style="color:var(--text2)">${i+1}</td>
-                <td style="max-width:180px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${r.productName||"—"}</td>
-                <td style="font-weight:700">${r.qty||1}</td>
+                <td style="color:var(--text2);text-align:center">${i+1}</td>
+                <td style="overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="${(r.productName||"").replace(/"/g,"")}">${r.productName||"—"}</td>
+                <td style="font-weight:700;text-align:center">${r.qty||1}</td>
                 <td style="color:var(--success);font-weight:600">${r.unitPrice||"—"}</td>
                 <td style="color:var(--text2)">${r.date||"—"}</td>
-                <td style="direction:rtl">${r.city||"—"}</td>
-                <td style="direction:rtl">${r.name||"—"}</td>
-                <td style="font-family:monospace">${r.phone||"—"}</td>
+                <td style="direction:rtl;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${r.city||"—"}</td>
+                <td style="direction:rtl;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${r.name||"—"}</td>
+                <td style="font-family:monospace;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${r.phone||"—"}</td>
               </tr>`).join("")}
             </tbody>
           </table>
@@ -1052,7 +1175,7 @@ window.renderRun = function (dateFrom, dateTo, selectedAccountIds, onComplete, o
           </div>
           ${accountStates.map(acc => `
             <div class="mac-sidebar-item" id="mac-si-${acc.id}" data-pane="${acc.id}" onclick="window._runMultiSelect('${acc.id}')">
-              <div style="font-size:11px;font-weight:700;white-space:nowrap;overflow:hidden;text-overflow:ellipsis" title="${acc.easyEmail || acc.email || acc.khodEmail || acc.label}">${acc.easyEmail || acc.email || acc.khodEmail || acc.label}</div>
+              <div style="font-size:11px;font-weight:700;white-space:nowrap;overflow:hidden;text-overflow:ellipsis" title="${accountDisplayName(acc)}">${accountDisplayName(acc)}</div>
               <div style="font-size:10px;color:var(--text2)" id="mac-si-status-${acc.id}">${t("run.phase_status_active")}</div>
             </div>
           `).join("")}
@@ -1089,6 +1212,30 @@ window.renderRun = function (dateFrom, dateTo, selectedAccountIds, onComplete, o
     .mac-sidebar-active { border-color: var(--accent) !important; background: rgba(79,142,247,0.1) !important; }
     .mac-si-done { border-color: var(--success) !important; }
     .mac-si-failed { border-color: var(--danger) !important; }
+    .orders-preview-table { border-collapse: collapse; width: 100%; }
+    .orders-preview-table th,
+    .orders-preview-table td {
+      padding: 7px 10px;
+      text-align: left;
+      border-bottom: 1px solid var(--border);
+      font-size: 12px;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+    }
+    .orders-preview-table th {
+      font-weight: 700;
+      font-size: 11px;
+      text-transform: uppercase;
+      letter-spacing: .04em;
+      color: var(--text2);
+      background: rgba(255,255,255,0.03);
+      position: sticky;
+      top: 0;
+      z-index: 1;
+    }
+    .orders-preview-table tbody tr:hover { background: rgba(79,142,247,0.05); }
+    .orders-preview-table tbody tr:last-child td { border-bottom: none; }
   `;
   document.head.appendChild(sidebarStyle);
 
@@ -1230,7 +1377,12 @@ window.renderRun = function (dateFrom, dateTo, selectedAccountIds, onComplete, o
         if (logEl) {
           const lastChild = logEl.lastElementChild;
           if (lastChild && lastChild.textContent.includes("[تجنب حد التصدير]")) {
+            // Update the existing countdown line in-place
             lastChild.textContent = cleanMsg;
+            return;
+          } else {
+            // First tick — append countdown line to the live DOM so the log doesn't go silent
+            liveAppendLog("log-output", cleanMsg, cls);
             return;
           }
         }
@@ -1331,7 +1483,7 @@ window.renderRun = function (dateFrom, dateTo, selectedAccountIds, onComplete, o
     badge.style.color = "var(--success)";
 
     // Add a log line so the user sees it
-    const accName = acc.easyEmail || acc.email || acc.khodEmail || acc.label;
+    const accName = accountDisplayName(acc);
     const previewMsg = (()=>{const fn=t("run.preview_ready_log");return typeof fn==="function"?fn(accName, acc.preview.total):fn;})();
     acc.logLines.push({ text: previewMsg, cls: "log-ok" });
     allLogLines.push({ text: previewMsg, cls: "log-ok" });
@@ -1351,7 +1503,7 @@ window.renderRun = function (dateFrom, dateTo, selectedAccountIds, onComplete, o
   window._multiDownloadPreview = async function(accId) {
     const acc = accountStates.find(a => a.id === accId);
     if (!acc?.preview?.buffer) return;
-    const accName = acc.easyEmail || acc.email || acc.khodEmail || acc.label;
+    const accName = accountDisplayName(acc);
     const result = await window.api.saveOutputFile({ buffer: acc.preview.buffer, filename: `Khod-preview-${safeFilenamePart(accName)}-${runDateTag()}.xlsx` });
     if (result?.saved) {
       const fn = t("run.preview_saved");
@@ -1364,7 +1516,7 @@ window.renderRun = function (dateFrom, dateTo, selectedAccountIds, onComplete, o
   // ── 2FA NEEDED ──
   window.api.on2faNeeded((msg) => {
     const acc = msg?.accountId ? accountStates.find(a => a.id === msg.accountId) : null;
-    const accName = acc ? (acc.easyEmail || acc.email || acc.khodEmail || acc.label) : "";
+    const accName = acc ? accountDisplayName(acc) : "";
     const tag = acc ? ` [${accName}]` : "";
     const txt = `🔐 ${t("run.2fa_title")}${tag} — ${t("run.2fa_msg")}`;
     allLogLines.push({ text: txt, cls: "log-warn" });
@@ -1379,7 +1531,7 @@ window.renderRun = function (dateFrom, dateTo, selectedAccountIds, onComplete, o
   // ── NEEDS CONFIRM ──
   window.api.onNeedsConfirm((msg) => {
     const acc = msg?.accountId ? accountStates.find(a => a.id === msg.accountId) : null;
-    const accName = acc ? (acc.easyEmail || acc.email || acc.khodEmail || acc.label) : "";
+    const accName = acc ? accountDisplayName(acc) : "";
     const tag = acc ? ` [${accName}]` : "";
     const txt = `👀 ${t("run.confirm_title")}${tag}.`;
     allLogLines.push({ text: txt, cls: "log-warn" });
@@ -1397,7 +1549,7 @@ window.renderRun = function (dateFrom, dateTo, selectedAccountIds, onComplete, o
   // ── COOLDOWN ──
   window.api.on("bot-cooldown", (msg) => {
     const acc = msg?.accountId ? accountStates.find(a => a.id === msg.accountId) : null;
-    const accName = acc ? (acc.easyEmail || acc.email || acc.khodEmail || acc.label) : "";
+    const accName = acc ? accountDisplayName(acc) : "";
     const tag = acc ? ` [${accName}]` : "";
     const cooldownFn = t("run.cooldown_attempt");
     const cooldownTxt = typeof cooldownFn === "function" ? cooldownFn(msg.attempt, msg.maxAttempts, msg.seconds) : cooldownFn;
@@ -1412,7 +1564,7 @@ window.renderRun = function (dateFrom, dateTo, selectedAccountIds, onComplete, o
   // ── KHOD RESTART ──
   window.api.on("bot-khod-restart", (msg) => {
     const acc = msg?.accountId ? accountStates.find(a => a.id === msg.accountId) : null;
-    const accName = acc ? (acc.easyEmail || acc.email || acc.khodEmail || acc.label) : "";
+    const accName = acc ? accountDisplayName(acc) : "";
     const tag = acc ? ` [${accName}]` : "";
     const attemptFn = t("run.restart_attempt");
     const attemptTxt = typeof attemptFn === "function" ? attemptFn(msg.attempt, msg.maxAttempts) : attemptFn;
@@ -1427,7 +1579,7 @@ window.renderRun = function (dateFrom, dateTo, selectedAccountIds, onComplete, o
   // ── SESSION EVENTS (auto re-login, session desync recovery) ──
   window.api.on("bot-session-event", (msg) => {
     const acc = msg?.accountId ? accountStates.find(a => a.id === msg.accountId) : null;
-    const accName = acc ? (acc.easyEmail || acc.email || acc.khodEmail || acc.label) : "";
+    const accName = acc ? accountDisplayName(acc) : "";
     const tag = acc ? ` [${accName}]` : "";
     const eventMap = {
       "session-expired":          "⚠️ Session expired — re-logging in...",

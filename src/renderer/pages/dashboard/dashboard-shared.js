@@ -44,6 +44,7 @@
 
   /* ── Color map ───────────────────────────────────────────────────────────── */
   window.COLOR_MAP = {
+    cyan:   '#22d3ee',
     green:  '#00e676',
     orange: '#f59e0b',
     red:    '#ef4444',
@@ -51,6 +52,16 @@
     purple: '#a855f7',
     teal:   '#14b8a6',
     gold:   '#fbbf24',
+  };
+
+  window.dashboardRateColor = function (value, opts) {
+    var n = Number(value);
+    if (!isFinite(n)) n = 0;
+    if (opts && opts.scale === 'ratio') n *= 100;
+    if (n >= 40) return window.COLOR_MAP.cyan;
+    if (n >= 30) return window.COLOR_MAP.green;
+    if (n >= 20) return window.COLOR_MAP.orange;
+    return window.COLOR_MAP.red;
   };
 
   /* ── Inline SVG icons ────────────────────────────────────────────────────── */
@@ -318,8 +329,8 @@
 
   /* ── Icon picker for KpiCard ─────────────────────────────────────────────── */
   function cardIconHtml(accent, type, size) {
-    var map = { green: 'moneyBill', orange: 'truckFast', red: 'circleXmark', blue: 'boxOpen' };
-    var name = map[type] || map[type] || 'boxOpen';
+    var map = { green: 'moneyBill', orange: 'truckFast', red: 'circleXmark', blue: 'boxOpen', purple: 'shieldHalved' };
+    var name = map[type] || 'boxOpen';
     return window.icon(name, { size: size, color: accent });
   }
 

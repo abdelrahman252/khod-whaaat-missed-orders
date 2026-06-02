@@ -181,7 +181,8 @@
       upgrade: isAr ? "تواصل للترقية" : "Contact Support",
       banner: isAr
         ? "بيانات معاينة فقط. افتح الميزة لعرض بياناتك الحقيقية."
-        : "Preview data shown. Unlock this feature to use your live data."
+        : "Preview data shown. Unlock this feature to use your live data.",
+      kicker: isAr ? "معاينة" : "PREVIEW"
     };
   }
 
@@ -196,11 +197,14 @@
     root.querySelector(".dashboard-page-main, .analytics-page, .ops-page, [style*='overflow']")?.prepend(banner);
 
     if (dismissed[feature]) return;
+    if (document.querySelector(".premium-preview-overlay")) return;
+
     var overlay = document.createElement("div");
     overlay.className = "premium-preview-overlay";
+    overlay.setAttribute("data-feature", feature);
     overlay.innerHTML =
       '<div class="premium-preview-card" role="dialog" aria-modal="true">' +
-        '<div class="premium-preview-kicker">PREVIEW</div>' +
+        '<div class="premium-preview-kicker">' + copy.kicker + '</div>' +
         '<h2>' + copy.title + '</h2>' +
         '<p>' + copy.body + '</p>' +
         '<div class="premium-preview-actions">' +
@@ -208,17 +212,44 @@
           '<button type="button" class="premium-preview-secondary">' + copy.upgrade + '</button>' +
         '</div>' +
       '</div>';
-    root.appendChild(overlay);
+    document.body.appendChild(overlay);
     overlay.querySelector(".premium-preview-primary").addEventListener("click", function () {
       dismissed[feature] = true;
       overlay.remove();
     });
     overlay.querySelector(".premium-preview-secondary").addEventListener("click", function () {
-      if (window.KhodUI && typeof window.KhodUI.toast === "function") {
-        window.KhodUI.toast(copy.banner, { kind: "info", timeout: 6000 });
+      if (window.api && typeof window.api.openExternalUrl === "function") {
+        window.api.openExternalUrl("https://khod-whaaat-portal.vercel.app/").catch(function () {});
       }
     });
   }
+
+  window.addEventListener("khod-lang-change", function () {
+    var overlay = document.querySelector(".premium-preview-overlay");
+    if (!overlay) return;
+    var feature = overlay.getAttribute("data-feature");
+    if (!feature) return;
+    var copy = text(feature);
+    overlay.innerHTML =
+      '<div class="premium-preview-card" role="dialog" aria-modal="true">' +
+        '<div class="premium-preview-kicker">' + copy.kicker + '</div>' +
+        '<h2>' + copy.title + '</h2>' +
+        '<p>' + copy.body + '</p>' +
+        '<div class="premium-preview-actions">' +
+          '<button type="button" class="premium-preview-primary">' + copy.cta + '</button>' +
+          '<button type="button" class="premium-preview-secondary">' + copy.upgrade + '</button>' +
+        '</div>' +
+      '</div>';
+    overlay.querySelector(".premium-preview-primary").addEventListener("click", function () {
+      dismissed[feature] = true;
+      overlay.remove();
+    });
+    overlay.querySelector(".premium-preview-secondary").addEventListener("click", function () {
+      if (window.api && typeof window.api.openExternalUrl === "function") {
+        window.api.openExternalUrl("https://khod-whaaat-portal.vercel.app/").catch(function () {});
+      }
+    });
+  });
 
   window.KhodPremiumPreview = {
     isActive: isActive,

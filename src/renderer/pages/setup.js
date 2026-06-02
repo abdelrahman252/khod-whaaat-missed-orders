@@ -681,6 +681,26 @@ window.renderSetup = function (onComplete, initialStep) {
           text-overflow: ellipsis;
           max-width: 116px;
         }
+        .sv3-member-name-btn {
+          border: 1px solid rgba(124,106,247,.35);
+          background: rgba(124,106,247,.12);
+          color: #b8b0ff;
+          border-radius: 999px;
+          padding: 3px 8px;
+          font-size: 9px;
+          font-weight: 800;
+          cursor: pointer;
+          max-width: 112px;
+          white-space: nowrap;
+          overflow: hidden;
+          text-overflow: ellipsis;
+          transition: border-color .12s ease, background .12s ease, color .12s ease;
+        }
+        .sv3-member-name-btn:hover {
+          border-color: rgba(124,106,247,.75);
+          background: rgba(124,106,247,.22);
+          color: #fff;
+        }
 
         .sv3-status-pill {
           display: inline-flex;
@@ -1893,26 +1913,125 @@ window.renderSetup = function (onComplete, initialStep) {
         .sv3-form-overlay {
           position: fixed;
           inset: 0;
-          background: rgba(0,0,0,.72);
+          background: rgba(8, 10, 16, 0.8);
+          backdrop-filter: blur(8px);
+          -webkit-backdrop-filter: blur(8px);
           display: flex;
           align-items: center;
           justify-content: center;
-          z-index: 1000;
-          animation: sv3-fade-in .15s ease;
+          z-index: 9999;
+          animation: sv3-fade-in .25s ease;
         }
         @keyframes sv3-fade-in { from { opacity: 0; } to { opacity: 1; } }
         .sv3-form-card {
           background: var(--bg2);
+          background-image: radial-gradient(circle at 100% 0%, rgba(124,106,247,0.05) 0%, transparent 60%);
           border: 1px solid var(--border);
-          border-radius: 16px;
-          padding: 28px;
-          width: 460px;
+          border-radius: 20px;
+          padding: 32px 36px;
+          width: 480px;
           max-width: 95vw;
           max-height: 90vh;
           overflow-y: auto;
-          animation: sv3-slide-up .18s ease;
+          box-shadow: 
+            0 24px 48px rgba(0, 0, 0, 0.45),
+            0 0 0 1px rgba(255, 255, 255, 0.02);
+          animation: sv3-slide-up .35s cubic-bezier(0.34, 1.56, 0.64, 1);
         }
-        @keyframes sv3-slide-up { from { transform: translateY(12px); opacity: 0; } to { transform: none; opacity: 1; } }
+        @keyframes sv3-slide-up { from { transform: translateY(24px); opacity: 0; } to { transform: none; opacity: 1; } }
+        [data-theme="light"] .sv3-form-card {
+          background-image: radial-gradient(circle at 100% 0%, rgba(124,106,247,0.03) 0%, transparent 60%);
+          box-shadow: 
+            0 24px 48px rgba(0, 0, 0, 0.08),
+            0 0 0 1px rgba(0, 0, 0, 0.01);
+        }
+        .sv3-form-card .form-group input,
+        .sv3-form-card .form-group select {
+          background: rgba(0, 0, 0, 0.15);
+          border: 1px solid var(--border);
+          border-radius: 10px;
+          padding: 12px 14px;
+          color: var(--text);
+          font-size: 14px;
+          font-family: inherit;
+          transition: all 0.2s ease;
+        }
+        [data-theme="light"] .sv3-form-card .form-group input,
+        [data-theme="light"] .sv3-form-card .form-group select {
+          background: rgba(0, 0, 0, 0.02);
+        }
+        .sv3-form-card .form-group input:focus,
+        .sv3-form-card .form-group select:focus {
+          border-color: var(--accent);
+          background: rgba(0, 0, 0, 0.22);
+          box-shadow: 0 0 0 3px rgba(124, 106, 247, 0.15);
+        }
+        [data-theme="light"] .sv3-form-card .form-group input:focus,
+        [data-theme="light"] .sv3-form-card .form-group select:focus {
+          background: #fff;
+          box-shadow: 0 0 0 3px rgba(124, 106, 247, 0.1);
+        }
+        .sv3-form-card .form-group label {
+          font-size: 11px;
+          font-weight: 700;
+          color: var(--text2);
+          text-transform: uppercase;
+          letter-spacing: 0.06em;
+          margin-bottom: 8px;
+        }
+        .sv3-form-card .form-section-title {
+          font-size: 11px;
+          font-weight: 700;
+          color: var(--accent);
+          text-transform: uppercase;
+          letter-spacing: 0.12em;
+          margin-top: 28px;
+          margin-bottom: 16px;
+          padding-bottom: 8px;
+          border-bottom: 1px solid rgba(255,255,255,0.06);
+          display: flex;
+          align-items: center;
+          gap: 6px;
+        }
+        [data-theme="light"] .sv3-form-card .form-section-title {
+          border-bottom-color: rgba(0,0,0,0.06);
+        }
+        .sv3-form-card #sv3-form-cancel {
+          background: rgba(255,255,255,0.03);
+          border: 1px solid var(--border);
+          border-radius: 10px;
+          font-size: 13px;
+          height: 44px;
+          color: var(--text2);
+          transition: all 0.2s ease;
+        }
+        .sv3-form-card #sv3-form-cancel:hover {
+          background: rgba(255,255,255,0.06);
+          color: var(--text);
+          border-color: var(--text3);
+        }
+        [data-theme="light"] .sv3-form-card #sv3-form-cancel {
+          background: rgba(0,0,0,0.02);
+        }
+        [data-theme="light"] .sv3-form-card #sv3-form-cancel:hover {
+          background: rgba(0,0,0,0.05);
+        }
+        .sv3-form-card #sv3-form-save {
+          background: linear-gradient(135deg, var(--accent) 0%, var(--accent2) 100%);
+          border: none;
+          border-radius: 10px;
+          font-size: 13px;
+          height: 44px;
+          color: #fff;
+          font-weight: 700;
+          box-shadow: 0 4px 16px rgba(124, 106, 247, 0.25);
+          transition: all 0.2s ease;
+        }
+        .sv3-form-card #sv3-form-save:hover:not(:disabled) {
+          transform: translateY(-1px);
+          box-shadow: 0 6px 20px rgba(124, 106, 247, 0.35);
+          opacity: 0.95;
+        }
 
         @media (max-width: 920px) {
           .sv3-run-hero,
@@ -2479,6 +2598,9 @@ window.renderSetup = function (onComplete, initialStep) {
     content.querySelectorAll(".sv3-edit-btn").forEach(b => {
       b.addEventListener("click", e => { e.stopPropagation(); openForm(b.dataset.id); });
     });
+    content.querySelectorAll(".sv3-member-name-btn").forEach(b => {
+      b.addEventListener("click", e => { e.stopPropagation(); openMemberNameEditor(b.dataset.id); });
+    });
     content.querySelectorAll(".sv3-del-btn").forEach(b => {
       b.addEventListener("click", async e => {
         e.stopPropagation();
@@ -2504,23 +2626,28 @@ window.renderSetup = function (onComplete, initialStep) {
   // Management card (no selection, shows edit/delete hover)
   function accountManageCard(acc) {
     const label    = accountUiLabel(acc);
+    const emailLine = accountEmailLine(acc);
     const initial  = accountInitial(acc);
     const isLocked = !!acc.locked;
+    const hasMemberName = !!String(acc.memberName || "").trim();
     return `
       <div class="sv3-acc-card ${isLocked ? "sv3-acc-locked" : ""}" data-id="${acc.id}">
         ${isLocked ? `<div class="sv3-lock-badge">🔒 ${t("setup.locked")}</div>` : ""}
         <div class="sv3-avatar ${isLocked ? "lk" : ""}" style="margin-top:${isLocked ? "18px" : "8px"}">${isLocked ? "🔒" : initial}</div>
         <div class="sv3-acc-name" title="${esc(label)}">${esc(label)}</div>
-        <div class="sv3-acc-email">${esc(acc.easyEmail || "—")}</div>
+        <div class="sv3-acc-email" title="${esc(emailLine)}">${esc(emailLine)}</div>
+        <button class="sv3-member-name-btn" type="button" data-id="${acc.id}">
+          ${hasMemberName ? t("setup.edit_member_name") : t("setup.add_member_name")}
+        </button>
         <div class="sv3-status-pill ${isLocked ? "lk" : "ok"}">
           <span class="sv3-dot"></span>${isLocked ? t("setup.locked") : t("setup.active")}
         </div>
-        ${!isLocked ? `
-          <div class="sv3-hover-acts">
-            <button class="sv3-act-btn sv3-edit-btn" data-id="${acc.id}">${t("setup.edit_btn")}</button>
+        ${!isLocked ? `<div class="sv3-hover-acts">
+          <button class="sv3-act-btn sv3-edit-btn" data-id="${acc.id}">${t("setup.edit_btn")}</button>
+          ${!isLocked ? `
             <button class="sv3-act-btn d sv3-del-btn" data-id="${acc.id}">🗑</button>
-          </div>
-        ` : ""}
+          ` : ""}
+        </div>` : ""}
       </div>`;
   }
 
@@ -2738,7 +2865,9 @@ window.renderSetup = function (onComplete, initialStep) {
       }
       updateRunCards();
       if (typeof sv3AutoRunEnabled !== "undefined" && sv3AutoRunEnabled) {
-        window.api.setAutoRunAccounts(selectedIds).catch(() => {});
+        selectedIds = [...allIds];
+        updateRunCards();
+        window.api.setAutoRunAccounts(allIds).catch(() => {});
       }
     });
 
@@ -2754,7 +2883,10 @@ window.renderSetup = function (onComplete, initialStep) {
         }
         updateRunCards();
         if (typeof sv3AutoRunEnabled !== "undefined" && sv3AutoRunEnabled) {
-          window.api.setAutoRunAccounts(selectedIds).catch(() => {});
+          const allIds = accounts.map(a => a.id);
+          selectedIds = [...allIds];
+          updateRunCards();
+          window.api.setAutoRunAccounts(allIds).catch(() => {});
         }
       });
     });
@@ -2891,8 +3023,8 @@ window.renderSetup = function (onComplete, initialStep) {
       await window.api.setAutoRun(sv3AutoRunEnabled);
       if (sv3AutoRunEnabled) {
         const allIds = accounts.map(a => a.id);
-        const autoRunIds = selectedIds.length ? selectedIds : allIds;
-        if (!selectedIds.length && allIds.length) {
+        const autoRunIds = allIds;
+        if (allIds.length) {
           selectedIds = [...allIds];
           updateRunCards();
         }
@@ -2917,21 +3049,14 @@ window.renderSetup = function (onComplete, initialStep) {
       sv3LaunchMinEnabled    = creds.launchMinimized || false;
       sv3AutoRunEnabled      = creds.autoRun         || false;
       sv3AutoRunIntervalMins = creds.autoRunInterval  || 30;
-      const savedAutoRunIds = Array.isArray(creds.autoRunAccountIds)
-        ? creds.autoRunAccountIds.filter(id => accounts.some(a => a.id === id))
-        : [];
-      if (sv3AutoRunEnabled && savedAutoRunIds.length) {
-        selectedIds = savedAutoRunIds;
+      const allIds = accounts.map(a => a.id).filter(Boolean);
+      if (sv3AutoRunEnabled && allIds.length) {
+        selectedIds = [...allIds];
         updateRunCards();
       }
       sv3UpdateLaunchMinUI();
       if (sv3AutoRunEnabled) {
-        const allIds = accounts.map(a => a.id);
-        const autoRunIds = selectedIds.length ? selectedIds : allIds;
-        if (!selectedIds.length && allIds.length) {
-          selectedIds = [...allIds];
-          updateRunCards();
-        }
+        const autoRunIds = allIds;
         await window.api.setAutoRunAccounts(autoRunIds);
         const prog = await window.api.getAutoRunProgress();
         sv3UpdateAutoRunUI(prog ? prog.remainingMs : undefined);
@@ -2944,6 +3069,7 @@ window.renderSetup = function (onComplete, initialStep) {
   // Run step account card (selectable, no edit/delete)
   function accountRunCard(acc, index) {
     const label    = accountUiLabel(acc);
+    const emailLine = accountEmailLine(acc);
     const isLocked = !!acc.locked;
     const isSel    = selectedIds.includes(acc.id);
     return `
@@ -2954,7 +3080,7 @@ window.renderSetup = function (onComplete, initialStep) {
         ${isLocked ? `<div style="position:absolute;top:7px;left:8px;background:rgba(255,201,77,.15);border:1px solid rgba(255,201,77,.4);border-radius:99px;padding:2px 7px;font-size:9px;font-weight:700;color:#ffc94d;letter-spacing:.04em">🔒 ${t("setup.locked")}</div>` : ""}
         <div class="sv3-avatar sv3-run-index-avatar" style="margin-top:8px">${index}</div>
         <div class="sv3-acc-name" title="${esc(label)}">${esc(label)}</div>
-        <div class="sv3-acc-email">${esc(acc.easyEmail || "—")}</div>
+        <div class="sv3-acc-email" title="${esc(emailLine)}">${esc(emailLine)}</div>
       </div>`;
   }
 
@@ -3125,53 +3251,151 @@ window.renderSetup = function (onComplete, initialStep) {
   // ─────────────────────────────────────────────────────────────────
   // FORM OVERLAY — Add / Edit account
   // ─────────────────────────────────────────────────────────────────
-  function openForm(editId) {
-    const isEdit = editId !== null;
-    const acc    = isEdit ? accounts.find(a => a.id === editId) : null;
-    if (isEdit && acc && acc.locked) return;
+  function openMemberNameEditor(accountId) {
+    const acc = accounts.find(a => a.id === accountId);
+    if (!acc) return;
 
     const overlay = document.createElement("div");
     overlay.className = "sv3-form-overlay";
     overlay.innerHTML = `
       <div class="sv3-form-card">
-        <div style="display:flex;align-items:center;gap:12px;margin-bottom:22px">
-          <button id="sv3-form-back" style="background:var(--bg3);border:1px solid var(--border);border-radius:8px;width:32px;height:32px;display:flex;align-items:center;justify-content:center;cursor:pointer;color:var(--text2);font-size:15px;flex-shrink:0;transition:all .15s">←</button>
+        <div style="display:flex;align-items:center;gap:12px;margin-bottom:18px">
+          <button id="sv3-member-back" style="background:var(--bg3);border:1px solid var(--border);border-radius:8px;width:32px;height:32px;display:flex;align-items:center;justify-content:center;cursor:pointer;color:var(--text2);font-size:15px;flex-shrink:0;transition:all .15s">←</button>
           <div>
-            <div style="font-size:16px;font-weight:800;color:var(--text)">${isEdit ? t("setup.edit_account") : t("setup.new_account")}</div>
-            <div style="font-size:12px;color:var(--text2);margin-top:2px">${t("setup.form_subtitle")}</div>
+            <div style="font-size:16px;font-weight:800;color:var(--text)">${t("setup.member_name_title")}</div>
+            <div style="font-size:12px;color:var(--text2);margin-top:2px">${t("setup.member_name_subtitle")}</div>
           </div>
         </div>
 
-        <div class="form-section-title">${t("setup.easy_section")}</div>
         <div class="form-group">
-          <label>${t("setup.store_label")} <span style="color:#ff6b6b">*</span></label>
-          <input type="text" id="sv3-easy-store" placeholder="${t("setup.store_ph")}" value="${esc(acc?.easyStore||"")}" />
+          <label>${t("setup.member_name_label")}</label>
+          <input type="text" id="sv3-member-name" placeholder="${t("setup.member_name_ph")}" value="${esc(acc.memberName || "")}" autocomplete="off" />
+          <div style="font-size:11px;color:var(--text2);margin-top:4px">${t("setup.member_name_hint")}</div>
+        </div>
+
+        <div style="font-size:11px;color:var(--text3);margin-top:10px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${esc(accountEmailLine(acc))}</div>
+
+        <div id="sv3-member-err" class="notice-box danger mt-20" style="display:none">
+          <span class="notice-icon">⚠️</span>
+          <div class="notice-text" id="sv3-member-err-text">${t("setup.save_failed")}</div>
+        </div>
+
+        <div class="mt-20" style="display:flex;gap:10px">
+          <button class="btn full-width" id="sv3-member-clear" style="border:1px solid var(--border);background:var(--bg2);color:var(--text2)">${t("setup.clear_member_name")}</button>
+          <button class="btn btn-primary full-width btn-lg" id="sv3-member-save">${t("setup.save_member_name")}</button>
+        </div>
+      </div>
+    `;
+
+    document.body.appendChild(overlay);
+    const close = () => overlay.remove();
+    overlay.addEventListener("click", e => { if (e.target === overlay) close(); });
+    document.getElementById("sv3-member-back")?.addEventListener("click", close);
+    const input = document.getElementById("sv3-member-name");
+    setTimeout(() => input?.focus(), 30);
+
+    const saveMemberName = async (value) => {
+      const idx = accounts.findIndex(a => a.id === accountId);
+      if (idx < 0) return;
+      const saveBtn = document.getElementById("sv3-member-save");
+      const errEl = document.getElementById("sv3-member-err");
+      const errText = document.getElementById("sv3-member-err-text");
+      if (saveBtn) {
+        saveBtn.textContent = t("setup.saving");
+        saveBtn.disabled = true;
+      }
+      accounts[idx] = { ...accounts[idx], memberName: String(value || "").trim() };
+      const result = await window.api.saveAllAccounts(accounts);
+      if (result && result.success === false) {
+        if (saveBtn) {
+          saveBtn.textContent = t("setup.save_member_name");
+          saveBtn.disabled = false;
+        }
+        if (errText) errText.innerHTML = result.reason || t("setup.save_failed");
+        if (errEl) errEl.style.display = "flex";
+        return;
+      }
+      close();
+      const fresh = await window.api.getCredentials();
+      accounts = fresh.accounts || [];
+      maxAccounts = fresh.maxAccounts || maxAccounts;
+      renderStep();
+    };
+
+    document.getElementById("sv3-member-save")?.addEventListener("click", () => saveMemberName(input?.value || ""));
+    document.getElementById("sv3-member-clear")?.addEventListener("click", () => saveMemberName(""));
+    input?.addEventListener("keydown", e => {
+      if (e.key === "Enter") saveMemberName(input.value || "");
+    });
+  }
+
+  function openForm(editId) {
+    const isEdit = editId !== null;
+    const acc    = isEdit ? accounts.find(a => a.id === editId) : null;
+    const isLockedEdit = isEdit && !!acc?.locked;
+
+    const overlay = document.createElement("div");
+    overlay.className = "sv3-form-overlay";
+    overlay.innerHTML = `
+      <div class="sv3-form-card">
+        <!-- Premium Header Lockup -->
+        <div style="display:flex;align-items:center;justify-content:between;gap:16px;margin-bottom:28px;padding-bottom:18px;border-bottom:1px solid rgba(255,255,255,0.06)">
+          <div style="display:flex;align-items:center;gap:14px">
+            <div style="width:40px;height:40px;border-radius:12px;background:rgba(124,106,247,0.15);display:flex;align-items:center;justify-content:center;font-size:18px;color:var(--accent)">👤</div>
+            <div>
+              <div style="font-size:18px;font-weight:800;color:var(--text);letter-spacing:-0.3px">${isEdit ? t("setup.edit_account") : t("setup.new_account")}</div>
+              <div style="font-size:12px;color:var(--text2);margin-top:2px">${t("setup.form_subtitle")}</div>
+            </div>
+          </div>
+          <button id="sv3-form-back" style="margin-left:auto;background:rgba(255,255,255,0.03);border:1px solid var(--border);border-radius:10px;width:34px;height:34px;display:flex;align-items:center;justify-content:center;cursor:pointer;color:var(--text2);font-size:16px;flex-shrink:0;transition:all 0.2s ease" onmouseover="this.style.background='rgba(255,255,255,0.08)';this.style.color='var(--text)'" onmouseout="this.style.background='rgba(255,255,255,0.03)';this.style.color='var(--text2)'">×</button>
+        </div>
+
+        <div class="form-section-title">
+          <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><rect x="2" y="3" width="20" height="14" rx="2" ry="2"></rect><line x1="8" y1="21" x2="16" y2="21"></line><line x1="12" y1="17" x2="12" y2="21"></line></svg>
+          ${t("setup.easy_section")}
+        </div>
+        <div class="form-group">
+          <label>${t("setup.store_label")} <span style="color:var(--danger)">*</span></label>
+          <input type="text" id="sv3-easy-store" placeholder="${t("setup.store_ph")}" value="${esc(acc?.easyStore||"")}" ${isLockedEdit ? "disabled" : ""} />
         </div>
         <div class="form-group">
           <label>${t("setup.email_label")}</label>
-          <input type="email" id="sv3-easy-email" placeholder="${t("setup.email_ph")}" value="${esc(acc?.easyEmail||"")}" autocomplete="off" />
+          <input type="email" id="sv3-easy-email" placeholder="${t("setup.email_ph")}" value="${esc(acc?.easyEmail||"")}" autocomplete="off" ${isLockedEdit ? "disabled" : ""} />
         </div>
         <div class="form-group">
           <label>${t("setup.pass_label")}</label>
-          <input type="password" id="sv3-easy-pass" placeholder="••••••••" autocomplete="new-password" />
+          <div style="position:relative;display:flex;align-items:center">
+            <input type="password" id="sv3-easy-pass" placeholder="••••••••" autocomplete="new-password" ${isLockedEdit ? "disabled" : ""} style="padding-right:42px;width:100%" />
+            <button type="button" class="password-toggle-btn" data-target="sv3-easy-pass" style="position:absolute;right:10px;background:none;border:none;cursor:pointer;color:var(--text3);padding:4px;display:flex;align-items:center;justify-content:center;transition:color 0.2s;outline:none" tabindex="-1">
+              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="pointer-events:none"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"></path><circle cx="12" cy="12" r="3"></circle></svg>
+            </button>
+          </div>
           ${isEdit ? `<div style="font-size:11px;color:var(--text2);margin-top:4px">${t("setup.keep_pass")}</div>` : ""}
         </div>
 
-        <div class="form-section-title">${t("setup.khod_section")}</div>
+        <div class="form-section-title" style="margin-top:32px">
+          <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M6 2L3 6v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2V6l-3-4z"></path><line x1="3" y1="6" x2="21" y2="6"></line><path d="M16 10a4 4 0 0 1-8 0"></path></svg>
+          ${t("setup.khod_section")}
+        </div>
         <div class="form-group">
           <label>${t("setup.country_label")}</label>
-          <select id="sv3-khod-country" disabled style="width:100%;height:42px;background:var(--bg3);border:1px solid var(--border);border-radius:8px;color:var(--text);padding:0 12px">
+          <select id="sv3-khod-country" disabled style="width:100%;height:44px;background:var(--bg3);border:1px solid var(--border);border-radius:10px;color:var(--text);padding:0 12px;outline:none">
             <option value="sa" selected>${t("setup.country_sa")}</option>
           </select>
           <div style="font-size:11px;color:var(--text2);margin-top:4px">${t("setup.country_sa_only")}</div>
         </div>
         <div class="form-group">
           <label>${t("setup.email_label")}</label>
-          <input type="email" id="sv3-khod-email" placeholder="${t("setup.khod_email_ph")}" value="${esc(acc?.khodEmail||"")}" autocomplete="off" />
+          <input type="email" id="sv3-khod-email" placeholder="${t("setup.khod_email_ph")}" value="${esc(acc?.khodEmail||"")}" autocomplete="off" ${isLockedEdit ? "disabled" : ""} />
         </div>
         <div class="form-group">
           <label>${t("setup.pass_label")}</label>
-          <input type="password" id="sv3-khod-pass" placeholder="••••••••" autocomplete="new-password" />
+          <div style="position:relative;display:flex;align-items:center">
+            <input type="password" id="sv3-khod-pass" placeholder="••••••••" autocomplete="new-password" ${isLockedEdit ? "disabled" : ""} style="padding-right:42px;width:100%" />
+            <button type="button" class="password-toggle-btn" data-target="sv3-khod-pass" style="position:absolute;right:10px;background:none;border:none;cursor:pointer;color:var(--text3);padding:4px;display:flex;align-items:center;justify-content:center;transition:color 0.2s;outline:none" tabindex="-1">
+              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="pointer-events:none"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"></path><circle cx="12" cy="12" r="3"></circle></svg>
+            </button>
+          </div>
           ${isEdit ? `<div style="font-size:11px;color:var(--text2);margin-top:4px">${t("setup.khod_pass_hint")}</div>` : ""}
         </div>
 
@@ -3180,14 +3404,36 @@ window.renderSetup = function (onComplete, initialStep) {
           <div class="notice-text" id="sv3-form-err-text">${t("setup.err_missing")}</div>
         </div>
 
-        <div class="mt-20" style="display:flex;gap:10px">
-          <button class="btn full-width" id="sv3-form-cancel" style="border:1px solid var(--border);background:var(--bg2);color:var(--text2)">${t("setup.cancel_btn")}</button>
-          <button class="btn btn-primary full-width btn-lg" id="sv3-form-save">${isEdit ? t("setup.save_btn2") : t("setup.add_btn")}</button>
+        <div class="mt-28" style="display:flex;gap:12px">
+          <button class="btn full-width" id="sv3-form-cancel">${t("setup.cancel_btn")}</button>
+          <button class="btn btn-primary full-width" id="sv3-form-save">${isEdit ? t("setup.save_btn2") : t("setup.add_btn")}</button>
         </div>
       </div>
     `;
 
     document.body.appendChild(overlay);
+
+    overlay.querySelectorAll(".password-toggle-btn").forEach(btn => {
+      btn.addEventListener("click", (e) => {
+        e.preventDefault();
+        e.stopPropagation();
+        const targetId = btn.dataset.target;
+        const input = document.getElementById(targetId);
+        if (!input) return;
+        const isPass = input.type === "password";
+        input.type = isPass ? "text" : "password";
+
+        // Toggle eye icon
+        const svg = btn.querySelector("svg");
+        if (isPass) {
+          svg.innerHTML = `<path d="M17.94 17.94A10.07 10.07 0 0 1 12 20c-7 0-11-8-11-8a18.45 18.45 0 0 1 5.06-5.94M9.9 4.24A9.12 9.12 0 0 1 12 4c7 0 11 8 11 8a18.5 18.5 0 0 1-2.16 3.19m-6.72-1.07a3 3 0 1 1-4.24-4.24"></path><line x1="1" y1="1" x2="23" y2="23"></line>`;
+          btn.style.color = "var(--accent)";
+        } else {
+          svg.innerHTML = `<path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"></path><circle cx="12" cy="12" r="3"></circle>`;
+          btn.style.color = "var(--text3)";
+        }
+      });
+    });
 
     const close = () => overlay.remove();
     overlay.addEventListener("click", e => { if (e.target === overlay) close(); });
@@ -3205,7 +3451,12 @@ window.renderSetup = function (onComplete, initialStep) {
       const errText      = document.getElementById("sv3-form-err-text");
       const saveBtn      = document.getElementById("sv3-form-save");
 
-      if (!easyStore || !easyEmail || !khodEmail || (!isEdit && (!easyPassword || !khodPassword))) {
+      const currentAccount = isEdit ? accounts.find(a => a.id === editId) : null;
+      const nextEasyStore = isEdit ? (easyStore || currentAccount?.easyStore || "") : easyStore;
+      const nextEasyEmail = isEdit ? (easyEmail || currentAccount?.easyEmail || "") : easyEmail;
+      const nextKhodEmail = isEdit ? (khodEmail || currentAccount?.khodEmail || "") : khodEmail;
+
+      if (!nextEasyStore || (!isEdit && (!nextEasyEmail || !nextKhodEmail || !easyPassword || !khodPassword))) {
         errText.innerHTML = t("setup.err_missing");
         errEl.style.display = "flex";
         return;
@@ -3217,13 +3468,14 @@ window.renderSetup = function (onComplete, initialStep) {
       if (isEdit) {
         const idx = accounts.findIndex(a => a.id === editId);
         if (idx !== -1) {
+          const previousKhodEmail = accounts[idx].khodEmail;
           accounts[idx] = {
             ...accounts[idx],
-            easyEmail,
-            easyStore,
-            khodEmail,
+            easyEmail: nextEasyEmail,
+            easyStore: nextEasyStore,
+            khodEmail: nextKhodEmail,
             khodCountry,
-            khodAffiliateCode: normalizeEmailForCompare(khodEmail) === normalizeEmailForCompare(accounts[idx].khodEmail) ? accounts[idx].khodAffiliateCode : "",
+            khodAffiliateCode: normalizeEmailForCompare(nextKhodEmail) === normalizeEmailForCompare(previousKhodEmail) ? accounts[idx].khodAffiliateCode : "",
             ...(easyPassword ? { easyPassword } : {}),
             ...(khodPassword ? { khodPassword } : {}),
           };
@@ -3232,10 +3484,10 @@ window.renderSetup = function (onComplete, initialStep) {
         // reads the already-updated credentials from store when computing the hash.
       } else {
         const newId = "account_" + Date.now();
-        const newLabel = getNextLabel();
         accounts.push({
           id: newId,
-          label: newLabel,
+          label: getNextLabel(),
+          memberName: "",
           easyEmail, easyPassword, easyStore, khodEmail, khodPassword, khodCountry, khodAffiliateCode: "",
         });
         selectedIds.push(newId);
@@ -3291,7 +3543,12 @@ window.renderSetup = function (onComplete, initialStep) {
 
   function accountUiLabel(acc) {
     if (!acc) return t("setup.account_fallback");
-    return acc.easyEmail || acc.khodEmail || acc.email || acc.label || acc.easyStore || acc.storeName || acc.name || t("setup.account_fallback");
+    return acc.memberName || acc.easyEmail || acc.email || acc.khodEmail || acc.easyStore || acc.storeName || acc.label || acc.name || t("setup.account_fallback");
+  }
+
+  function accountEmailLine(acc) {
+    if (!acc) return "—";
+    return acc.easyEmail || acc.email || acc.khodEmail || "—";
   }
 
   function accountInitial(acc) {

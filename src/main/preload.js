@@ -114,6 +114,7 @@ contextBridge.exposeInMainWorld("api", {
   getCredentials:      () => monitoredInvoke("get-credentials"),
   saveCredentials:     (creds) => monitoredInvoke("save-credentials", creds),
   saveAllAccounts:     (accounts) => monitoredInvoke("save-all-accounts", accounts),
+  unlockSingleAccount: (data) => monitoredInvoke("unlock-single-account", data),
   relockAccount:       (data) => monitoredInvoke("relock-account", data),
   clearAllData:        () => monitoredInvoke("clear-all-data"),
   clearResetFlag:      () => monitoredInvoke("clear-reset-flag"),
@@ -126,6 +127,7 @@ contextBridge.exposeInMainWorld("api", {
   getAutoRunProgress: ()     => monitoredInvoke("get-auto-run-progress"),
   killBot:            ()     => ipcRenderer.send("kill-bot"),
   openFolder:         (folder) => monitoredInvoke("open-folder", folder),
+  getProfilePath:      ()     => monitoredInvoke("get-profile-path"),
 
   // Bot
   runBot:          (params) => monitoredInvoke("run-bot", params),
@@ -133,7 +135,7 @@ contextBridge.exposeInMainWorld("api", {
   botFinished:     () => ipcRenderer.send("bot-finished"),
   onBotLog:        (cb) => ipcRenderer.on("bot-log",           (_, msg)  => cb(msg)),
   on2faNeeded:     (cb) => ipcRenderer.on("bot-2fa-needed",    (_, data) => cb(data)),
-  onNeedsConfirm:  (cb) => ipcRenderer.on("bot-needs-confirm", ()        => cb()),
+  onNeedsConfirm:  (cb) => ipcRenderer.on("bot-needs-confirm", (_, data) => cb(data)),
   onPreview:       (cb) => ipcRenderer.on("bot-preview",       (_, data) => cb(data)),
   onOrderProgress: (cb) => ipcRenderer.on("bot-order-progress",(_, data) => cb(data)),
   onAutoRunTick:   (cb) => ipcRenderer.on("auto-run-tick",     (_, data) => cb(data)),

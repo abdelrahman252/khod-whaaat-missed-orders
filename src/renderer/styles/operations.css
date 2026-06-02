@@ -16,8 +16,9 @@
   --success: #10b981;
   --danger: #ef4444;
 
-  flex: 1;
-  overflow-y: auto;
+  flex: 0 0 auto;
+  min-height: max-content;
+  overflow: visible;
   background-color: var(--bg) !important;
   color: var(--text) !important;
   font-family: 'Inter', -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif !important;
@@ -83,7 +84,9 @@
 .ops-account-select-wrap .custom-select-value {
   overflow: hidden;
   text-overflow: ellipsis;
-  white-space: nowrap;
+  white-space: normal;
+  display: flex;
+  min-width: 0;
 }
 .ops-account-select-wrap .custom-select-dropdown {
   inset-inline-start: 0;
@@ -560,9 +563,11 @@
 .ops-product-account-select { min-width: 280px; }
 .ops-product-account-select .custom-select-container { width: 100%; min-width: 0; }
 .ops-product-account-select .custom-select-value {
+  display: flex;
+  min-width: 0;
   overflow: hidden;
   text-overflow: ellipsis;
-  white-space: nowrap;
+  white-space: normal;
 }
 .ops-product-account-select .custom-select-dropdown {
   inset-inline-start: 0;

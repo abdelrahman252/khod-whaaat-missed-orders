@@ -1,12 +1,12 @@
-// ─────────────────────────────────────────────────────────────────────────────
-// section5-products.js  —  Task 5: أفضل المنتجات  (v7 — bug fixes + smooth animations)
+// â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+// section5-products.js  â€”  Task 5: Ø£ÙØ¶Ù„ Ø§Ù„Ù…Ù†ØªØ¬Ø§Øª  (v7 â€” bug fixes + smooth animations)
 //
 // FIXES vs v6:
-//  Fix 1  — Rank badges preserve original rank; ascending sort no longer re-numbers
-//  Fix 2  — Dropdown z-index raised to 99999 so it floats above all rows
-//  Fix 3  — renderProductPage() re-renders filter bar so pills show active state
-//  Fix 4  — animateNumber() fully rewritten: easeOutExpo, 60fps rAF, no jank
-// ─────────────────────────────────────────────────────────────────────────────
+//  Fix 1  â€” Rank badges preserve original rank; ascending sort no longer re-numbers
+//  Fix 2  â€” Dropdown z-index raised to 99999 so it floats above all rows
+//  Fix 3  â€” renderProductPage() re-renders filter bar so pills show active state
+//  Fix 4  â€” animateNumber() fully rewritten: easeOutExpo, 60fps rAF, no jank
+// â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
 window.renderSection5 = function (mountEl, data, ctx) {
   const isAr = window.dashboardI18n ? window.dashboardI18n.currentLocale === 'ar' : true;
@@ -32,8 +32,8 @@ window.renderSection5 = function (mountEl, data, ctx) {
     <div dir="${isAr ? 'rtl' : 'ltr'}" style="flex:1;display:flex;align-items:center;justify-content:center;background:#080b12;color:#fff;font-family:'Cairo',sans-serif;height:100%;min-height:420px">
       <div style="display:flex;flex-direction:column;align-items:center;gap:14px">
         <div style="width:42px;height:42px;border-radius:50%;border:3px solid rgba(245,158,11,0.18);border-top-color:#f59e0b;animation:s5Spin 0.8s linear infinite"></div>
-        <div style="font-size:13px;font-weight:800;color:rgba(255,255,255,0.76)">${s5Txt("Preparing products...", "جاري تجهيز المنتجات...")}</div>
-        <div style="font-size:11px;color:rgba(255,255,255,0.35)">${s5Txt("Loading only the current page for faster speed", "يتم تحميل الصفحة الحالية فقط لتحسين السرعة")}</div>
+        <div style="font-size:13px;font-weight:800;color:rgba(255,255,255,0.76)">${s5Txt("Preparing products...", "Ø¬Ø§Ø±ÙŠ ØªØ¬Ù‡ÙŠØ² Ø§Ù„Ù…Ù†ØªØ¬Ø§Øª...")}</div>
+        <div style="font-size:11px;color:rgba(255,255,255,0.35)">${s5Txt("Loading only the current page for faster speed", "ÙŠØªÙ… ØªØ­Ù…ÙŠÙ„ Ø§Ù„ØµÙØ­Ø© Ø§Ù„Ø­Ø§Ù„ÙŠØ© ÙÙ‚Ø· Ù„ØªØ­Ø³ÙŠÙ† Ø§Ù„Ø³Ø±Ø¹Ø©")}</div>
       </div>
       <style>@keyframes s5Spin{to{transform:rotate(360deg)}}</style>
     </div>`;
@@ -41,9 +41,9 @@ window.renderSection5 = function (mountEl, data, ctx) {
   setTimeout(function () {
     if (!mountEl.isConnected || mountEl._s5RenderToken !== renderToken) return;
 
-  // ── Smooth number animation (replaces any global animateNumber) ───────────
+  // â”€â”€ Smooth number animation (replaces any global animateNumber) â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
   // Uses requestAnimationFrame + easeOutExpo so every frame increments by a
-  // tiny step — you see 1, 2, 3, 4 … not 1, 50, 150, 400.
+  // tiny step â€” you see 1, 2, 3, 4 â€¦ not 1, 50, 150, 400.
   function _animateNumber(el, target, opts) {
     if (!el) return;
     const duration = Math.min((opts && opts.duration) || 520, 700);
@@ -57,7 +57,7 @@ window.renderSection5 = function (mountEl, data, ctx) {
       return;
     }
 
-    // easeOutExpo — fast start, smooth deceleration
+    // easeOutExpo â€” fast start, smooth deceleration
     function ease(t) {
       return t === 1 ? 1 : 1 - Math.pow(2, -10 * t);
     }
@@ -97,53 +97,53 @@ window.renderSection5 = function (mountEl, data, ctx) {
     if (el) el.textContent = Math.round(Number(value) || 0).toLocaleString('en-US');
   }
 
-  // ── data defaults ────────────────────────────────────────────────────────
+  // â”€â”€ data defaults â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
   const pd = (data && data.products) ? data.products : null;
 
   const PRODUCTS_DEFAULT = [
     {
-      rank: 1, name: 'كريم التفتيح المكثف', cat: 'SKU: N/A',
+      rank: 1, name: 'ÙƒØ±ÙŠÙ… Ø§Ù„ØªÙØªÙŠØ­ Ø§Ù„Ù…ÙƒØ«Ù', cat: 'SKU: N/A',
       deliveries: 34, sharePct: 36.2, revenue: 1428, delta: 18.4,
       spark: [700,850,950,1050,1180,1300,1428], sparkColor: '#00e676', accent: '#fbbf24',
       placedCount: 94, commission: 1428, deliveredCount: 34,
       totalPieces: 94, failedCount: 5, canceledCount: 20, confirmedCount: 10, shippingCount: 8, processingCount: 4,
       confirmationPct: 59.6, cancelPct: 21.3, ndrPct: 37.0, deliveryPct: 36.2,
-      cityBreakdown: [{name:'الرياض',count:40},{name:'جدة',count:28},{name:'الدمام',count:16}],
-      piecesBreakdown: [{qty:'1',count:60},{qty:'2',count:24},{qty:'3',count:10}],
+      cityBreakdown: [{name:'Ø§Ù„Ø±ÙŠØ§Ø¶',count:40},{name:'Ø¬Ø¯Ø©',count:28},{name:'Ø§Ù„Ø¯Ù…Ø§Ù…',count:16}],
+      piecesBreakdown: [{qty:'1',count:60,delivered:20,ndr:33.3},{qty:'2',count:24,delivered:10,ndr:41.7},{qty:'3',count:10,delivered:4,ndr:40}],
     },
     {
-      rank: 2, name: 'سيروم الكولاجين', cat: 'SKU: N/A',
+      rank: 2, name: 'Ø³ÙŠØ±ÙˆÙ… Ø§Ù„ÙƒÙˆÙ„Ø§Ø¬ÙŠÙ†', cat: 'SKU: N/A',
       deliveries: 22, sharePct: 23.4, revenue: 924, delta: 15.7,
       spark: [500,590,660,730,800,870,924], sparkColor: '#a855f7', accent: '#a855f7',
       placedCount: 60, commission: 924, deliveredCount: 22,
       totalPieces: 60, failedCount: 7, canceledCount: 25, confirmedCount: 5, shippingCount: 4, processingCount: 3,
       confirmationPct: 56.7, cancelPct: 41.7, ndrPct: 53.2, deliveryPct: 36.7,
-      cityBreakdown: [{name:'الرياض',count:24},{name:'مكة',count:18},{name:'المدينة',count:10}],
-      piecesBreakdown: [{qty:'1',count:48},{qty:'2',count:12}],
+      cityBreakdown: [{name:'Ø§Ù„Ø±ÙŠØ§Ø¶',count:24},{name:'Ù…ÙƒØ©',count:18},{name:'Ø§Ù„Ù…Ø¯ÙŠÙ†Ø©',count:10}],
+      piecesBreakdown: [{qty:'1',count:48,delivered:18,ndr:37.5},{qty:'2',count:12,delivered:4,ndr:33.3}],
     },
     {
-      rank: 3, name: 'مجموعة العناية بالبشرة', cat: 'SKU: N/A',
+      rank: 3, name: 'Ù…Ø¬Ù…ÙˆØ¹Ø© Ø§Ù„Ø¹Ù†Ø§ÙŠØ© Ø¨Ø§Ù„Ø¨Ø´Ø±Ø©', cat: 'SKU: N/A',
       deliveries: 19, sharePct: 20.2, revenue: 798, delta: 12.1,
       spark: [600,660,700,730,755,775,798], sparkColor: '#14b8a6', accent: '#14b8a6',
       placedCount: 50, commission: 798, deliveredCount: 19,
       totalPieces: 50, failedCount: 3, canceledCount: 12, confirmedCount: 6, shippingCount: 5, processingCount: 4,
       confirmationPct: 68.0, cancelPct: 24.0, ndrPct: 38.7, deliveryPct: 38.0,
-      cityBreakdown: [{name:'جدة',count:20},{name:'الرياض',count:16},{name:'الطائف',count:8}],
-      piecesBreakdown: [{qty:'1',count:35},{qty:'2',count:12},{qty:'3',count:3}],
+      cityBreakdown: [{name:'Ø¬Ø¯Ø©',count:20},{name:'Ø§Ù„Ø±ÙŠØ§Ø¶',count:16},{name:'Ø§Ù„Ø·Ø§Ø¦Ù',count:8}],
+      piecesBreakdown: [{qty:'1',count:35,delivered:14,ndr:40},{qty:'2',count:12,delivered:4,ndr:33.3},{qty:'3',count:3,delivered:1,ndr:33.3}],
     },
   ];
 
   const STAT_CARDS_DEFAULT = [
-    { label: s5Txt('Total Products Sold', 'إجمالي المنتجات المباعة'),    value: 0, unit: s5Txt('unique products', 'منتج مختلف'),  color: '#a855f7', iconType: 'grid'   },
-    { label: s5Txt('Total Orders', 'إجمالي الطلبات المُسجلة'),    value: 0, unit: s5Txt('orders', 'طلب'),          color: '#14b8a6', iconType: 'box'    },
-    { label: s5Txt('Total Pieces Sold', 'إجمالي القطع المُباعة'),       value: 0, unit: s5Txt('pieces', 'قطعة'),         color: '#3b82f6', iconType: 'pieces' },
-    { label: s5Txt('Total Earned Commission', 'إجمالي العمولة المحققة'),      value: 0, unit: 'SAR',          color: '#f59e0b', iconType: 'coins'  },
-    { label: s5Txt('Products generating 80% of commission', 'منتجات تحقق 80% من العمولة'), value: 1, unit: s5Txt('products only', 'منتجات فقط'),  color: '#ef4444', iconType: 'pie'    },
+    { label: s5Txt('Total Products Sold', 'Ø¥Ø¬Ù…Ø§Ù„ÙŠ Ø§Ù„Ù…Ù†ØªØ¬Ø§Øª Ø§Ù„Ù…Ø¨Ø§Ø¹Ø©'),    value: 0, unit: s5Txt('unique products', 'Ù…Ù†ØªØ¬ Ù…Ø®ØªÙ„Ù'),  color: '#a855f7', iconType: 'grid'   },
+    { label: s5Txt('Total Orders', 'Ø¥Ø¬Ù…Ø§Ù„ÙŠ Ø§Ù„Ø·Ù„Ø¨Ø§Øª Ø§Ù„Ù…ÙØ³Ø¬Ù„Ø©'),    value: 0, unit: s5Txt('orders', 'Ø·Ù„Ø¨'),          color: '#14b8a6', iconType: 'box'    },
+    { label: s5Txt('Total Pieces Sold', 'Ø¥Ø¬Ù…Ø§Ù„ÙŠ Ø§Ù„Ù‚Ø·Ø¹ Ø§Ù„Ù…ÙØ¨Ø§Ø¹Ø©'),       value: 0, unit: s5Txt('pieces', 'Ù‚Ø·Ø¹Ø©'),         color: '#3b82f6', iconType: 'pieces' },
+    { label: s5Txt('Total Earned Commission', 'Ø¥Ø¬Ù…Ø§Ù„ÙŠ Ø§Ù„Ø¹Ù…ÙˆÙ„Ø© Ø§Ù„Ù…Ø­Ù‚Ù‚Ø©'),      value: 0, unit: 'SAR',          color: '#f59e0b', iconType: 'coins'  },
+    { label: s5Txt('Products generating 80% of commission', 'Ù…Ù†ØªØ¬Ø§Øª ØªØ­Ù‚Ù‚ 80% Ù…Ù† Ø§Ù„Ø¹Ù…ÙˆÙ„Ø©'), value: 1, unit: s5Txt('products only', 'Ù…Ù†ØªØ¬Ø§Øª ÙÙ‚Ø·'),  color: '#ef4444', iconType: 'pie'    },
   ];
 
   const INSIGHTS_DEFAULT = [
-    { emoji: '🏆', bg: 'rgba(0,230,118,0.12)',  border: 'rgba(0,230,118,0.28)', iconGlow: '#00e676', label: s5Txt('Best Commission Performance', 'أفضل أداء في العمولة'), value: '—', detail: 'جاري التحميل...', detailColor: '#fbbf24' },
-    { emoji: '📊', bg: 'rgba(59,130,246,0.12)', border: 'rgba(59,130,246,0.28)', iconGlow: '#3b82f6', label: s5Txt('Highest Commission Concentration', 'أعلى تركيز للعمولة'),   value: s5Txt('Top 3 products', 'أول 3 منتجات'), detail: '—', detailColor: '#3b82f6' },
+    { emoji: 'ðŸ†', bg: 'rgba(0,230,118,0.12)',  border: 'rgba(0,230,118,0.28)', iconGlow: '#00e676', label: s5Txt('Best Commission Performance', 'Ø£ÙØ¶Ù„ Ø£Ø¯Ø§Ø¡ ÙÙŠ Ø§Ù„Ø¹Ù…ÙˆÙ„Ø©'), value: 'â€”', detail: 'Ø¬Ø§Ø±ÙŠ Ø§Ù„ØªØ­Ù…ÙŠÙ„...', detailColor: '#fbbf24' },
+    { emoji: 'ðŸ“Š', bg: 'rgba(59,130,246,0.12)', border: 'rgba(59,130,246,0.28)', iconGlow: '#3b82f6', label: s5Txt('Highest Commission Concentration', 'Ø£Ø¹Ù„Ù‰ ØªØ±ÙƒÙŠØ² Ù„Ù„Ø¹Ù…ÙˆÙ„Ø©'),   value: s5Txt('Top 3 products', 'Ø£ÙˆÙ„ 3 Ù…Ù†ØªØ¬Ø§Øª'), detail: 'â€”', detailColor: '#3b82f6' },
   ];
 
   let PRODUCTS_RAW = PRODUCTS_DEFAULT;
@@ -213,10 +213,11 @@ window.renderSection5 = function (mountEl, data, ctx) {
   function productTokens(name) {
     var stop = {
       ad: true, ads: true, campaign: true, tiktok: true, tik: true, tok: true,
+      snapchat: true, snap: true, sc: true, facebook: true, fb: true, meta: true,
       ksa: true, saudi: true, sale: true, offer: true, new: true, test: true,
       flying: true, original: true, product: true,
-      منتج: true, عرض: true, جديد: true, اصلي: true, جهاز: true,
-      بعد: true, تعمل: true, يعمل: true, عدد: true, قطعه: true, حبه: true
+      'منتج': true, 'عرض': true, 'جديد': true, 'اصلي': true, 'جهاز': true,
+      'بعد': true, 'تعمل': true, 'يعمل': true, 'عدد': true, 'قطعه': true, 'حبه': true
     };
     return textKey(name).split(' ').filter(function (token) {
       return token.length >= 3 && !stop[token] && !/^x\d+$/i.test(token) && !/^\d+$/.test(token);
@@ -316,20 +317,24 @@ window.renderSection5 = function (mountEl, data, ctx) {
         ? (synced ? sarToSelectedCurrency(Number(synced.spendSar.toFixed(2))) : 0)
         : (totalPlaced > 0 ? budget * placed / totalPlaced : 0);
       p.cpa = placed > 0 ? p.allocatedAdSpend / placed : 0;
+      var delivered = Number(p.deliveredCount) || 0;
+      var avgCommissionSar = delivered > 0 ? (Number(p.commission) || 0) / delivered : 0;
+      var breakEvenSar = avgCommissionSar * ((Number(p.ndrPct) || 0) / 100);
+      p.breakEvenCpa = sarToSelectedCurrency(breakEvenSar);
       p.profitLoss = commissionInCurrency(p.commission) - p.allocatedAdSpend;
       p.financialCurrency = selectedCurrency();
     });
   }
 
-  // ── Build real data ───────────────────────────────────────────────────────
+  // â”€â”€ Build real data â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
   if (pd && (!pd.rankedList || pd.rankedList.length === 0)) {
     PRODUCTS_RAW = [];
     STAT_CARDS = [
-      { label: s5Txt('Total Products Sold', 'إجمالي المنتجات المباعة'),    value: (pd.summary && pd.summary.uniqueProducts) || 0, unit: s5Txt('unique products', 'منتج مختلف'), color: '#a855f7', iconType: 'grid'   },
-      { label: s5Txt('Total Orders', 'إجمالي الطلبات المُسجلة'),    value: (pd.summary && pd.summary.totalOrders)    || 0, unit: s5Txt('orders', 'طلب'),        color: '#14b8a6', iconType: 'box'    },
-      { label: s5Txt('Total Pieces Sold', 'إجمالي القطع المُباعة'),       value: (pd.summary && pd.summary.totalPieces)    || 0, unit: s5Txt('pieces', 'قطعة'),       color: '#3b82f6', iconType: 'pieces' },
-      { label: s5Txt('Total Earned Commission', 'إجمالي العمولة المحققة'),      value: (pd.summary && pd.summary.totalComm)      || 0, unit: 'SAR',        color: '#f59e0b', iconType: 'coins'  },
-      { label: s5Txt('Products generating 80% of commission', 'منتجات تحقق 80% من العمولة'), value: 0,                                               unit: s5Txt('product', 'منتج'),       color: '#ef4444', iconType: 'pie'    },
+      { label: s5Txt('Total Products Sold', 'Ø¥Ø¬Ù…Ø§Ù„ÙŠ Ø§Ù„Ù…Ù†ØªØ¬Ø§Øª Ø§Ù„Ù…Ø¨Ø§Ø¹Ø©'),    value: (pd.summary && pd.summary.uniqueProducts) || 0, unit: s5Txt('unique products', 'Ù…Ù†ØªØ¬ Ù…Ø®ØªÙ„Ù'), color: '#a855f7', iconType: 'grid'   },
+      { label: s5Txt('Total Orders', 'Ø¥Ø¬Ù…Ø§Ù„ÙŠ Ø§Ù„Ø·Ù„Ø¨Ø§Øª Ø§Ù„Ù…ÙØ³Ø¬Ù„Ø©'),    value: (pd.summary && pd.summary.totalOrders)    || 0, unit: s5Txt('orders', 'Ø·Ù„Ø¨'),        color: '#14b8a6', iconType: 'box'    },
+      { label: s5Txt('Total Pieces Sold', 'Ø¥Ø¬Ù…Ø§Ù„ÙŠ Ø§Ù„Ù‚Ø·Ø¹ Ø§Ù„Ù…ÙØ¨Ø§Ø¹Ø©'),       value: (pd.summary && pd.summary.totalPieces)    || 0, unit: s5Txt('pieces', 'Ù‚Ø·Ø¹Ø©'),       color: '#3b82f6', iconType: 'pieces' },
+      { label: s5Txt('Total Earned Commission', 'Ø¥Ø¬Ù…Ø§Ù„ÙŠ Ø§Ù„Ø¹Ù…ÙˆÙ„Ø© Ø§Ù„Ù…Ø­Ù‚Ù‚Ø©'),      value: (pd.summary && pd.summary.totalComm)      || 0, unit: 'SAR',        color: '#f59e0b', iconType: 'coins'  },
+      { label: s5Txt('Products generating 80% of commission', 'Ù…Ù†ØªØ¬Ø§Øª ØªØ­Ù‚Ù‚ 80% Ù…Ù† Ø§Ù„Ø¹Ù…ÙˆÙ„Ø©'), value: 0,                                               unit: s5Txt('product', 'Ù…Ù†ØªØ¬'),       color: '#ef4444', iconType: 'pie'    },
     ];
     INSIGHTS = [];
   } else if (pd && pd.rankedList && pd.rankedList.length > 0) {
@@ -361,7 +366,7 @@ window.renderSection5 = function (mountEl, data, ctx) {
       const productKey = p.key || p.sku || p.name || `product-${idx}`;
 
       return {
-        key: productKey, sku: p.sku || '', rank, name: p.name || 'منتج غير معروف', cat: `SKU: ${p.sku || 'N/A'}`,
+        key: productKey, sku: p.sku || '', rank, name: p.name || 'Ù…Ù†ØªØ¬ ØºÙŠØ± Ù…Ø¹Ø±ÙˆÙ', cat: `SKU: ${p.sku || 'N/A'}`,
         deliveries: units, placedCount: p.placedCount || 0, pieces: p.pieces || p.qty || 0,
         sharePct, revenue: commission, delta: Number(p.delta || 0), spark, ...styleCfg,
         commission, deliveredCount: units,
@@ -375,9 +380,17 @@ window.renderSection5 = function (mountEl, data, ctx) {
         cancelPct:       p.cancelPct       || 0,
         ndrPct:          p.ndrPct          || 0,
         drRate:          p.drRate          || 0,
+        scalingScore:    p.scalingScore    || Math.round((commission * (p.drRate || 0)) / 100),
         deliveryPct:     p.deliveryPct     || p.deliveryRate || 0,
         cityBreakdown:   p.cityBreakdown   || [],
-        piecesBreakdown: p.piecesBreakdown || [],
+        piecesBreakdown: (p.piecesBreakdown || []).map(function (item) {
+          var count = Number(item.count || item.orders || 0);
+          var delivered = Number(item.delivered || item.deliveredCount || 0);
+          var ndr = item.ndr !== undefined
+            ? Number(item.ndr || 0)
+            : (count > 0 ? parseFloat((delivered / count * 100).toFixed(1)) : 0);
+          return Object.assign({}, item, { count: count, delivered: delivered, ndr: ndr });
+        }),
         quantityCityBreakdown: p.quantityCityBreakdown || [],
       };
     });
@@ -392,11 +405,11 @@ window.renderSection5 = function (mountEl, data, ctx) {
     if (count80 === 0) count80 = 1;
 
     STAT_CARDS = [
-      { label: s5Txt('Total Products Sold', 'إجمالي المنتجات المباعة'),    value: pd.summary.uniqueProducts || 0,  unit: s5Txt('unique products', 'منتج مختلف'),  color: '#a855f7', iconType: 'grid'   },
-      { label: s5Txt('Total Orders', 'إجمالي الطلبات المُسجلة'),    value: pd.summary.totalOrders    || 0,  unit: s5Txt('orders', 'طلب'),          color: '#14b8a6', iconType: 'box'    },
-      { label: s5Txt('Total Pieces Sold', 'إجمالي القطع المُباعة'),       value: pd.summary.totalPieces    || 0,  unit: s5Txt('pieces', 'قطعة'),         color: '#3b82f6', iconType: 'pieces' },
-      { label: s5Txt('Total Earned Commission', 'إجمالي العمولة المحققة'),      value: pd.summary.totalComm      || 0,  unit: 'SAR',          color: '#f59e0b', iconType: 'coins'  },
-      { label: s5Txt('Products generating 80% of commission', 'منتجات تحقق 80% من العمولة'), value: count80,                         unit: s5Txt('products only', 'منتجات فقط'),  color: '#ef4444', iconType: 'pie'    },
+      { label: s5Txt('Total Products Sold', 'Ø¥Ø¬Ù…Ø§Ù„ÙŠ Ø§Ù„Ù…Ù†ØªØ¬Ø§Øª Ø§Ù„Ù…Ø¨Ø§Ø¹Ø©'),    value: pd.summary.uniqueProducts || 0,  unit: s5Txt('unique products', 'Ù…Ù†ØªØ¬ Ù…Ø®ØªÙ„Ù'),  color: '#a855f7', iconType: 'grid'   },
+      { label: s5Txt('Total Orders', 'Ø¥Ø¬Ù…Ø§Ù„ÙŠ Ø§Ù„Ø·Ù„Ø¨Ø§Øª Ø§Ù„Ù…ÙØ³Ø¬Ù„Ø©'),    value: pd.summary.totalOrders    || 0,  unit: s5Txt('orders', 'Ø·Ù„Ø¨'),          color: '#14b8a6', iconType: 'box'    },
+      { label: s5Txt('Total Pieces Sold', 'Ø¥Ø¬Ù…Ø§Ù„ÙŠ Ø§Ù„Ù‚Ø·Ø¹ Ø§Ù„Ù…ÙØ¨Ø§Ø¹Ø©'),       value: pd.summary.totalPieces    || 0,  unit: s5Txt('pieces', 'Ù‚Ø·Ø¹Ø©'),         color: '#3b82f6', iconType: 'pieces' },
+      { label: s5Txt('Total Earned Commission', 'Ø¥Ø¬Ù…Ø§Ù„ÙŠ Ø§Ù„Ø¹Ù…ÙˆÙ„Ø© Ø§Ù„Ù…Ø­Ù‚Ù‚Ø©'),      value: pd.summary.totalComm      || 0,  unit: 'SAR',          color: '#f59e0b', iconType: 'coins'  },
+      { label: s5Txt('Products generating 80% of commission', 'Ù…Ù†ØªØ¬Ø§Øª ØªØ­Ù‚Ù‚ 80% Ù…Ù† Ø§Ù„Ø¹Ù…ÙˆÙ„Ø©'), value: count80,                         unit: s5Txt('products only', 'Ù…Ù†ØªØ¬Ø§Øª ÙÙ‚Ø·'),  color: '#ef4444', iconType: 'pie'    },
     ];
 
     INSIGHTS = buildInsights(PRODUCTS_RAW);
@@ -410,30 +423,31 @@ window.renderSection5 = function (mountEl, data, ctx) {
     PRODUCT_BY_KEY[key] = p;
   });
 
-  // ── T8: Smart Insights ───────────────────────────────────────────────────
+  // â”€â”€ T8: Smart Insights â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
   function buildInsights(products) {
     if (!products || !products.length) return [];
     const insights = [];
 
     const worstCancel = products.reduce((prev, cur) => cur.cancelPct > prev.cancelPct ? cur : prev, products[0]);
     if (worstCancel && worstCancel.cancelPct >= 40) {
-      insights.push({ emoji:'🔴', bg:'rgba(239,68,68,0.12)', border:'rgba(239,68,68,0.28)', iconGlow:'#ef4444',
-        label:s5Txt('Warning: High Cancel Rate', 'تحذير: نسبة إلغاء عالية'), value: worstCancel.name,
-        detail: worstCancel.cancelPct + s5Txt('% canceled — consider pausing', '٪ إلغاء — فكر في إيقافه مؤقتاً'), detailColor:'#ef4444' });
+      insights.push({ emoji:'ðŸ”´', bg:'rgba(239,68,68,0.12)', border:'rgba(239,68,68,0.28)', iconGlow:'#ef4444',
+        label:s5Txt('Warning: High Cancel Rate', 'ØªØ­Ø°ÙŠØ±: Ù†Ø³Ø¨Ø© Ø¥Ù„ØºØ§Ø¡ Ø¹Ø§Ù„ÙŠØ©'), value: worstCancel.name,
+        detail: worstCancel.cancelPct + s5Txt('% canceled â€” consider pausing', 'Ùª Ø¥Ù„ØºØ§Ø¡ â€” ÙÙƒØ± ÙÙŠ Ø¥ÙŠÙ‚Ø§ÙÙ‡ Ù…Ø¤Ù‚ØªØ§Ù‹'), detailColor:'#ef4444' });
     }
 
     const bestDelivery = products.reduce((prev, cur) => (cur.drRate || 0) > (prev.drRate || 0) ? cur : prev, products[0]);
     if (bestDelivery) {
-      insights.push({ emoji:'🏆', bg:'rgba(0,230,118,0.12)', border:'rgba(0,230,118,0.28)', iconGlow:'#00e676',
-        label:s5Txt('Best Delivery Rate', 'أفضل نسبة تسليم'), value: bestDelivery.name,
-        detail: (bestDelivery.drRate || 0) + s5Txt('% delivered — scalable', '٪ تسليم — قابل للتوسع'), detailColor:'#00e676' });
+      const bestDeliveryColor = window.dashboardRateColor ? window.dashboardRateColor(bestDelivery.drRate || 0) : ((bestDelivery.drRate || 0) >= 40 ? '#22d3ee' : (bestDelivery.drRate || 0) >= 30 ? '#00e676' : (bestDelivery.drRate || 0) >= 20 ? '#f59e0b' : '#ef4444');
+      insights.push({ emoji:'ðŸ†', bg:bestDeliveryColor + '1f', border:bestDeliveryColor + '47', iconGlow:bestDeliveryColor,
+        label:s5Txt('Best Delivery Rate', 'Ø£ÙØ¶Ù„ Ù†Ø³Ø¨Ø© ØªØ³Ù„ÙŠÙ…'), value: bestDelivery.name,
+        detail: (bestDelivery.drRate || 0) + s5Txt('% delivered â€” scalable', 'Ùª ØªØ³Ù„ÙŠÙ… â€” Ù‚Ø§Ø¨Ù„ Ù„Ù„ØªÙˆØ³Ø¹'), detailColor:bestDeliveryColor });
     }
 
     const worstNdr = products.reduce((prev, cur) => cur.ndrPct < prev.ndrPct ? cur : prev, products[0]);
-    if (worstNdr && worstNdr.ndrPct <= 45) {
-      insights.push({ emoji:'🚚', bg:'rgba(249,115,22,0.12)', border:'rgba(249,115,22,0.28)', iconGlow:'#f97316',
-        label:s5Txt('Potential Shipping Issue', 'مشكلة شحن محتملة'), value: worstNdr.name,
-        detail: 'NDR ' + worstNdr.ndrPct + s5Txt('% — check responsible company', '٪ — تحقق من الشركة المسؤولة'), detailColor:'#f97316' });
+    if (worstNdr && worstNdr.ndrPct < 20) {
+      insights.push({ emoji:'ðŸšš', bg:'rgba(239,68,68,0.12)', border:'rgba(239,68,68,0.28)', iconGlow:'#ef4444',
+        label:s5Txt('Potential Shipping Issue', 'Ù…Ø´ÙƒÙ„Ø© Ø´Ø­Ù† Ù…Ø­ØªÙ…Ù„Ø©'), value: worstNdr.name,
+        detail: 'NDR ' + worstNdr.ndrPct + s5Txt('% â€” check responsible company', 'Ùª â€” ØªØ­Ù‚Ù‚ Ù…Ù† Ø§Ù„Ø´Ø±ÙƒØ© Ø§Ù„Ù…Ø³Ø¤ÙˆÙ„Ø©'), detailColor:'#ef4444' });
     }
 
     const bestScale = products.reduce((prev, cur) => {
@@ -442,22 +456,22 @@ window.renderSection5 = function (mountEl, data, ctx) {
       return scoreA > scoreB ? cur : prev;
     }, products[0]);
     if (bestScale) {
-      insights.push({ emoji:'⭐', bg:'rgba(245,158,11,0.12)', border:'rgba(245,158,11,0.28)', iconGlow:'#f59e0b',
-        label:s5Txt('Best Product for Scaling', 'أفضل منتج للتوسع'), value: bestScale.name,
-        detail: s5Txt('Commission ', 'عمولة ') + (bestScale.commission || 0).toLocaleString('en-US') + ' SAR × ' + (bestScale.drRate || 0) + s5Txt('% delivery', '٪ تسليم'),
+      insights.push({ emoji:'â­', bg:'rgba(245,158,11,0.12)', border:'rgba(245,158,11,0.28)', iconGlow:'#f59e0b',
+        label:s5Txt('Best Product for Scaling', 'Ø£ÙØ¶Ù„ Ù…Ù†ØªØ¬ Ù„Ù„ØªÙˆØ³Ø¹'), value: bestScale.name,
+        detail: s5Txt('Commission ', 'Ø¹Ù…ÙˆÙ„Ø© ') + (bestScale.commission || 0).toLocaleString('en-US') + ' SAR Ã— ' + (bestScale.drRate || 0) + s5Txt('% delivery', 'Ùª ØªØ³Ù„ÙŠÙ…'),
         detailColor:'#f59e0b' });
     }
 
     if (insights.length === 0) {
       const topComm = products.reduce((prev, cur) => cur.revenue > prev.revenue ? cur : prev, products[0]);
-      insights.push({ emoji:'🏆', bg:'rgba(0,230,118,0.12)', border:'rgba(0,230,118,0.28)', iconGlow:'#00e676',
-        label:s5Txt('Best Commission Performance', 'أفضل أداء في العمولة'), value: topComm.name,
+      insights.push({ emoji:'ðŸ†', bg:bestDeliveryColor + '1f', border:bestDeliveryColor + '47', iconGlow:bestDeliveryColor,
+        label:s5Txt('Best Commission Performance', 'Ø£ÙØ¶Ù„ Ø£Ø¯Ø§Ø¡ ÙÙŠ Ø§Ù„Ø¹Ù…ÙˆÙ„Ø©'), value: topComm.name,
         detail: (topComm.revenue||0).toLocaleString('en-US') + ' SAR', detailColor:'#fbbf24' });
     }
     return insights;
   }
 
-  // ── State ────────────────────────────────────────────────────────────────
+  // â”€â”€ State â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
   let filterState = { search: '', statusKey: 'all' };
   let sortState   = { field: 'deliveredCount', dir: 'desc' };
   let viewMode    = 'expanded';
@@ -467,15 +481,15 @@ window.renderSection5 = function (mountEl, data, ctx) {
   let _sortMenuCleanup = null;
 
   const STATUS_PILLS = [
-    { key:'all',        label: s5Txt('All', 'الكل'),          color:'#fff'     },
-    { key:'delivered',  label: s5Txt('Delivered', 'مُسلَّمة'),       color:'#00e676'  },
+    { key:'all',        label: s5Txt('All', 'Ø§Ù„ÙƒÙ„'),          color:'#fff'     },
+    { key:'delivered',  label: s5Txt('Delivered', 'Ù…ÙØ³Ù„ÙŽÙ‘Ù…Ø©'),       color:'#00e676'  },
     { key:'failed',     label: p5Txt('failedOrders'), color:'#f97316' },
     { key:'canceled',   label: p5Txt('canceledOrders'), color:'#ef4444'  },
-    { key:'shipping',   label: s5Txt('In Shipping', 'في الشحن'),       color:'#14b8a6'  },
-    { key:'processing', label: s5Txt('Processing', 'قيد المعالجة'),   color:'#3b82f6'  },
+    { key:'shipping',   label: s5Txt('In Shipping', 'ÙÙŠ Ø§Ù„Ø´Ø­Ù†'),       color:'#14b8a6'  },
+    { key:'processing', label: s5Txt('Processing', 'Ù‚ÙŠØ¯ Ø§Ù„Ù…Ø¹Ø§Ù„Ø¬Ø©'),   color:'#3b82f6'  },
   ];
 
-  // ── FIX 1: applyFilters — NEVER re-assigns rank ───────────────────────────
+  // â”€â”€ FIX 1: applyFilters â€” NEVER re-assigns rank â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
   function applyFilters() {
     const cacheKey = [
       PRODUCTS_RAW.length,
@@ -518,7 +532,7 @@ window.renderSection5 = function (mountEl, data, ctx) {
       return (b.commission || 0) - (a.commission || 0);
     });
 
-    // FIX 1: preserve the original rank from PRODUCTS_RAW — do NOT re-number
+    // FIX 1: preserve the original rank from PRODUCTS_RAW â€” do NOT re-number
     listCacheKey = cacheKey;
     listCache = list;
     return listCache;
@@ -535,7 +549,7 @@ window.renderSection5 = function (mountEl, data, ctx) {
     return list.slice(start, start + PAGE_SIZE);
   }
 
-  // ── Health row styling ────────────────────────────────────────────────────
+  // â”€â”€ Health row styling â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
   function healthRowStyle(p) {
     if (p.deliveredCount === 0) {
       return { border: 'rgba(255,255,255,0.05)', shadow: 'none', bg: 'rgba(255,255,255,0.012)', opacity: '0.45' };
@@ -549,14 +563,15 @@ window.renderSection5 = function (mountEl, data, ctx) {
       return Object.assign({}, rankColors[p.rank - 1], { opacity: '1' });
     }
     if (p.placedCount >= 5) {
+      if ((p.drRate || 0) >= 40)  return { border:'rgba(34,211,238,0.22)', shadow:'0 0 0 1px rgba(34,211,238,0.13), 0 2px 12px rgba(34,211,238,0.07)', bg:'linear-gradient(to left, rgba(34,211,238,0.035), transparent 60%)', opacity:'1' };
       if ((p.drRate || 0) >= 30)  return { border:'rgba(0,230,118,0.2)',  shadow:'0 0 0 1px rgba(0,230,118,0.12), 0 2px 12px rgba(0,230,118,0.06)',  bg:'linear-gradient(to left, rgba(0,230,118,0.03), transparent 60%)',  opacity:'1' };
       if (p.cancelPct  >= 40)  return { border:'rgba(239,68,68,0.2)',   shadow:'0 0 0 1px rgba(239,68,68,0.10), 0 2px 12px rgba(239,68,68,0.06)',   bg:'linear-gradient(to left, rgba(239,68,68,0.03), transparent 60%)',   opacity:'1' };
-      if (p.ndrPct     <= 45)  return { border:'rgba(249,115,22,0.2)',  shadow:'0 0 0 1px rgba(249,115,22,0.10), 0 2px 12px rgba(249,115,22,0.06)', bg:'linear-gradient(to left, rgba(249,115,22,0.03), transparent 60%)',  opacity:'1' };
+      if (p.ndrPct     < 20)   return { border:'rgba(239,68,68,0.2)',   shadow:'0 0 0 1px rgba(239,68,68,0.10), 0 2px 12px rgba(239,68,68,0.06)',   bg:'linear-gradient(to left, rgba(239,68,68,0.03), transparent 60%)',   opacity:'1' };
     }
     return { border:'rgba(255,255,255,0.07)', shadow:'none', bg:'rgba(255,255,255,0.018)', opacity:'1' };
   }
 
-  // ── Rank badge ───────────────────────────────────────────────────────────
+  // â”€â”€ Rank badge â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
   const RANK_CFG = [
     { bg:'linear-gradient(135deg,#fcd34d,#d97706)', shadow:'0 0 10px rgba(251,191,36,0.6)',  color:'#1c1400' },
     { bg:'linear-gradient(135deg,#9ca3af,#6b7280)', shadow:'0 0 8px rgba(156,163,175,0.4)',  color:'#fff'    },
@@ -572,7 +587,7 @@ window.renderSection5 = function (mountEl, data, ctx) {
     return `<div style="width:32px;height:32px;border-radius:50%;flex-shrink:0;background:${cfg.bg};box-shadow:${cfg.shadow};color:${cfg.color};font-size:14px;font-weight:900;display:flex;align-items:center;justify-content:center">${rank}</div>`;
   }
 
-  // ── Stat card icons ──────────────────────────────────────────────────────
+  // â”€â”€ Stat card icons â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
   function statIconHTML(type, color) {
     if (type === 'grid')   return `<svg width="22" height="22" viewBox="0 0 22 22" fill="none" style="display:block"><rect x="1" y="1" width="8" height="8" rx="2" fill="${color}"/><rect x="13" y="1" width="8" height="8" rx="2" fill="${color}" opacity="0.8"/><rect x="1" y="13" width="8" height="8" rx="2" fill="${color}" opacity="0.8"/><rect x="13" y="13" width="8" height="8" rx="2" fill="${color}" opacity="0.6"/></svg>`;
     if (type === 'box')    return `<svg width="22" height="22" viewBox="0 0 24 24" fill="none" style="display:block"><path d="M12 2L2 7l10 5 10-5-10-5z" fill="${color}"/><path d="M2 17l10 5 10-5" stroke="${color}" stroke-width="1.8" fill="none" opacity="0.7"/><path d="M2 12l10 5 10-5" stroke="${color}" stroke-width="1.8" fill="none" opacity="0.85"/></svg>`;
@@ -582,31 +597,31 @@ window.renderSection5 = function (mountEl, data, ctx) {
     return '';
   }
 
-  // ── Rate badge ────────────────────────────────────────────────────────────
+  // â”€â”€ Rate badge â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
   function rateBadgeHTML(value, type) {
     let color;
-    if      (type === 'delivery')     color = value >= 30 ? '#00e676' : value >= 20 ? '#f59e0b' : '#ef4444';
+    if      (type === 'delivery')     color = ndrColor(value);
     else if (type === 'cancel')       color = value >= 40 ? '#ef4444' : value >= 30 ? '#f59e0b' : '#8892a4';
-    else if (type === 'ndr')          color = value >= 75 ? '#00e676' : value >= 55 ? '#f59e0b' : '#f97316';
-    else if (type === 'confirmation') color = value >= 65 ? '#00e676' : value >= 50 ? '#f59e0b' : '#ef4444';
+    else if (type === 'ndr')          color = ndrColor(value);
+    else if (type === 'confirmation') color = ndrColor(value);
     else color = '#8892a4';
 
     const capped = Math.min(Math.max(value, 0), 100);
 
-    return `<div style="font-size:18px;font-weight:900;color:${color};line-height:1;text-align:center">${value}٪</div>
+    return `<div style="font-size:18px;font-weight:900;color:${color};line-height:1;text-align:center">${value}Ùª</div>
 <div style="width:100%;height:3px;background:rgba(255,255,255,0.07);border-radius:2px;overflow:hidden;margin-top:6px">
   <div class="s5-rate-bar" data-target="${capped}" style="height:100%;width:100%;transform:scaleX(0);transform-origin:${isAr ? 'right' : 'left'};background:${color};border-radius:2px;transition:transform 0.75s cubic-bezier(0.4,0,0.2,1);will-change:transform"></div>
 </div>`;
   }
 
-  // ── Funnel panel content ─────────────────────────────────────────────────
+  // â”€â”€ Funnel panel content â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
   function funnelHTML(p) {
     const total = p.placedCount || 1;
     const stages = [
-      { label:s5Txt('Total Orders', s5Txt('Total Orders', 'إجمالي الطلبات')), count: p.placedCount,    color:'#fff',    pct: 100 },
-      { label:s5Txt('Confirmed', 'مؤكدة'),          count: p.confirmedCount, color:'#3b82f6', pct: p.confirmationPct },
-      { label: s5Txt('In Shipping', 'في الشحن'),       count: p.shippingCount,  color:'#14b8a6', pct: parseFloat((p.shippingCount/total*100).toFixed(1)) },
-      { label:s5Txt('Delivered ✓', 'مُسلَّمة ✓'),    count: p.deliveredCount, color:'#00e676', pct: p.deliveryPct },
+      { label:s5Txt('Total Orders', s5Txt('Total Orders', 'Ø¥Ø¬Ù…Ø§Ù„ÙŠ Ø§Ù„Ø·Ù„Ø¨Ø§Øª')), count: p.placedCount,    color:'#fff',    pct: 100 },
+      { label:s5Txt('Confirmed', 'Ù…Ø¤ÙƒØ¯Ø©'),          count: p.confirmedCount, color:'#3b82f6', pct: p.confirmationPct },
+      { label: s5Txt('In Shipping', 'ÙÙŠ Ø§Ù„Ø´Ø­Ù†'),       count: p.shippingCount,  color:'#14b8a6', pct: parseFloat((p.shippingCount/total*100).toFixed(1)) },
+      { label:s5Txt('Delivered âœ“', 'Ù…ÙØ³Ù„ÙŽÙ‘Ù…Ø© âœ“'),    count: p.deliveredCount, color:'#00e676', pct: p.deliveryPct },
       { label:p5Txt('funnelFailed'), count: p.failedCount, color:'#f97316', pct: parseFloat(((p.failedCount || 0)/total*100).toFixed(1)) },
       { label:p5Txt('funnelCanceled'), count: p.canceledCount, color:'#ef4444', pct: p.cancelPct },
     ];
@@ -614,7 +629,7 @@ window.renderSection5 = function (mountEl, data, ctx) {
       const indent = i * 14;
       return `<div style="display:flex;align-items:center;gap:10px;margin-bottom:8px;padding-right:${indent}px">
         <div style="width:${Math.max(4, s.pct)}%;max-width:160px;height:20px;border-radius:4px;background:${s.color}22;border:1px solid ${s.color}55;display:flex;align-items:center;padding:0 8px;min-width:56px">
-          <div style="font-size:10px;font-weight:700;color:${s.color};white-space:nowrap">${s.pct}٪</div>
+          <div style="font-size:10px;font-weight:700;color:${s.color};white-space:nowrap">${s.pct}Ùª</div>
         </div>
         <div style="font-size:12px;color:rgba(255,255,255,0.7);flex-shrink:0">${s.label}</div>
         <div style="font-size:12px;font-weight:700;color:#fff;margin-right:auto">${(s.count||0).toLocaleString('en-US')}</div>
@@ -623,7 +638,7 @@ window.renderSection5 = function (mountEl, data, ctx) {
   }
 
   function citiesHTML(p) {
-    if (!p.cityBreakdown || !p.cityBreakdown.length) return `<div style="color:rgba(255,255,255,0.3);font-size:12px">${s5Txt('No data', 'لا توجد بيانات')}</div>`;
+    if (!p.cityBreakdown || !p.cityBreakdown.length) return `<div style="color:rgba(255,255,255,0.3);font-size:12px">${s5Txt('No data', 'Ù„Ø§ ØªÙˆØ¬Ø¯ Ø¨ÙŠØ§Ù†Ø§Øª')}</div>`;
     const topCities = p.cityBreakdown.slice(0, 5);
     const maxCount = topCities[0].count;
 
@@ -640,16 +655,16 @@ window.renderSection5 = function (mountEl, data, ctx) {
         const found = Object.keys(_gpm).find(k => k.toLowerCase().indexOf(lc) !== -1 || lc.indexOf(k.toLowerCase()) !== -1);
         cell = found && _gpm[found][_prodKey];
       }
-      if (!cell || !cell.orders) return null;
+      if (!cell || (!cell.orders && !cell.delivered)) return null;
       const ndr = cell.orders > 0 ? Math.round((cell.delivered || 0) / cell.orders * 1000) / 10 : null;
       return { delivered: cell.delivered || 0, ndr };
     }
 
     const headerRow = `<div style="display:grid;grid-template-columns:1fr 46px 46px 44px;gap:5px;
       padding:3px 6px 6px;margin-bottom:2px;border-bottom:1px solid rgba(255,255,255,0.06);">
-      <span style="font-size:10px;font-weight:700;color:rgba(255,255,255,0.28)">${s5Txt('City','المدينة')}</span>
-      <span style="font-size:10px;font-weight:700;color:rgba(255,255,255,0.28);text-align:center">${s5Txt('Orders','طلبات')}</span>
-      <span style="font-size:10px;font-weight:700;color:rgba(255,255,255,0.28);text-align:center">${s5Txt('Dlvrd','وصل')}</span>
+      <span style="font-size:10px;font-weight:700;color:rgba(255,255,255,0.28)">${s5Txt('City','Ø§Ù„Ù…Ø¯ÙŠÙ†Ø©')}</span>
+      <span style="font-size:10px;font-weight:700;color:rgba(255,255,255,0.28);text-align:center">${s5Txt('Orders','Ø·Ù„Ø¨Ø§Øª')}</span>
+      <span style="font-size:10px;font-weight:700;color:rgba(255,255,255,0.28);text-align:center">${s5Txt('Dlvrd','ÙˆØµÙ„')}</span>
       <span style="font-size:10px;font-weight:700;color:rgba(255,255,255,0.28);text-align:center">NDR</span>
     </div>`;
 
@@ -658,10 +673,10 @@ window.renderSection5 = function (mountEl, data, ctx) {
       const colors = ['#f59e0b','#a855f7','#14b8a6'];
       const color  = colors[i] || '#8892a4';
       const stats  = _getCityStats(c.name);
-      const deliveredDisplay = stats ? stats.delivered.toLocaleString('en-US') : '—';
+      const deliveredDisplay = stats ? stats.delivered.toLocaleString('en-US') : 'â€”';
       const ndrVal   = stats ? stats.ndr : null;
-      const ndrColor = ndrVal === null ? 'rgba(255,255,255,0.22)' : ndrVal >= 75 ? '#00e676' : ndrVal >= 55 ? '#f59e0b' : '#ef4444';
-      const ndrText  = ndrVal === null ? '—' : ndrVal.toFixed(1) + '%';
+      const ndrColor = ndrVal === null ? 'rgba(255,255,255,0.22)' : window.dashboardRateColor(ndrVal);
+      const ndrText  = ndrVal === null ? 'â€”' : ndrVal.toFixed(1) + '%';
       return `<div style="display:grid;grid-template-columns:1fr 46px 46px 44px;gap:5px;
         align-items:center;margin-bottom:7px;padding:5px 6px;border-radius:7px;background:rgba(255,255,255,0.02);">
         <div>
@@ -679,24 +694,50 @@ window.renderSection5 = function (mountEl, data, ctx) {
     return headerRow + dataRows;
   }
 
+  function ndrColor(value) {
+    return window.dashboardRateColor ? window.dashboardRateColor(value) : (value >= 40 ? '#22d3ee' : value >= 30 ? '#00e676' : value >= 20 ? '#f59e0b' : '#ef4444');
+  }
+
   function piecesBreakdownHTML(p) {
     if (!p.piecesBreakdown || !p.piecesBreakdown.length) return '';
     const total = p.piecesBreakdown.reduce((s, x) => s + x.count, 0) || 1;
-    return p.piecesBreakdown.map(item => {
+    const maxCount = p.piecesBreakdown.reduce((max, x) => Math.max(max, Number(x.count) || 0), 0) || 1;
+    const headerRow = `<div style="display:grid;grid-template-columns:42px 52px 58px 52px;gap:6px;
+      padding:3px 0 6px;margin-bottom:6px;border-bottom:1px solid rgba(255,255,255,0.06);">
+      <span style="font-size:9px;font-weight:700;color:rgba(255,255,255,0.28)">${s5Txt('Qty','Qty')}</span>
+      <span style="font-size:9px;font-weight:700;color:rgba(255,255,255,0.28);text-align:center">${s5Txt('Orders','Orders')}</span>
+      <span style="font-size:9px;font-weight:700;color:rgba(255,255,255,0.28);text-align:center">${s5Txt('Delivered','Delivered')}</span>
+      <span style="font-size:9px;font-weight:700;color:rgba(255,255,255,0.28);text-align:center">${s5Txt('NDR','NDR')}</span>
+    </div>`;
+    const rows = p.piecesBreakdown.map(item => {
       const pct = parseFloat((item.count / total * 100).toFixed(1));
-      return `<div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:8px">
-        <span style="font-size:13px;font-weight:900;color:#f59e0b">${item.qty}x</span>
-        <div style="flex:1;height:4px;background:rgba(255,255,255,0.07);border-radius:2px;overflow:hidden;margin:0 10px">
-          <div style="height:100%;width:${pct}%;background:#f59e0b;border-radius:2px"></div>
+      const barPct = Math.round((Number(item.count) || 0) / maxCount * 100);
+      const delivered = Number(item.delivered || 0);
+      const hasOrders = (Number(item.count) || 0) > 0;
+      const hasDeliveredMetric = hasOrders || delivered > 0;
+      const ndrVal = item.ndr !== undefined
+        ? Number(item.ndr || 0)
+        : ((Number(item.count) || 0) > 0 ? delivered / Number(item.count) * 100 : 0);
+      const ndrText = hasOrders ? ndrVal.toFixed(1) + '%' : 'Ã¢â‚¬â€';
+      const ndrTextColor = hasOrders ? ndrColor(ndrVal) : 'rgba(255,255,255,0.45)';
+      return `<div style="display:grid;grid-template-columns:42px 52px 58px 52px;gap:6px;align-items:center;margin-bottom:8px">
+        <div>
+          <div style="font-size:13px;font-weight:900;color:#f59e0b">${esc(item.qty)}x</div>
+          <div style="height:3px;background:rgba(255,255,255,0.07);border-radius:2px;overflow:hidden;margin-top:4px">
+            <div style="height:100%;width:${barPct || pct}%;background:#f59e0b;border-radius:2px"></div>
+          </div>
         </div>
-        <span style="font-size:11px;color:rgba(255,255,255,0.6)">${item.count}</span>
+        <span style="text-align:center;font-size:12px;font-weight:700;color:#f59e0b">${Number(item.count || 0).toLocaleString('en-US')}</span>
+        <span style="text-align:center;font-size:12px;font-weight:700;color:#00e676">${hasDeliveredMetric ? delivered.toLocaleString('en-US') : 'Ã¢â‚¬â€'}</span>
+        <span style="text-align:center;font-size:11px;font-weight:700;color:${ndrTextColor}">${ndrText}</span>
       </div>`;
     }).join('');
+    return headerRow + rows;
   }
 
   function quantityCitiesHTML(p) {
     if (!p.quantityCityBreakdown || !p.quantityCityBreakdown.length) {
-      return `<div style="color:rgba(255,255,255,0.3);font-size:12px">${s5Txt('No data', 'لا توجد بيانات')}</div>`;
+      return `<div style="color:rgba(255,255,255,0.3);font-size:12px">${s5Txt('No data', 'Ù„Ø§ ØªÙˆØ¬Ø¯ Ø¨ÙŠØ§Ù†Ø§Øª')}</div>`;
     }
 
     return `<div style="display:flex;gap:12px;flex-wrap:wrap">
@@ -707,24 +748,24 @@ window.renderSection5 = function (mountEl, data, ctx) {
         // 4-column header: City | Orders | Delivered | NDR
         const colHdr = `<div style="display:grid;grid-template-columns:1fr 52px 58px 52px;gap:6px;
           padding:3px 6px 5px;margin-bottom:4px;border-bottom:1px solid rgba(255,255,255,0.06);">
-          <span style="font-size:9px;font-weight:700;color:rgba(255,255,255,0.28)">${s5Txt('City','المدينة')}</span>
-          <span style="font-size:9px;font-weight:700;color:rgba(255,255,255,0.28);text-align:center">${s5Txt('Orders','طلبات')}</span>
-          <span style="font-size:9px;font-weight:700;color:rgba(255,255,255,0.28);text-align:center">${s5Txt('Delivered','مُسلَّمة')}</span>
+          <span style="font-size:9px;font-weight:700;color:rgba(255,255,255,0.28)">${s5Txt('City','Ø§Ù„Ù…Ø¯ÙŠÙ†Ø©')}</span>
+          <span style="font-size:9px;font-weight:700;color:rgba(255,255,255,0.28);text-align:center">${s5Txt('Orders','Ø·Ù„Ø¨Ø§Øª')}</span>
+          <span style="font-size:9px;font-weight:700;color:rgba(255,255,255,0.28);text-align:center">${s5Txt('Delivered','Ù…ÙØ³Ù„ÙŽÙ‘Ù…Ø©')}</span>
           <span style="font-size:9px;font-weight:700;color:rgba(255,255,255,0.28);text-align:center">${s5Txt('NDR','NDR')}</span>
         </div>`;
 
         const cityRows = cities.length ? cities.map((city, i) => {
           const barPct = Math.round((city.count / maxCount) * 100);
-          const hasDelivered = city.delivered !== undefined && city.delivered > 0;
+          const hasDelivered = city.delivered !== undefined;
           const deliveredCell = hasDelivered
             ? city.delivered.toLocaleString('en-US')
-            : '—';
-          let ndrCell = '—';
+            : 'â€”';
+          let ndrCell = 'â€”';
           let ndrColor = 'rgba(255,255,255,0.45)';
-          if (hasDelivered && city.count > 0) {
+          if (city.count > 0) {
             const ndrVal = parseFloat((city.delivered / city.count * 100).toFixed(1));
             ndrCell = ndrVal + '%';
-            ndrColor = ndrVal >= 75 ? '#00e676' : ndrVal >= 55 ? '#f59e0b' : '#ef4444';
+            ndrColor = window.dashboardRateColor ? window.dashboardRateColor(ndrVal) : '#ef4444';
           }
           return `<div style="display:grid;grid-template-columns:1fr 52px 58px 52px;gap:6px;
             align-items:center;margin-bottom:${i === cities.length - 1 ? '0' : '7px'};
@@ -739,7 +780,7 @@ window.renderSection5 = function (mountEl, data, ctx) {
             <span style="text-align:center;font-size:12px;font-weight:700;color:#00e676">${deliveredCell}</span>
             <span style="text-align:center;font-size:11px;font-weight:700;color:${ndrColor}">${ndrCell}</span>
           </div>`;
-        }).join('') : `<div style="color:rgba(255,255,255,0.3);font-size:11px">${s5Txt('No data', 'لا توجد بيانات')}</div>`;
+        }).join('') : `<div style="color:rgba(255,255,255,0.3);font-size:11px">${s5Txt('No data', 'Ù„Ø§ ØªÙˆØ¬Ø¯ Ø¨ÙŠØ§Ù†Ø§Øª')}</div>`;
 
         return `<div style="flex:1 1 240px;min-width:220px;padding:12px;border-radius:10px;background:rgba(255,255,255,0.025);border:1px solid rgba(255,255,255,0.06)">
           <div style="font-size:13px;font-weight:900;color:#f59e0b;margin-bottom:10px">${esc(item.qty)}x</div>
@@ -755,19 +796,19 @@ window.renderSection5 = function (mountEl, data, ctx) {
         ${window.renderProductAiAdvisor ? window.renderProductAiAdvisor(p) : ''}
       </div>
       <div style="flex:1;min-width:220px">
-        <div style="font-size:11px;font-weight:700;color:rgba(255,255,255,0.4);margin-bottom:12px;text-align:right">${s5Txt("Order Funnel", "مسار الطلبات")}</div>
+        <div style="font-size:11px;font-weight:700;color:rgba(255,255,255,0.4);margin-bottom:12px;text-align:right">${s5Txt("Order Funnel", "Ù…Ø³Ø§Ø± Ø§Ù„Ø·Ù„Ø¨Ø§Øª")}</div>
         ${funnelHTML(p)}
       </div>
       <div style="flex:1;min-width:160px">
-        <div style="font-size:11px;font-weight:700;color:rgba(255,255,255,0.4);margin-bottom:12px;text-align:right">${s5Txt("Top Cities", "أبرز المدن")}</div>
+        <div style="font-size:11px;font-weight:700;color:rgba(255,255,255,0.4);margin-bottom:12px;text-align:right">${s5Txt("Top Cities", "Ø£Ø¨Ø±Ø² Ø§Ù„Ù…Ø¯Ù†")}</div>
         ${citiesHTML(p)}
       </div>
       <div style="flex:1;min-width:120px">
-        <div style="font-size:11px;font-weight:700;color:rgba(255,255,255,0.4);margin-bottom:12px;text-align:right">${s5Txt("Quantity Distribution", "توزيع الكميات")}</div>
+        <div style="font-size:11px;font-weight:700;color:rgba(255,255,255,0.4);margin-bottom:12px;text-align:right">${s5Txt("Quantity Distribution", "ØªÙˆØ²ÙŠØ¹ Ø§Ù„ÙƒÙ…ÙŠØ§Øª")}</div>
         ${piecesBreakdownHTML(p)}
       </div>
       <div style="flex:1 1 100%;min-width:220px">
-        <div style="font-size:11px;font-weight:700;color:rgba(255,255,255,0.4);margin-bottom:12px;text-align:right">${s5Txt("Top Cities by Quantity", "أبرز المدن حسب الكمية")}</div>
+        <div style="font-size:11px;font-weight:700;color:rgba(255,255,255,0.4);margin-bottom:12px;text-align:right">${s5Txt("Top Cities by Quantity", "Ø£Ø¨Ø±Ø² Ø§Ù„Ù…Ø¯Ù† Ø­Ø³Ø¨ Ø§Ù„ÙƒÙ…ÙŠØ©")}</div>
         ${quantityCitiesHTML(p)}
       </div>
     </div>`;
@@ -775,14 +816,14 @@ window.renderSection5 = function (mountEl, data, ctx) {
 
   const DIV = '<div class="s5-col-divider" style="width:1px;align-self:stretch;background:rgba(255,255,255,0.05)"></div>';
 
-  // ── Product row HTML ──────────────────────────────────────────────────────
+  // â”€â”€ Product row HTML â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
   function productRowHTML(p, i) {
     const hs      = healthRowStyle(p);
     const compact = viewMode === 'compact';
     const minH    = compact ? '60px' : '96px';
 
     const noDeliveryRate = p.deliveredCount === 0;
-    const zeroPill = `<div style="display:inline-flex;align-items:center;padding:3px 10px;border-radius:20px;background:rgba(255,255,255,0.06);border:1px solid rgba(255,255,255,0.1);font-size:10px;color:rgba(255,255,255,0.4);font-weight:700;white-space:nowrap">${s5Txt('No deliveries yet', 'لا تسليمات بعد')}</div>`;
+    const zeroPill = `<div style="display:inline-flex;align-items:center;padding:3px 10px;border-radius:20px;background:rgba(255,255,255,0.06);border:1px solid rgba(255,255,255,0.1);font-size:10px;color:rgba(255,255,255,0.4);font-weight:700;white-space:nowrap">${s5Txt('No deliveries yet', 'Ù„Ø§ ØªØ³Ù„ÙŠÙ…Ø§Øª Ø¨Ø¹Ø¯')}</div>`;
 
     const fadeClass = isFirstMount ? 'fade-up' : '';
     const fadeDelay = isFirstMount ? `animation-delay:${50 + i * 60}ms` : '';
@@ -880,14 +921,21 @@ window.renderSection5 = function (mountEl, data, ctx) {
       </div>
       ${DIV}
 
-      <!-- Col 13: P&L -->
+      <!-- Col 13: Break-even CPA -->
+      <div class="s5-cell s5-cell-breakeven" title="${attr(p5Txt('breakEvenHelp'))}" style="flex:0 0 104px;text-align:center;padding:0 6px">
+        <div style="font-size:${compact?'13px':'14px'};font-weight:900;color:${(Number(p.cpa)||0) > (Number(p.breakEvenCpa)||0) ? '#ef4444' : '#f59e0b'};white-space:nowrap">${(Number(p.breakEvenCpa)||0).toLocaleString(isAr?'ar-EG-u-nu-latn':'en-US',{minimumFractionDigits:2,maximumFractionDigits:2})}</div>
+        <div style="font-size:9px;color:rgba(245,158,11,0.55);font-weight:700;margin-top:2px">${selectedCurrency()}</div>
+      </div>
+      ${DIV}
+
+      <!-- Col 14: P&L -->
       <div class="s5-cell s5-cell-pnl" title="${attr(p5Txt('pnlHelp'))}" style="flex:0 0 110px;text-align:center;padding:0 6px">
         <div style="font-size:${compact?'13px':'14px'};font-weight:900;color:${p.profitLoss >= 0 ? '#00e676' : '#ef4444'};white-space:nowrap">${(Number(p.profitLoss)||0).toLocaleString(isAr?'ar-EG-u-nu-latn':'en-US',{minimumFractionDigits:2,maximumFractionDigits:2})}</div>
         <div style="font-size:9px;color:${p.profitLoss >= 0 ? 'rgba(0,230,118,0.55)' : 'rgba(239,68,68,0.55)'};font-weight:700;margin-top:2px">${selectedCurrency()}</div>
       </div>
       ${DIV}
 
-      <!-- Col 14: Commission -->
+      <!-- Col 15: Commission -->
       <div class="s5-cell s5-cell-commission" style="flex:0 0 100px;text-align:center;padding:0 7px">
         <div style="font-size:${compact?'18px':'22px'};font-weight:900;color:${p.accent || '#f59e0b'};letter-spacing:-0.5px">
           <span id="s5-rev-${i}">0</span>
@@ -906,7 +954,7 @@ window.renderSection5 = function (mountEl, data, ctx) {
                        background:rgba(20,184,166,0.1);color:#14b8a6;font-size:12px;
                        display:flex;align-items:center;justify-content:center;cursor:pointer;
                        transition:all 0.2s;flex-shrink:0;padding:0;">
-          🗺️
+          ðŸ—ºï¸
         </button>
 
         <!-- Modal Details Button -->
@@ -949,10 +997,10 @@ window.renderSection5 = function (mountEl, data, ctx) {
     </div>`;
   }
 
-  // ── Column header sort button ─────────────────────────────────────────────
+  // â”€â”€ Column header sort button â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
   function colHeaderBtn(label, field, flexStyle) {
     const isActive = sortState.field === field;
-    const arrow    = isActive ? (sortState.dir === 'desc' ? '↓' : '↑') : '↕';
+    const arrow    = isActive ? (sortState.dir === 'desc' ? 'â†“' : 'â†‘') : 'â†•';
     const arrowColor = isActive ? '#f59e0b' : 'rgba(255,255,255,0.2)';
     return `<button class="s5-sort-col" data-field="${field}"
         style="${flexStyle};background:none;border:none;color:rgba(255,255,255,0.35);
@@ -965,7 +1013,7 @@ window.renderSection5 = function (mountEl, data, ctx) {
     </button>`;
   }
 
-  // ── Pagination ────────────────────────────────────────────────────────────
+  // â”€â”€ Pagination â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
   function paginationHTML() {
     const list  = currentList();
     const total = totalProductPages();
@@ -999,14 +1047,14 @@ window.renderSection5 = function (mountEl, data, ctx) {
           (p >= currentPage - WINDOW && p <= currentPage + WINDOW)
         ) {
           pages.push(p);
-        } else if (pages[pages.length - 1] !== '…') {
-          pages.push('…');
+        } else if (pages[pages.length - 1] !== 'â€¦') {
+          pages.push('â€¦');
         }
       }
 
       return pages.map(p => {
-        if (p === '…') {
-          return `<span style="width:32px;text-align:center;color:rgba(255,255,255,0.25);font-size:13px;font-weight:600;user-select:none">…</span>`;
+        if (p === 'â€¦') {
+          return `<span style="width:32px;text-align:center;color:rgba(255,255,255,0.25);font-size:13px;font-weight:600;user-select:none">â€¦</span>`;
         }
         const isActive = p === currentPage;
         return `<button class="s5-page-btn" data-page="${p}"
@@ -1049,11 +1097,11 @@ window.renderSection5 = function (mountEl, data, ctx) {
       </button>
     </div>
     <div style="text-align:center;font-size:11px;color:rgba(255,255,255,0.3);font-weight:600;margin-bottom:8px;direction:${isAr ? 'rtl' : 'ltr'}">
-      ${s5Txt(`Showing ${start}–${end} of ${list.length} products`, `عرض ${start}–${end} من ${list.length} منتج`)}
+      ${s5Txt(`Showing ${start}â€“${end} of ${list.length} products`, `Ø¹Ø±Ø¶ ${start}â€“${end} Ù…Ù† ${list.length} Ù…Ù†ØªØ¬`)}
     </div>`;
   }
 
-  // ── Stat card ─────────────────────────────────────────────────────────────
+  // â”€â”€ Stat card â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
   function statCardHTML(c, i) {
     return `<div class="fade-up" style="flex:1;background:#0b1120;border:1px solid ${c.color}28;border-radius:14px;padding:14px 16px;direction:${isAr ? 'ltr' : 'rtl'};display:flex;flex-direction:row;align-items:center;gap:14px;position:relative;overflow:hidden;box-shadow:0 0 0 1px ${c.color}12,inset 0 0 40px ${c.color}06;animation-delay:${i * 60}ms">
       <div style="position:absolute;inset:0;pointer-events:none;background:radial-gradient(ellipse at 20% 50%,${c.color}10 0%,transparent 65%)"></div>
@@ -1066,7 +1114,7 @@ window.renderSection5 = function (mountEl, data, ctx) {
     </div>`;
   }
 
-  // ── Insight card ──────────────────────────────────────────────────────────
+  // â”€â”€ Insight card â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
   function insightCardHTML(ins, i) {
     return `<div class="fade-up" style="flex:1;background:${ins.bg};border:1px solid ${ins.border};border-radius:14px;padding:14px 16px;display:flex;align-items:center;gap:12px;direction:${isAr ? 'ltr' : 'rtl'};animation-delay:${500 + i * 80}ms">
       <div style="width:44px;height:44px;border-radius:50%;flex-shrink:0;background:${ins.iconGlow}22;border:1.5px solid ${ins.iconGlow}35;box-shadow:0 0 12px ${ins.iconGlow}28;display:flex;align-items:center;justify-content:center;font-size:20px">${ins.emoji}</div>
@@ -1078,33 +1126,36 @@ window.renderSection5 = function (mountEl, data, ctx) {
     </div>`;
   }
 
-  // ── Sort options ──────────────────────────────────────────────────────────
+  // â”€â”€ Sort options â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
   const SORT_OPTIONS = [
-    { value: 'deliveredCount',  label: s5Txt('Deliveries', 'عدد التسليمات'), icon: '📦' },
-    { value: 'commission',      label: s5Txt('Commission', 'العمولة'),        icon: '💰' },
-    { value: 'drRate',          label: s5Txt('Delivery Rate', 'نسبة التسليم'),   icon: '✅' },
-    { value: 'cancelPct',       label: s5Txt('Cancellation Rate', 'نسبة الإلغاء'),   icon: '❌' },
-    { value: 'placedCount',     label: s5Txt('Total Orders', 'إجمالي الطلبات'), icon: '📋' },
-    { value: 'confirmationPct', label: s5Txt('Confirmation Rate', 'نسبة التأكيد'),   icon: '☑️' },
+    { value: 'deliveredCount',  label: s5Txt('Deliveries', 'Ø¹Ø¯Ø¯ Ø§Ù„ØªØ³Ù„ÙŠÙ…Ø§Øª'), icon: 'ðŸ“¦' },
+    { value: 'commission',      label: s5Txt('Commission', 'Ø§Ù„Ø¹Ù…ÙˆÙ„Ø©'),        icon: 'ðŸ’°' },
+    { value: 'ndrPct',          label: 'NDR', icon: '%' },
+    { value: 'drRate',          label: s5Txt('Delivery Rate', 'Ù†Ø³Ø¨Ø© Ø§Ù„ØªØ³Ù„ÙŠÙ…'),   icon: 'âœ…' },
+    { value: 'scalingScore',    label: s5Txt('Scale Index', 'Ù…Ø¤Ø´Ø± Ø§Ù„ØªÙˆØ³Ø¹'), icon: '*' },
+    { value: 'cancelPct',       label: s5Txt('Cancellation Rate', 'Ù†Ø³Ø¨Ø© Ø§Ù„Ø¥Ù„ØºØ§Ø¡'),   icon: 'âŒ' },
+    { value: 'placedCount',     label: s5Txt('Total Orders', 'Ø¥Ø¬Ù…Ø§Ù„ÙŠ Ø§Ù„Ø·Ù„Ø¨Ø§Øª'), icon: 'ðŸ“‹' },
+    { value: 'confirmationPct', label: s5Txt('Confirmation Rate', 'Ù†Ø³Ø¨Ø© Ø§Ù„ØªØ£ÙƒÙŠØ¯'),   icon: 'â˜‘ï¸' },
     { value: 'failedCount',     label: p5Txt('failedOrders'), icon: '!' },
-    { value: 'canceledCount',   label: s5Txt('Canceled Count', 'عدد الملغية'),    icon: '🚫' },
+    { value: 'canceledCount',   label: s5Txt('Canceled Count', 'Ø¹Ø¯Ø¯ Ø§Ù„Ù…Ù„ØºÙŠØ©'),    icon: 'ðŸš«' },
     { value: 'allocatedAdSpend',label: p5Txt('adSpend'), icon: '$' },
     { value: 'cpa',             label: p5Txt('cpa'), icon: '$' },
+    { value: 'breakEvenCpa',    label: p5Txt('breakEven'), icon: '$' },
     { value: 'profitLoss',      label: p5Txt('pnl'), icon: '$' },
-    { value: 'shippingCount',   label: s5Txt('In Shipping', 'في الشحن'),       icon: '🚚' },
-    { value: 'processingCount', label: s5Txt('Processing', 'قيد المعالجة'),   icon: '⏳' },
+    { value: 'shippingCount',   label: s5Txt('In Shipping', 'ÙÙŠ Ø§Ù„Ø´Ø­Ù†'),       icon: 'ðŸšš' },
+    { value: 'processingCount', label: s5Txt('Processing', 'Ù‚ÙŠØ¯ Ø§Ù„Ù…Ø¹Ø§Ù„Ø¬Ø©'),   icon: 'â³' },
   ];
 
   function activeSortLabel() {
-    if (sortState.field === 'default') return s5Txt('Default', 'الافتراضي');
+    if (sortState.field === 'default') return s5Txt('Default', 'Ø§Ù„Ø§ÙØªØ±Ø§Ø¶ÙŠ');
     const opt = SORT_OPTIONS.find(o => o.value === sortState.field);
-    return opt ? opt.label : s5Txt('Default', 'الافتراضي');
+    return opt ? opt.label : s5Txt('Default', 'Ø§Ù„Ø§ÙØªØ±Ø§Ø¶ÙŠ');
   }
 
-  // ── FIX 3 helper: filter bar re-render needs to know the current dropdown state ──
+  // â”€â”€ FIX 3 helper: filter bar re-render needs to know the current dropdown state â”€â”€
   let _dropdownOpen = false;
 
-  // ── Filter bar ────────────────────────────────────────────────────────────
+  // â”€â”€ Filter bar â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
   function filterBarHTML() {
     const pillsHTML = STATUS_PILLS.map(pill => {
       const isActive = filterState.statusKey === pill.key;
@@ -1119,7 +1170,7 @@ window.renderSection5 = function (mountEl, data, ctx) {
                  background:${isActive ? 'rgba(255,255,255,0.1)' : 'rgba(255,255,255,0.04)'};
                  color:${isActive ? '#fff' : 'rgba(255,255,255,0.5)'};
                  white-space:nowrap;transition:all 0.2s cubic-bezier(0.4,0,0.2,1)">
-          ${s5Txt('All', 'الكل')}
+          ${s5Txt('All', 'Ø§Ù„ÙƒÙ„')}
           ${isActive ? `<span style="background:#f59e0b;color:#000;font-size:9px;font-weight:900;padding:1px 6px;border-radius:100px;line-height:1.5">${currentList().length}</span>` : ''}
         </button>`;
       }
@@ -1162,7 +1213,7 @@ window.renderSection5 = function (mountEl, data, ctx) {
              width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="2.2">
           <circle cx="11" cy="11" r="8"/><path d="m21 21-4.35-4.35"/>
         </svg>
-        <input id="s5-search" type="text" placeholder="${s5Txt('Search by Product name or SKU...', 'ابحث باسم المنتج أو SKU...')}" value="${attr(filterState.search)}"
+        <input id="s5-search" type="text" placeholder="${s5Txt('Search by Product name or SKU...', 'Ø§Ø¨Ø­Ø« Ø¨Ø§Ø³Ù… Ø§Ù„Ù…Ù†ØªØ¬ Ø£Ùˆ SKU...')}" value="${attr(filterState.search)}"
           style="width:100%;padding:10px 42px 10px 42px;border-radius:11px;
                  border:1px solid rgba(255,255,255,0.1);
                  background:rgba(255,255,255,0.05);color:#fff;font-size:13px;font-family:inherit;
@@ -1173,7 +1224,7 @@ window.renderSection5 = function (mountEl, data, ctx) {
                  width:20px;height:20px;border-radius:50%;border:none;cursor:pointer;
                  background:rgba(255,255,255,0.12);color:rgba(255,255,255,0.6);
                  display:flex;align-items:center;justify-content:center;font-size:10px;
-                 line-height:1;padding:0;font-family:inherit;transition:background 0.15s">✕</button>` : ''}
+                 line-height:1;padding:0;font-family:inherit;transition:background 0.15s">âœ•</button>` : ''}
       </div>
 
       <!-- Row 2: pills + sort -->
@@ -1182,30 +1233,30 @@ window.renderSection5 = function (mountEl, data, ctx) {
           ${pillsHTML}
           
           <div style="display:flex;align-items:center;gap:12px;margin-inline-start:12px;padding-inline-start:12px;border-inline-start:1px solid rgba(255,255,255,0.06);">
-            <div style="display:flex;align-items:center;gap:4px;" title="${s5Txt('Delivery rate >= 30%', 'نسبة التسليم >= 30%')}">
-               <div style="width:8px;height:8px;border-radius:50%;background:#00e676;box-shadow:0 0 6px rgba(0,230,118,0.4)"></div>
-               <span style="font-size:10px;color:rgba(255,255,255,0.45);font-weight:600">${s5Txt('Scalable', 'قابل للتوسع')}</span>
+            <div style="display:flex;align-items:center;gap:4px;" title="${s5Txt('Delivery rate >= 40%', 'نسبة التسليم >= 40%')}">
+               <div style="width:8px;height:8px;border-radius:50%;background:#22d3ee;box-shadow:0 0 6px rgba(34,211,238,0.4)"></div>
+               <span style="font-size:10px;color:rgba(255,255,255,0.45);font-weight:600">${s5Txt('Scalable', 'Ù‚Ø§Ø¨Ù„ Ù„Ù„ØªÙˆØ³Ø¹')}</span>
             </div>
             <div style="display:flex;align-items:center;gap:4px;" title="${s5Txt('Cancel rate >= 40%', 'نسبة الإلغاء >= 40%')}">
                <div style="width:8px;height:8px;border-radius:50%;background:#ef4444;box-shadow:0 0 6px rgba(239,68,68,0.4)"></div>
-               <span style="font-size:10px;color:rgba(255,255,255,0.45);font-weight:600">${s5Txt('Danger', 'خطر')}</span>
+               <span style="font-size:10px;color:rgba(255,255,255,0.45);font-weight:600">${s5Txt('Danger', 'Ø®Ø·Ø±')}</span>
             </div>
-            <div style="display:flex;align-items:center;gap:4px;" title="${s5Txt('NDR <= 45%', 'نسبة التوصيل <= 45%')}">
-               <div style="width:8px;height:8px;border-radius:50%;background:#f97316;box-shadow:0 0 6px rgba(249,115,22,0.4)"></div>
-               <span style="font-size:10px;color:rgba(255,255,255,0.45);font-weight:600">${s5Txt('Warning', 'تحذير')}</span>
+            <div style="display:flex;align-items:center;gap:4px;" title="${s5Txt('NDR < 20%', 'نسبة التسليم الصافي < 20%')}">
+               <div style="width:8px;height:8px;border-radius:50%;background:#ef4444;box-shadow:0 0 6px rgba(239,68,68,0.4)"></div>
+               <span style="font-size:10px;color:rgba(255,255,255,0.45);font-weight:600">${s5Txt('Warning', 'ØªØ­Ø°ÙŠØ±')}</span>
             </div>
             <div style="display:flex;align-items:center;gap:4px;" title="${s5Txt('Top 3 performing products', 'أفضل 3 منتجات أداء')}">
                <div style="width:8px;height:8px;border-radius:50%;background:#fbbf24;box-shadow:0 0 6px rgba(251,191,36,0.4)"></div>
-               <span style="font-size:10px;color:rgba(255,255,255,0.45);font-weight:600">${s5Txt('Top Products', 'أفضل المنتجات')}</span>
+               <span style="font-size:10px;color:rgba(255,255,255,0.45);font-weight:600">${s5Txt('Top Products', 'Ø£ÙØ¶Ù„ Ø§Ù„Ù…Ù†ØªØ¬Ø§Øª')}</span>
             </div>
           </div>
         </div>
 
         <div style="display:flex;align-items:center;gap:8px;flex-shrink:0">
           <span style="font-size:10px;color:rgba(255,255,255,0.28);font-weight:700;
-                       letter-spacing:0.5px;white-space:nowrap;text-transform:uppercase">${s5Txt("Sort", "ترتيب")}</span>
+                       letter-spacing:0.5px;white-space:nowrap;text-transform:uppercase">${s5Txt("Sort", "ØªØ±ØªÙŠØ¨")}</span>
 
-          <!-- Trigger only — menu is body-teleported in bindFilterBar to escape overflow:hidden -->
+          <!-- Trigger only â€” menu is body-teleported in bindFilterBar to escape overflow:hidden -->
           <div class="s5-sort-dropdown" id="s5-sort-dropdown" style="position:relative">
             <div class="s5-sort-trigger" id="s5-sort-trigger" tabindex="0">
               <span id="s5-sort-label" style="direction:${isAr ? 'rtl' : 'ltr'}">${activeSortLabel()}</span>
@@ -1248,32 +1299,32 @@ window.renderSection5 = function (mountEl, data, ctx) {
     </div>`;
   }
 
-  // ── Column headers ────────────────────────────────────────────────────────
+  // â”€â”€ Column headers â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
   function columnHeadersHTML() {
     const compact = viewMode === 'compact';
     return `<div class="s5-header-cols s5-metrics-track" style="display:flex;align-items:center;padding:0 0 10px 0;border-bottom:1px solid rgba(255,255,255,0.05);margin-bottom:10px;position:sticky;top:0;z-index:9;background:#080b12">
-      <div style="flex:0 0 210px;min-width:210px;padding-right:10px;font-size:10px;color:rgba(255,255,255,0.3);font-weight:700;text-align:right">${s5Txt('Product', 'المنتج')}</div>
+      <div style="flex:0 0 210px;min-width:210px;padding-right:10px;font-size:10px;color:rgba(255,255,255,0.3);font-weight:700;text-align:right">${s5Txt('Product', 'Ø§Ù„Ù…Ù†ØªØ¬')}</div>
       <div style="width:1px"></div>
-      ${colHeaderBtn(s5Txt('Orders', 'الطلبات'),'placedCount','flex:0 0 70px')}
+      ${colHeaderBtn(s5Txt('Orders', 'Ø§Ù„Ø·Ù„Ø¨Ø§Øª'),'placedCount','flex:0 0 70px')}
       <div style="width:1px"></div>
-      <div style="flex:0 0 62px;font-size:10px;color:rgba(255,255,255,0.3);font-weight:700;text-align:center">${s5Txt('Quantity', 'القطع')}</div><div style="width:1px"></div>
+      <div style="flex:0 0 62px;font-size:10px;color:rgba(255,255,255,0.3);font-weight:700;text-align:center">${s5Txt('Quantity', 'Ø§Ù„Ù‚Ø·Ø¹')}</div><div style="width:1px"></div>
       ${colHeaderBtn(p5Txt('failedOrders'),'failedCount','flex:0 0 72px')}
       <div style="width:1px"></div>
       ${colHeaderBtn(p5Txt('canceledOrders'),'canceledCount','flex:0 0 76px')}
       <div style="width:1px"></div>
-      ${colHeaderBtn(s5Txt('Confirm', 'التأكيد'),'confirmationPct',`flex:0 0 ${compact?'74':'80'}px`)}
+      ${colHeaderBtn(s5Txt('Confirm', 'Ø§Ù„ØªØ£ÙƒÙŠØ¯'),'confirmationPct',`flex:0 0 ${compact?'74':'80'}px`)}
       <div style="width:1px"></div>
-      ${colHeaderBtn(s5Txt('Cancel', 'الإلغاء'),'cancelPct',`flex:0 0 ${compact?'74':'80'}px`)}
+      ${colHeaderBtn(s5Txt('Cancel', 'Ø§Ù„Ø¥Ù„ØºØ§Ø¡'),'cancelPct',`flex:0 0 ${compact?'74':'80'}px`)}
       <div style="width:1px"></div>
       ${colHeaderBtn('NDR','ndrPct',`flex:0 0 ${compact?'72':'76'}px`)}
       <div style="width:1px"></div>
-      ${colHeaderBtn(s5Txt('DR', 'التسليم'),'drRate',`flex:0 0 ${compact?'74':'80'}px`)}
+      ${colHeaderBtn(s5Txt('DR', 'Ø§Ù„ØªØ³Ù„ÙŠÙ…'),'drRate',`flex:0 0 ${compact?'74':'80'}px`)}
       <div style="width:1px"></div>
       ${colHeaderBtn(
-        filterState.statusKey === 'shipping' ? s5Txt('Shipping', 'شحن') :
+        filterState.statusKey === 'shipping' ? s5Txt('Shipping', 'Ø´Ø­Ù†') :
         filterState.statusKey === 'failed' ? p5Txt('failedShort') :
-        filterState.statusKey === 'canceled' ? s5Txt('Canceled', 'ملغي') :
-        filterState.statusKey === 'processing' ? s5Txt('Processing', 'معالجة') : s5Txt('Delivered', 'تم تسليمها'),
+        filterState.statusKey === 'canceled' ? s5Txt('Canceled', 'Ù…Ù„ØºÙŠ') :
+        filterState.statusKey === 'processing' ? s5Txt('Processing', 'Ù…Ø¹Ø§Ù„Ø¬Ø©') : s5Txt('Delivered', 'ØªÙ… ØªØ³Ù„ÙŠÙ…Ù‡Ø§'),
         filterState.statusKey === 'shipping' ? 'shippingCount' :
         filterState.statusKey === 'failed' ? 'failedCount' :
         filterState.statusKey === 'canceled' ? 'canceledCount' :
@@ -1285,18 +1336,20 @@ window.renderSection5 = function (mountEl, data, ctx) {
       <div style="width:1px"></div>
       ${colHeaderBtn(p5Txt('cpa'),'cpa','flex:0 0 94px')}
       <div style="width:1px"></div>
+      ${colHeaderBtn(p5Txt('breakEven'),'breakEvenCpa','flex:0 0 104px')}
+      <div style="width:1px"></div>
       ${colHeaderBtn(p5Txt('pnl'),'profitLoss','flex:0 0 110px')}
       <div style="width:1px"></div>
-      ${colHeaderBtn(s5Txt('Commission', 'العمولة'),'commission','flex:0 0 100px')}
+      ${colHeaderBtn(s5Txt('Commission', 'Ø§Ù„Ø¹Ù…ÙˆÙ„Ø©'),'commission','flex:0 0 100px')}
       <div style="width:1px"></div>
-      <div style="width:104px;text-align:center;font-size:10px;color:rgba(255,255,255,0.3);font-weight:700;position:sticky;right:0;background:var(--dash-bg, #080b12);z-index:10;border-left:1px solid var(--dash-border-soft, rgba(255,255,255,0.08));">${s5Txt('Actions', 'إجراءات')}</div>
+      <div style="width:104px;text-align:center;font-size:10px;color:rgba(255,255,255,0.3);font-weight:700;position:sticky;right:0;background:var(--dash-bg, #080b12);z-index:10;border-left:1px solid var(--dash-border-soft, rgba(255,255,255,0.08));">${s5Txt('Actions', 'Ø¥Ø¬Ø±Ø§Ø¡Ø§Øª')}</div>
     </div>`;
   }
 
-  // ── Main render ───────────────────────────────────────────────────────────
+  // â”€â”€ Main render â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
   mountEl.innerHTML = `
     <style>
-      /* ── Fade-up entry animation ── */
+      /* â”€â”€ Fade-up entry animation â”€â”€ */
       @keyframes s5FadeUp {
         from { opacity: 0; transform: translateY(12px); }
         to   { opacity: 1; transform: translateY(0); }
@@ -1307,7 +1360,7 @@ window.renderSection5 = function (mountEl, data, ctx) {
         will-change: transform, opacity;
       }
 
-      /* ── Row hover ── */
+      /* â”€â”€ Row hover â”€â”€ */
       .s5-product-row { transition: box-shadow 0.25s ease, transform 0.2s ease !important; will-change: transform, box-shadow; outline: none !important; -webkit-tap-highlight-color: transparent; }
       .s5-product-row:focus, .s5-product-row:active { outline: none !important; }
       .s5-product-row:hover {
@@ -1315,7 +1368,7 @@ window.renderSection5 = function (mountEl, data, ctx) {
         transform: translateY(-1px) !important;
       }
 
-      /* ── Expand cell ── */
+      /* â”€â”€ Expand cell â”€â”€ */
       .s5-expand-btn { transition: background 0.2s !important; }
       .s5-expand-btn:hover { background: rgba(255,255,255,0.07) !important; }
       .s5-expand-btn:hover .s5-expand-icon-wrap {
@@ -1324,7 +1377,7 @@ window.renderSection5 = function (mountEl, data, ctx) {
         transform: scale(1.08) !important;
       }
 
-      /* ── Pagination ── */
+      /* â”€â”€ Pagination â”€â”€ */
       .s5-page-btn { transition: all 0.18s !important; }
       .s5-page-btn:hover:not([disabled]) {
         background: rgba(255,255,255,0.09) !important;
@@ -1340,7 +1393,7 @@ window.renderSection5 = function (mountEl, data, ctx) {
         color: #fff !important;
       }
 
-      /* ── Search input focus ── */
+      /* â”€â”€ Search input focus â”€â”€ */
       #s5-search { transition: border-color 0.25s, background 0.25s, box-shadow 0.25s !important; }
       #s5-search:focus {
         border-color: rgba(245,158,11,0.5) !important;
@@ -1375,11 +1428,11 @@ window.renderSection5 = function (mountEl, data, ctx) {
       #s5-search-clear::before { transform: translate(-50%, -50%) rotate(45deg); }
       #s5-search-clear::after { transform: translate(-50%, -50%) rotate(-45deg); }
 
-      /* ── Status pills ── */
+      /* â”€â”€ Status pills â”€â”€ */
       .s5-pill { transition: all 0.2s cubic-bezier(0.4,0,0.2,1) !important; }
       .s5-pill:hover { transform: translateY(-1px) !important; filter: brightness(1.15) !important; }
 
-      /* ── Custom dropdown — FIX 2: z-index 99999 ── */
+      /* â”€â”€ Custom dropdown â€” FIX 2: z-index 99999 â”€â”€ */
       .s5-sort-dropdown { position: relative; user-select: none; }
       .s5-sort-trigger {
         display: flex; align-items: center; gap: 8px;
@@ -1404,18 +1457,18 @@ window.renderSection5 = function (mountEl, data, ctx) {
       .s5-sort-trigger.open .s5-sort-chevron { transform: rotate(180deg); color: #f59e0b; }
       .s5-sort-chevron { transition: transform 0.25s ease, color 0.2s; color: rgba(255,255,255,0.4); flex-shrink: 0; }
 
-      /* ── Sort col header ── */
+      /* â”€â”€ Sort col header â”€â”€ */
       .s5-sort-col { transition: color 0.18s !important; }
       .s5-sort-col:hover { color: rgba(255,255,255,0.7) !important; }
 
-      /* ── Rate badge bar fill ── */
+      /* â”€â”€ Rate badge bar fill â”€â”€ */
       .s5-rate-bar { transition: transform 0.7s cubic-bezier(0.4,0,0.2,1) !important; }
 
-      /* ── Stat card hover ── */
+      /* â”€â”€ Stat card hover â”€â”€ */
       .s5-stat-card { transition: transform 0.2s ease, box-shadow 0.2s ease !important; }
       .s5-stat-card:hover { transform: translateY(-2px) !important; }
 
-      /* ── Detail panel ── */
+      /* â”€â”€ Detail panel â”€â”€ */
       .s5-detail-panel {
         transition: max-height 0.42s cubic-bezier(0.4,0,0.2,1),
                     opacity 0.32s ease,
@@ -1423,33 +1476,33 @@ window.renderSection5 = function (mountEl, data, ctx) {
                     margin-bottom 0.42s cubic-bezier(0.4,0,0.2,1) !important;
       }
     </style>
-    <div class="s5-root" dir="${isAr ? 'rtl' : 'ltr'}" style="flex:1;display:flex;flex-direction:column;background:#080b12;color:#fff;font-family:'Cairo',sans-serif;overflow:hidden;height:100%">
+    <div class="s5-root" dir="${isAr ? 'rtl' : 'ltr'}" style="flex:1 1 auto;display:flex;flex-direction:column;background:#080b12;color:#fff;font-family:'Cairo',sans-serif;overflow:hidden;height:100%;min-height:0">
 
       <!-- Sticky topbar -->
       <div class="s5-topbar" style="display:flex;align-items:center;justify-content:space-between;padding:0 28px;height:68px;border-bottom:1px solid rgba(255,255,255,0.05);background:#080b12;position:sticky;top:0;z-index:10;flex-shrink:0">
         <div style="display:flex;gap:10px;align-items:center">
           <button style="display:flex;align-items:center;gap:8px;padding:7px 14px;border-radius:10px;border:1px solid rgba(255,255,255,0.1);background:rgba(255,255,255,0.04);cursor:pointer;color:rgba(255,255,255,0.7);font-size:12px;font-weight:600;font-family:inherit;transition:background 0.18s">
             <svg width="14" height="14" viewBox="0 0 24 24" fill="none"><rect x="3" y="4" width="18" height="18" rx="3" stroke="rgba(255,255,255,0.45)" stroke-width="1.5"/><path d="M8 2v4M16 2v4M3 10h18" stroke="rgba(255,255,255,0.45)" stroke-width="1.5" stroke-linecap="round"/></svg>
-            <span style="color:#f59e0b">${(function(){ var M=['January','February','March','April','May','June','July','August','September','October','November','December']; var M_ar=['يناير','فبراير','مارس','أبريل','مايو','يونيو','يوليو','أغسطس','سبتمبر','أكتوبر','نوفمبر','ديسمبر']; var n=new Date(); return (isAr ? M_ar[n.getMonth()] : M[n.getMonth()])+' '+n.getFullYear(); })()}</span>
+            <span style="color:#f59e0b">${(function(){ var M=['January','February','March','April','May','June','July','August','September','October','November','December']; var M_ar=['ÙŠÙ†Ø§ÙŠØ±','ÙØ¨Ø±Ø§ÙŠØ±','Ù…Ø§Ø±Ø³','Ø£Ø¨Ø±ÙŠÙ„','Ù…Ø§ÙŠÙˆ','ÙŠÙˆÙ†ÙŠÙˆ','ÙŠÙˆÙ„ÙŠÙˆ','Ø£ØºØ³Ø·Ø³','Ø³Ø¨ØªÙ…Ø¨Ø±','Ø£ÙƒØªÙˆØ¨Ø±','Ù†ÙˆÙÙ…Ø¨Ø±','Ø¯ÙŠØ³Ù…Ø¨Ø±']; var n=new Date(); return (isAr ? M_ar[n.getMonth()] : M[n.getMonth()])+' '+n.getFullYear(); })()}</span>
           </button>
           <button style="display:flex;align-items:center;gap:8px;padding:7px 14px;border-radius:10px;border:1px solid rgba(255,255,255,0.1);background:rgba(255,255,255,0.04);cursor:pointer;color:rgba(255,255,255,0.7);font-size:12px;font-weight:600;font-family:inherit;transition:background 0.18s">
             <svg width="14" height="14" viewBox="0 0 24 24" fill="none"><circle cx="12" cy="8" r="4" stroke="rgba(255,255,255,0.45)" stroke-width="1.5"/><path d="M4 20c0-4 3.6-7 8-7s8 3 8 7" stroke="rgba(255,255,255,0.45)" stroke-width="1.5" stroke-linecap="round"/></svg>
-            <span>${window.currentActiveAccountLabel || s5Txt('All Shared Accounts', 'كل الحسابات المشتركة')}</span>
+            <span>${window.currentActiveAccountLabel || s5Txt('All Shared Accounts', 'ÙƒÙ„ Ø§Ù„Ø­Ø³Ø§Ø¨Ø§Øª Ø§Ù„Ù…Ø´ØªØ±ÙƒØ©')}</span>
           </button>
         </div>
         <div style="text-align:center;flex:1">
           <div class="fade-up" style="font-size:22px;font-weight:900;color:#fff;display:flex;align-items:center;justify-content:center;gap:8px">
-            ${s5Txt('Top Products', 'أفضل المنتجات')}
+            ${s5Txt('Top Products', 'Ø£ÙØ¶Ù„ Ø§Ù„Ù…Ù†ØªØ¬Ø§Øª')}
             <svg width="18" height="18" viewBox="0 0 24 24" fill="none"><path d="M12 2l2.4 7.2H22l-6.2 4.5 2.4 7.2L12 17l-6.2 3.9 2.4-7.2L2 9.2h7.6z" fill="#f59e0b"/></svg>
           </div>
-          <div class="fade-up" style="font-size:11px;color:rgba(255,255,255,0.35);margin-top:3px;animation-delay:100ms">${s5Txt('Product Health Board', 'لوحة صحة المنتجات')}</div>
+          <div class="fade-up" style="font-size:11px;color:rgba(255,255,255,0.35);margin-top:3px;animation-delay:100ms">${s5Txt('Product Health Board', 'Ù„ÙˆØ­Ø© ØµØ­Ø© Ø§Ù„Ù…Ù†ØªØ¬Ø§Øª')}</div>
         </div>
         <div style="display:flex;align-items:center;gap:10px">
           <button id="s5-view-toggle" style="display:flex;align-items:center;gap:6px;padding:6px 12px;border-radius:9px;border:1px solid rgba(255,255,255,0.1);background:rgba(255,255,255,0.03);color:rgba(255,255,255,0.55);font-size:11px;font-weight:700;cursor:pointer;font-family:inherit;transition:background 0.18s">
             <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="8" y1="6" x2="21" y2="6"/><line x1="8" y1="12" x2="21" y2="12"/><line x1="8" y1="18" x2="21" y2="18"/><line x1="3" y1="6" x2="3.01" y2="6"/><line x1="3" y1="12" x2="3.01" y2="12"/><line x1="3" y1="18" x2="3.01" y2="18"/></svg>
-            ${s5Txt('Compact', 'مضغوط')}
+            ${s5Txt('Compact', 'Ù…Ø¶ØºÙˆØ·')}
           </button>
-          <div style="font-size:11px;color:rgba(255,255,255,0.35)">${s5Txt('Last update: Today', 'آخر تحديث: اليوم')}</div>
+          <div style="font-size:11px;color:rgba(255,255,255,0.35)">${s5Txt('Last update: Today', 'Ø¢Ø®Ø± ØªØ­Ø¯ÙŠØ«: Ø§Ù„ÙŠÙˆÙ…')}</div>
           <div style="font-size:13px;font-weight:700;color:rgba(255,255,255,0.7)">${(function(){ var n=new Date(); return ('0'+n.getHours()).slice(-2)+':'+('0'+n.getMinutes()).slice(-2); })()}</div>
         </div>
       </div>
@@ -1474,7 +1527,7 @@ window.renderSection5 = function (mountEl, data, ctx) {
           ${INSIGHTS.length ? `
           <div>
             <div style="display:flex;align-items:center;justify-content:flex-end;gap:8px;margin-bottom:14px">
-              <span style="font-size:15px;font-weight:800;color:rgba(255,255,255,0.82)">رؤى ذكية</span>
+              <span style="font-size:15px;font-weight:800;color:rgba(255,255,255,0.82)">Ø±Ø¤Ù‰ Ø°ÙƒÙŠØ©</span>
               <svg width="16" height="16" viewBox="0 0 24 24" fill="none"><path d="M12 2l2.4 7.2H22l-6.2 4.5 2.4 7.2L12 17l-6.2 3.9 2.4-7.2L2 9.2h7.6z" fill="#f59e0b"/></svg>
             </div>
             <div class="s5-insights-row" style="display:flex;gap:12px;flex-wrap:wrap">
@@ -1485,7 +1538,7 @@ window.renderSection5 = function (mountEl, data, ctx) {
       </div>
     </div>`;
 
-  // ── Trigger rate bar animations after render ──────────────────────────────
+  // â”€â”€ Trigger rate bar animations after render â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
   // Double rAF ensures browser commits width:0% paint before we flip to target,
   // which is required for the CSS transition to actually fire.
   function triggerRateBars() {
@@ -1499,7 +1552,7 @@ window.renderSection5 = function (mountEl, data, ctx) {
     });
   }
 
-  // ── Stat card animation (smooth, staggered) ───────────────────────────────
+  // â”€â”€ Stat card animation (smooth, staggered) â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
   STAT_CARDS.forEach((c, i) => {
     const el = mountEl.querySelector(`#s5-stat-${i}`);
     if (!el) return;
@@ -1509,7 +1562,7 @@ window.renderSection5 = function (mountEl, data, ctx) {
     }, 200 + i * 120);
   });
 
-  // ── Product row number animations ─────────────────────────────────────────
+  // â”€â”€ Product row number animations â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
   function animateVisibleProducts() {
     // Keep row rendering cheap. Counters across every cell created noticeable
     // rAF pressure on larger product catalogs; rate bars provide the motion.
@@ -1527,27 +1580,27 @@ window.renderSection5 = function (mountEl, data, ctx) {
   }
   animateVisibleProducts();
 
-  // ── Sort arrows sync ──────────────────────────────────────────────────────
+  // â”€â”€ Sort arrows sync â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
   function updateSortArrows() {
     mountEl.querySelectorAll('.s5-sort-arrow').forEach(arrow => {
       if (arrow.dataset.field === sortState.field) {
-        arrow.textContent = sortState.dir === 'desc' ? '↓' : '↑';
+        arrow.textContent = sortState.dir === 'desc' ? 'â†“' : 'â†‘';
         arrow.style.color = '#f59e0b';
       } else {
-        arrow.textContent = '↕';
+        arrow.textContent = 'â†•';
         arrow.style.color = 'rgba(255,255,255,0.2)';
       }
     });
   }
 
-  // ── FIX 3: renderProductPage re-renders filter bar + pills ────────────────
+  // â”€â”€ FIX 3: renderProductPage re-renders filter bar + pills â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
   let pageRenderToken = 0;
 
   function productsPageLoaderHTML() {
     return `<div class="s5-products-page-loader" style="min-height:280px;display:flex;align-items:center;justify-content:center;border:1px solid rgba(255,255,255,0.06);border-radius:14px;background:rgba(255,255,255,0.018);margin-bottom:10px">
       <div style="display:flex;align-items:center;gap:12px;color:rgba(255,255,255,0.62);font-size:12px;font-weight:800">
         <span style="width:24px;height:24px;border-radius:50%;border:2px solid rgba(245,158,11,0.18);border-top-color:#f59e0b;animation:s5Spin 0.8s linear infinite"></span>
-        <span>${s5Txt('Loading products page...', 'جاري تحميل صفحة المنتجات...')}</span>
+        <span>${s5Txt('Loading products page...', 'Ø¬Ø§Ø±ÙŠ ØªØ­Ù…ÙŠÙ„ ØµÙØ­Ø© Ø§Ù„Ù…Ù†ØªØ¬Ø§Øª...')}</span>
       </div>
     </div>`;
   }
@@ -1580,8 +1633,8 @@ window.renderSection5 = function (mountEl, data, ctx) {
                 <circle cx="11" cy="11" r="8"></circle>
                 <line x1="21" y1="21" x2="16.65" y2="16.65"></line>
               </svg>
-              <div style="font-size:16px;font-weight:800;color:rgba(255,255,255,0.6);margin-bottom:8px;">${s5Txt('No products match the filter', 'لا توجد منتجات تطابق الفلتر')}</div>
-              <div style="font-size:12px;color:rgba(255,255,255,0.3);">جرب تغيير خيارات التصفية أو البحث لعرض النتائج.</div>
+              <div style="font-size:16px;font-weight:800;color:rgba(255,255,255,0.6);margin-bottom:8px;">${s5Txt('No products match the filter', 'Ù„Ø§ ØªÙˆØ¬Ø¯ Ù…Ù†ØªØ¬Ø§Øª ØªØ·Ø§Ø¨Ù‚ Ø§Ù„ÙÙ„ØªØ±')}</div>
+              <div style="font-size:12px;color:rgba(255,255,255,0.3);">Ø¬Ø±Ø¨ ØªØºÙŠÙŠØ± Ø®ÙŠØ§Ø±Ø§Øª Ø§Ù„ØªØµÙÙŠØ© Ø£Ùˆ Ø§Ù„Ø¨Ø­Ø« Ù„Ø¹Ø±Ø¶ Ø§Ù„Ù†ØªØ§Ø¦Ø¬.</div>
             </div>`;
         } else {
           rowsEl.innerHTML = visibleProducts.map((p, i) => productRowHTML(p, i)).join('');
@@ -1616,10 +1669,10 @@ window.renderSection5 = function (mountEl, data, ctx) {
     });
   }
 
-  // ── Rate bar: use CSS transition approach ─────────────────────────────────
+  // â”€â”€ Rate bar: use CSS transition approach â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
   // We store target width in data-target and animate via CSS transition
   // (already in rateBadgeHTML via inline transition style)
-  // After DOM is inserted we flip widths from 0 → target
+  // After DOM is inserted we flip widths from 0 â†’ target
   setTimeout(() => {
     mountEl.querySelectorAll('[data-rate-target]').forEach(el => {
       el.style.width = el.dataset.rateTarget + '%';
@@ -1630,7 +1683,7 @@ window.renderSection5 = function (mountEl, data, ctx) {
     });
   }, 300);
 
-  // ── Search debounce ───────────────────────────────────────────────────────
+  // â”€â”€ Search debounce â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
   let searchDebounce = null;
 
   function syncSearchClearButton() {
@@ -1646,7 +1699,7 @@ window.renderSection5 = function (mountEl, data, ctx) {
     const clearBtn = document.createElement('button');
     clearBtn.id = 's5-search-clear';
     clearBtn.type = 'button';
-    clearBtn.setAttribute('aria-label', s5Txt('Clear search', 'مسح البحث'));
+    clearBtn.setAttribute('aria-label', s5Txt('Clear search', 'Ù…Ø³Ø­ Ø§Ù„Ø¨Ø­Ø«'));
     clearBtn.style.cssText = [
       'position:absolute',
       'left:12px',
@@ -1711,7 +1764,7 @@ window.renderSection5 = function (mountEl, data, ctx) {
     syncSearchClearButton();
 
 
-    // ── Custom sort dropdown — body-teleported to escape overflow:hidden ──────
+    // â”€â”€ Custom sort dropdown â€” body-teleported to escape overflow:hidden â”€â”€â”€â”€â”€â”€
     // Remove any stale body-menu from a previous render cycle
     const staleMenu = document.getElementById('s5-body-sort-menu');
     if (staleMenu) staleMenu.remove();
@@ -1742,7 +1795,7 @@ window.renderSection5 = function (mountEl, data, ctx) {
     bodyMenu.innerHTML = `
       <div style="padding:10px 14px 8px;border-bottom:1px solid rgba(255,255,255,0.06);
                   font-size:10px;font-weight:700;color:rgba(255,255,255,0.3);
-                  text-transform:uppercase;letter-spacing:0.6px;direction:${isAr ? 'rtl' : 'ltr'}">${s5Txt('Sort By', 'ترتيب حسب')}</div>
+                  text-transform:uppercase;letter-spacing:0.6px;direction:${isAr ? 'rtl' : 'ltr'}">${s5Txt('Sort By', 'ØªØ±ØªÙŠØ¨ Ø­Ø³Ø¨')}</div>
       ${sortMenuHTML2}`;
     bodyMenu.style.cssText = `
       position:fixed;
@@ -1848,7 +1901,7 @@ window.renderSection5 = function (mountEl, data, ctx) {
         const ascArrow  = '<path d="M12 4v16M5 11l7-7 7 7"/>';
         const svgEl = dirBtn.querySelector('svg');
         if (svgEl) svgEl.innerHTML = sortState.dir === 'desc' ? descArrow : ascArrow;
-        dirBtn.title = sortState.dir === 'desc' ? s5Txt('Ascending', 'تصاعدي') : s5Txt('Descending', 'تنازلي');
+        dirBtn.title = sortState.dir === 'desc' ? s5Txt('Ascending', 'ØªØµØ§Ø¹Ø¯ÙŠ') : s5Txt('Descending', 'ØªÙ†Ø§Ø²Ù„ÙŠ');
         dirBtn.style.cssText += ';color:#f59e0b;border-color:rgba(245,158,11,0.4);background:rgba(245,158,11,0.1)';
         setTimeout(() => {
           if (dirBtn.isConnected) {
@@ -1884,7 +1937,7 @@ window.renderSection5 = function (mountEl, data, ctx) {
       });
     }
 
-    // FIX 3: Status pills — active state now visible because filterBarHTML re-renders
+    // FIX 3: Status pills â€” active state now visible because filterBarHTML re-renders
     mountEl.querySelectorAll('.s5-pill').forEach(pill => {
       pill.addEventListener('click', function(e) {
         e.preventDefault();
@@ -1912,7 +1965,7 @@ window.renderSection5 = function (mountEl, data, ctx) {
   }
   bindFilterBar();
 
-  // ── Column sort ───────────────────────────────────────────────────────────
+  // â”€â”€ Column sort â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
   function bindSortCols() {
     mountEl.querySelectorAll('.s5-sort-col').forEach(btn => {
       btn.addEventListener('click', function() {
@@ -1933,7 +1986,7 @@ window.renderSection5 = function (mountEl, data, ctx) {
   }
   bindSortCols();
 
-  // ── Expand buttons ────────────────────────────────────────────────────────
+  // â”€â”€ Expand buttons â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
   function bindExpandButtons() {
     mountEl.querySelectorAll('.s5-expand-btn').forEach(btn => {
       btn.addEventListener('click', function(e) {
@@ -1980,7 +2033,7 @@ window.renderSection5 = function (mountEl, data, ctx) {
   }
   bindExpandButtons();
 
-  // ── T-22: Product-row FilterBus wiring ───────────────────────────────────
+  // â”€â”€ T-22: Product-row FilterBus wiring â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
   var _s5SelectedProductKey = null;
 
   function _clearS5Selection() {
@@ -2013,7 +2066,7 @@ window.renderSection5 = function (mountEl, data, ctx) {
     mountEl.querySelectorAll('.s5-product-row').forEach(function (row) {
       if (row.dataset.s5Bound === '1') return;
       row.dataset.s5Bound = '1';
-      /* row-level click — skip expand btn area */
+      /* row-level click â€” skip expand btn area */
       row.addEventListener('click', function (e) {
         if (e.target.closest('.s5-expand-btn')) return;
         var productKey = row.dataset.productKey;
@@ -2064,7 +2117,7 @@ window.renderSection5 = function (mountEl, data, ctx) {
   }
   _bindProductRowClicks();
 
-  // ── Pagination ────────────────────────────────────────────────────────────
+  // â”€â”€ Pagination â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
   function bindPagination() {
     const prev = mountEl.querySelector('#s5-prev-page');
     const next = mountEl.querySelector('#s5-next-page');
@@ -2096,7 +2149,141 @@ window.renderSection5 = function (mountEl, data, ctx) {
     if (wrapper) wrapper.scrollTo({ top: 0, behavior: 'smooth' });
   }
 
-  // ── Phase 5: Full Product Modal ──────────────────────────────────────────
+  function aiTextKey(value) {
+    return String(value == null ? '' : value)
+      .toLowerCase()
+      .replace(/\s+/g, ' ')
+      .trim();
+  }
+
+  function findProductKeyForAi(query) {
+    const needle = aiTextKey(query);
+    if (!needle) return '';
+    if (PRODUCT_BY_KEY[query]) return query;
+    const exact = PRODUCTS_RAW.find(function (p) {
+      return [p.key, p.sku, p.name, p.cat].some(function (value) {
+        return aiTextKey(value) === needle;
+      });
+    });
+    if (exact) return exact.key || exact.sku || exact.name || '';
+    const partial = PRODUCTS_RAW.find(function (p) {
+      return [p.key, p.sku, p.name, p.cat].some(function (value) {
+        const haystack = aiTextKey(value);
+        return haystack && (haystack.indexOf(needle) !== -1 || needle.indexOf(haystack) !== -1);
+      });
+    });
+    return partial ? (partial.key || partial.sku || partial.name || '') : '';
+  }
+
+  function resetAiProductListCache() {
+    listCache = null;
+    listCacheKey = '';
+    currentPage = 1;
+  }
+
+  function highlightAiProductRow(productKey) {
+    setTimeout(function () {
+      const selector = '.s5-product-row[data-product-key="' + (window.CSS && CSS.escape ? CSS.escape(String(productKey)) : String(productKey).replace(/"/g, '\\"')) + '"]';
+      const row = mountEl.querySelector(selector);
+      if (!row) return;
+      row.scrollIntoView({ behavior: 'smooth', block: 'center' });
+      row.classList.add('ai-target-pulse');
+      setTimeout(function () { row.classList.remove('ai-target-pulse'); }, 1600);
+    }, 80);
+  }
+
+  function applyAiProductFilter(filter, options) {
+    options = options || {};
+    const key = aiTextKey(filter || options.filter || options.sort || options.query);
+    const productQuery = options.productKey || options.productId || options.productName || '';
+    filterState.search = options.searchText || '';
+    filterState.statusKey = 'all';
+
+    if (productQuery) {
+      const productKey = findProductKeyForAi(productQuery);
+      const product = productKey ? PRODUCT_BY_KEY[productKey] : null;
+      filterState.search = product ? (product.name || product.sku || product.key) : productQuery;
+    } else if (key === 'failed' || key === 'failed_products') {
+      filterState.statusKey = 'failed';
+      sortState = { field: 'failedCount', dir: 'desc' };
+    } else if (key === 'canceled' || key === 'cancelled' || key === 'canceled_products') {
+      filterState.statusKey = 'canceled';
+      sortState = { field: 'canceledCount', dir: 'desc' };
+    } else if (key === 'delivered') {
+      filterState.statusKey = 'delivered';
+      sortState = { field: 'deliveredCount', dir: 'desc' };
+    } else if (key === 'ranked' || key === 'rank') {
+      sortState = { field: 'default', dir: 'asc' };
+    } else if (key === 'loss' || key === 'losing' || key === 'pnl' || key === 'profit_loss') {
+      sortState = { field: 'profitLoss', dir: 'asc' };
+    } else if (key === 'cpa') {
+      sortState = { field: 'cpa', dir: 'desc' };
+    } else if (key === 'scale' || key === 'scale_candidates' || key === 'best_scale') {
+      sortState = { field: 'scalingScore', dir: 'desc' };
+    } else if (key === 'best' || key === 'best_products' || key === 'best_ndr') {
+      sortState = { field: 'drRate', dir: 'desc' };
+    } else if (key === 'commission' || key === 'top_commission') {
+      sortState = { field: 'commission', dir: 'desc' };
+    } else if (key === 'worst' || key === 'worst_ndr' || key === 'dangerous' || key === 'risk' || key === 'risky_products') {
+      sortState = { field: 'ndrPct', dir: 'asc' };
+    } else if (key) {
+      filterState.search = filter || options.query || '';
+    }
+
+    resetAiProductListCache();
+    renderProductPage();
+    scrollToRows();
+    return currentList().length;
+  }
+
+  function openAiProduct(query, options) {
+    options = options || {};
+    const productKey = findProductKeyForAi(query);
+    if (!productKey) return false;
+    const product = PRODUCT_BY_KEY[productKey];
+    if (options.search) filterState.search = product ? (product.name || product.sku || product.key) : '';
+    filterState.statusKey = 'all';
+    resetAiProductListCache();
+    const list = currentList();
+    const idx = list.findIndex(function (p) { return (p.key || p.sku || p.name) === productKey; });
+    if (idx >= 0) currentPage = Math.floor(idx / PAGE_SIZE) + 1;
+    renderProductPage();
+    highlightAiProductRow(productKey);
+    if (window.DashboardFilterBus) {
+      window.DashboardFilterBus.setState({
+        selectedProduct: productKey,
+        mapMode: window.DashboardFilterBus.MODES.PRODUCT
+      });
+    }
+    setTimeout(function () {
+      if (typeof window.openProductModal === 'function') window.openProductModal(productKey);
+    }, 120);
+    return true;
+  }
+
+  function onAiProductFilter(event) {
+    const detail = event && event.detail || {};
+    if (detail.productKey || detail.productId || detail.productName) {
+      openAiProduct(detail.productKey || detail.productId || detail.productName, { search: true });
+      return;
+    }
+    applyAiProductFilter(detail.filter || detail.sort || detail.query || '', detail);
+  }
+
+  window.addEventListener('dashboard-ai-filter-products', onAiProductFilter);
+  window.DashboardProductsActions = {
+    findProductKey: findProductKeyForAi,
+    applyAiFilter: applyAiProductFilter,
+    openProduct: openAiProduct
+  };
+  addProductCleanup(function () {
+    window.removeEventListener('dashboard-ai-filter-products', onAiProductFilter);
+    if (window.DashboardProductsActions && window.DashboardProductsActions.openProduct === openAiProduct) {
+      delete window.DashboardProductsActions;
+    }
+  });
+
+  // â”€â”€ Phase 5: Full Product Modal â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
   (function buildProductModal() {
     var currentModalProductKey = null;
     var currentModalCityPage = 1;
@@ -2121,8 +2308,8 @@ window.renderSection5 = function (mountEl, data, ctx) {
     function sar(n)     { return (window.formatSAR ? window.formatSAR(n || 0, 0) : Math.round(n || 0).toLocaleString('en-US') + ' SAR'); }
     function sb(score, type) { return (window.scoreBadge ? window.scoreBadge(score, type) : '<span>' + score + '</span>'); }
 
-    function ndrColor(v) { return v >= 75 ? '#00e676' : v >= 55 ? '#f59e0b' : '#ef4444'; }
-    function drColor(v)  { return v > 70 ? '#00e676' : v > 55 ? '#f59e0b' : '#ef4444'; }
+    function ndrColor(v) { return window.dashboardRateColor ? window.dashboardRateColor(v) : (v >= 40 ? '#22d3ee' : v >= 30 ? '#00e676' : v >= 20 ? '#f59e0b' : '#ef4444'); }
+    function drColor(v)  { return window.dashboardRateColor ? window.dashboardRateColor(v) : (v >= 40 ? '#22d3ee' : v >= 30 ? '#00e676' : v >= 20 ? '#f59e0b' : '#ef4444'); }
 
     function modalHTML(p) {
       if (!p) return '';
@@ -2137,8 +2324,8 @@ window.renderSection5 = function (mountEl, data, ctx) {
         var cityEntries = [];
         Object.keys(gpm).forEach(function (cityName) {
           var cell = gpm[cityName] && gpm[cityName][prodKey];
-          // Show all cities with at least 1 order, instead of >= 3
-          if (cell && cell.orders > 0) {
+          // Show cities with created orders or delivered events in the selected attribution mode.
+          if (cell && ((cell.orders || 0) > 0 || (cell.delivered || 0) > 0)) {
             var cellNdr = (cell.orders || 0) > 0 ? (cell.delivered || 0) / (cell.orders || 0) * 100 : 0;
             cellNdr = isNaN(cellNdr) ? 0 : cellNdr;
             cityEntries.push({ name: cityName, orders: cell.orders, ndr: cellNdr,
@@ -2186,12 +2373,12 @@ window.renderSection5 = function (mountEl, data, ctx) {
       /* Funnel bars */
       var total = p.placedCount || 1;
       var funnel = [
-        { label: s5Txt('Delivered', 'تم التسليم'),  count: p.deliveredCount || 0, color: '#00e676' },
-        { label: s5Txt('In Shipping', 'قيد الشحن'),   count: p.shippingCount  || 0, color: '#14b8a6' },
-        { label: s5Txt('Confirmed', 'مؤكد'),        count: p.confirmedCount || 0, color: '#3b82f6' },
+        { label: s5Txt('Delivered', 'ØªÙ… Ø§Ù„ØªØ³Ù„ÙŠÙ…'),  count: p.deliveredCount || 0, color: '#00e676' },
+        { label: s5Txt('In Shipping', 'Ù‚ÙŠØ¯ Ø§Ù„Ø´Ø­Ù†'),   count: p.shippingCount  || 0, color: '#14b8a6' },
+        { label: s5Txt('Confirmed', 'Ù…Ø¤ÙƒØ¯'),        count: p.confirmedCount || 0, color: '#3b82f6' },
         { label: p5Txt('funnelFailed'), count: p.failedCount || 0, color: '#f97316' },
         { label: p5Txt('funnelCanceled'), count: p.canceledCount || 0, color: '#ef4444' },
-        { label: s5Txt('Pending', 'قيد الانتظار'),count: (p.pendingCount||0)+(p.waitingCount||0), color: '#a855f7' },
+        { label: s5Txt('Pending', 'Ù‚ÙŠØ¯ Ø§Ù„Ø§Ù†ØªØ¸Ø§Ø±'),count: (p.pendingCount||0)+(p.waitingCount||0), color: '#a855f7' },
       ];
 
       var _fIsLight = document.documentElement.getAttribute('data-theme')==='light';
@@ -2227,27 +2414,28 @@ window.renderSection5 = function (mountEl, data, ctx) {
               '<svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="#a855f7" stroke-width="2" stroke-linecap="round"><path d="M6 2L3 6v14a2 2 0 002 2h14a2 2 0 002-2V6l-3-4z"/><line x1="3" y1="6" x2="21" y2="6"/><path d="M16 10a4 4 0 01-8 0"/></svg>' +
             '</div>' +
             '<div>' +
-              '<div style="font-size:18px;font-weight:900;color:#fff">' + esc(p.name || s5Txt('product', 'منتج')) + '</div>' +
-              '<div style="font-size:11px;color:rgba(255,255,255,0.4);margin-top:3px">SKU: ' + esc(p.sku || '—') + '  ·  ' + s5Txt('Rank #', 'رتبة #') + esc(p.rank || '—') + '</div>' +
+              '<div style="font-size:18px;font-weight:900;color:#fff">' + esc(p.name || s5Txt('product', 'Ù…Ù†ØªØ¬')) + '</div>' +
+              '<div style="font-size:11px;color:rgba(255,255,255,0.4);margin-top:3px">SKU: ' + esc(p.sku || 'â€”') + '  Â·  ' + s5Txt('Rank #', 'Ø±ØªØ¨Ø© #') + esc(p.rank || 'â€”') + '</div>' +
             '</div>' +
           '</div>' +
           '<button id="s5-modal-close" style="background:rgba(255,255,255,0.07);border:none;color:rgba(255,255,255,0.6);' +
             'font-size:18px;width:34px;height:34px;border-radius:10px;cursor:pointer;flex-shrink:0;' +
             'display:flex;align-items:center;justify-content:center;transition:all 0.2s;font-family:inherit;' +
-            'line-height:1;">✕</button>' +
+            'line-height:1;">âœ•</button>' +
         '</div>' +
 
         /* KPI bar */
-        '<div class="s5-modal-kpi-grid" style="padding:20px 28px;display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:10px;' +
+        '<div class="s5-modal-kpi-grid" style="padding:20px 28px;display:grid;grid-template-columns:repeat(auto-fit,minmax(145px,1fr));gap:10px;' +
           'border-bottom:1px solid rgba(255,255,255,0.06);">' +
           [
-            { label: s5Txt('Total Orders', 'إجمالي الطلبات'), value: num(total),          color: '#a855f7', badge: null },
-            { label: s5Txt('Delivery Rate', 'معدل التسليم'),   value: pct(drVal),          color: '#00e676', badge: null },
-            { label: s5Txt('Cancel Rate', 'معدل الإلغاء'),   value: pct(cancelVal),      color: '#ef4444', badge: null },
-            { label: s5Txt('Confirm Rate', 'التأكيد'),        value: pct(cnfVal),         color: '#14b8a6', badge: null },
-            { label: s5Txt('Scale Index', 'مؤشر التوسع'),    value: '',                  color: '#f59e0b', badge: sb(p.scalingScore || 0, 'scale') },
+            { label: s5Txt('Total Orders', 'Ø¥Ø¬Ù…Ø§Ù„ÙŠ Ø§Ù„Ø·Ù„Ø¨Ø§Øª'), value: num(total),          color: '#a855f7', badge: null },
+            { label: s5Txt('Delivery Rate', 'Ù…Ø¹Ø¯Ù„ Ø§Ù„ØªØ³Ù„ÙŠÙ…'),   value: pct(drVal),          color: drColor(drVal), badge: null },
+            { label: s5Txt('Cancel Rate', 'Ù…Ø¹Ø¯Ù„ Ø§Ù„Ø¥Ù„ØºØ§Ø¡'),   value: pct(cancelVal),      color: '#ef4444', badge: null },
+            { label: s5Txt('Confirm Rate', 'Ø§Ù„ØªØ£ÙƒÙŠØ¯'),        value: pct(cnfVal),         color: '#14b8a6', badge: null },
+            { label: s5Txt('Scale Index', 'Ù…Ø¤Ø´Ø± Ø§Ù„ØªÙˆØ³Ø¹'),    value: '',                  color: '#f59e0b', badge: sb(p.scalingScore || 0, 'scale') },
             { label: p5Txt('adSpend'), value: productMoney(p.allocatedAdSpend), color: '#60a5fa', badge: null, help: p5Txt('adSpendHelp') },
             { label: p5Txt('cpa'), value: productMoney(p.cpa), color: '#a78bfa', badge: null, help: p5Txt('cpaHelp') },
+            { label: p5Txt('breakEven'), value: productMoney(p.breakEvenCpa), color: '#f59e0b', badge: null, help: p5Txt('breakEvenHelp') },
             { label: p5Txt('pnl'), value: productMoney(p.profitLoss), color: p.profitLoss >= 0 ? '#00e676' : '#ef4444', badge: null, help: p5Txt('pnlHelp') },
           ].map(function (k) {
             return '<div' + (k.help ? ' title="' + attr(k.help) + '"' : '') + ' style="background:#0b1423;border:1px solid rgba(255,255,255,0.06);border-radius:12px;padding:14px 10px;text-align:center">' +
@@ -2262,18 +2450,18 @@ window.renderSection5 = function (mountEl, data, ctx) {
 
           /* Funnel */
           '<div>' +
-            '<div style="font-size:12px;font-weight:800;color:rgba(255,255,255,0.45);margin-bottom:14px;">' + s5Txt("Order Funnel", "مسار الطلبات") + '</div>' +
+            '<div style="font-size:12px;font-weight:800;color:rgba(255,255,255,0.45);margin-bottom:14px;">' + s5Txt("Order Funnel", "Ù…Ø³Ø§Ø± Ø§Ù„Ø·Ù„Ø¨Ø§Øª") + '</div>' +
             funnelHTML +
           '</div>' +
 
           /* City breakdown */
           '<div>' +
-            '<div style="font-size:12px;font-weight:800;color:rgba(255,255,255,0.45);margin-bottom:14px;">' + s5Txt("City Performance", "أداء المدن") + '</div>' +
+            '<div style="font-size:12px;font-weight:800;color:rgba(255,255,255,0.45);margin-bottom:14px;">' + s5Txt("City Performance", "Ø£Ø¯Ø§Ø¡ Ø§Ù„Ù…Ø¯Ù†") + '</div>' +
             (cityRows
               ? '<div style="font-size:10px;color:rgba(255,255,255,0.3);display:grid;grid-template-columns:1fr 60px 60px 70px;gap:8px;padding:0 10px;margin-bottom:6px;">' +
-                  '<span>' + s5Txt('City', 'المدينة') + '</span><span style="text-align:center">' + s5Txt('Orders', 'طلبات') + '</span><span style="text-align:center">NDR</span><span style="text-align:center">' + s5Txt('Scale', 'توسع') + '</span>' +
+                  '<span>' + s5Txt('City', 'Ø§Ù„Ù…Ø¯ÙŠÙ†Ø©') + '</span><span style="text-align:center">' + s5Txt('Orders', 'Ø·Ù„Ø¨Ø§Øª') + '</span><span style="text-align:center">NDR</span><span style="text-align:center">' + s5Txt('Scale', 'ØªÙˆØ³Ø¹') + '</span>' +
                 '</div>' + cityRows + cityPaginationHtml
-              : '<div style="color:rgba(255,255,255,0.25);font-size:12px;padding:20px 0">' + s5Txt('No geographical data available', 'لا توجد بيانات جغرافية متاحة') + '</div>') +
+              : '<div style="color:rgba(255,255,255,0.25);font-size:12px;padding:20px 0">' + s5Txt('No geographical data available', 'Ù„Ø§ ØªÙˆØ¬Ø¯ Ø¨ÙŠØ§Ù†Ø§Øª Ø¬ØºØ±Ø§ÙÙŠØ© Ù…ØªØ§Ø­Ø©') + '</div>') +
           '</div>' +
 
         '</div>' +
@@ -2427,7 +2615,7 @@ window.renderSection5 = function (mountEl, data, ctx) {
     });
   }
 
-  // ── Compact toggle ────────────────────────────────────────────────────────
+  // â”€â”€ Compact toggle â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
   if (window.DashboardMarketingState) {
     if (mountEl._s5MarketingListener) {
       window.DashboardMarketingState.unsubscribe(mountEl._s5MarketingListener);
@@ -2468,8 +2656,8 @@ window.renderSection5 = function (mountEl, data, ctx) {
     toggleBtn.addEventListener('click', function() {
       viewMode = viewMode === 'expanded' ? 'compact' : 'expanded';
       this.innerHTML = (viewMode === 'compact')
-        ? `<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="8" y1="6" x2="21" y2="6"/><line x1="8" y1="12" x2="21" y2="12"/><line x1="8" y1="18" x2="21" y2="18"/><line x1="3" y1="6" x2="3.01" y2="6"/><line x1="3" y1="12" x2="3.01" y2="12"/><line x1="3" y1="18" x2="3.01" y2="18"/></svg> موسّع`
-        : `<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="8" y1="6" x2="21" y2="6"/><line x1="8" y1="12" x2="21" y2="12"/><line x1="8" y1="18" x2="21" y2="18"/><line x1="3" y1="6" x2="3.01" y2="6"/><line x1="3" y1="12" x2="3.01" y2="12"/><line x1="3" y1="18" x2="3.01" y2="18"/></svg> مضغوط`;
+        ? `<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="8" y1="6" x2="21" y2="6"/><line x1="8" y1="12" x2="21" y2="12"/><line x1="8" y1="18" x2="21" y2="18"/><line x1="3" y1="6" x2="3.01" y2="6"/><line x1="3" y1="12" x2="3.01" y2="12"/><line x1="3" y1="18" x2="3.01" y2="18"/></svg> Ù…ÙˆØ³Ù‘Ø¹`
+        : `<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="8" y1="6" x2="21" y2="6"/><line x1="8" y1="12" x2="21" y2="12"/><line x1="8" y1="18" x2="21" y2="18"/><line x1="3" y1="6" x2="3.01" y2="6"/><line x1="3" y1="12" x2="3.01" y2="12"/><line x1="3" y1="18" x2="3.01" y2="18"/></svg> Ù…Ø¶ØºÙˆØ·`;
       const headerEl = mountEl.querySelector('.s5-header-cols');
       if (headerEl) headerEl.outerHTML = columnHeadersHTML();
       bindSortCols();

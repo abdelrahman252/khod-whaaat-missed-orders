@@ -3,6 +3,42 @@
   window.KHOD_LOCALES = window.KHOD_LOCALES || {};
   window.KHOD_LOCALES.en = window.KHOD_LOCALES.en || {};
   window.KHOD_LOCALES.en.operations = {
+    tour: {
+      common: {
+        quickGuide: "Quick Guide"
+      },
+      operations: {
+        config: {
+          title: "Runner Configuration and Targets",
+          body: "Use the account selector and order detail panel to choose the run scope, review platform/account targets, and understand which retries need operational attention."
+        },
+        terminal: {
+          title: "Live Execution Terminal",
+          body: "The live monitor streams runner status, runtime, submitted and failed counts, current account, current order, progress, and real-time success or error feed entries from the checkout flow."
+        },
+        accountPerformance: {
+          title: "Account Performance",
+          body: "Compare accounts by order volume and revenue so you can see which account is carrying the run and where attention is needed."
+        },
+        smartInsights: {
+          title: "Run Smart Insights",
+          body: "Smart Insights turns run history into practical signals: demand shifts, failure clusters, top products, COD exposure, and timing recommendations."
+        },
+        productPerformance: {
+          title: "Product Performance",
+          body: "Use the product table to search, sort, and compare orders, revenue, delivered rate, failed rate, and performance bars across products."
+        },
+        history: {
+          title: "Historical Audit Logs",
+          body: "Run History is the searchable audit trail for completed executions. Select a run to load its order details, status timeline, submitted counts, failed counts, and downloaded-result context."
+        }
+      }
+    },
+    emptyGuidance: {
+      title: "Operations is ready",
+      body: "Run the bot once to populate each operations section with run history, order details, account performance, product performance, and live activity.",
+      action: "Go to Run"
+    },
     liveMonitor: {
       title: "Live Execution Monitor",
       live: "LIVE",

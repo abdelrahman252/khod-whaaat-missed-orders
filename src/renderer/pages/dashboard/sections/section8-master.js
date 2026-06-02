@@ -1,4 +1,4 @@
-/* ══════════════════════════════════════════════════════════════════════════════
+﻿/* ══════════════════════════════════════════════════════════════════════════════
    section8-master.js
    Renders Section 8 — لوحة التحكم (Master Dashboard)
 
@@ -131,11 +131,16 @@ window.renderSection8 = function (mountEl, data, ctx) {
     { label: s8Txt('Total Orders', 'إجمالي الطلبات'), value: totalOrders, unit: s8Txt('orders', 'طلب'), delta: overview.totalOrders ? overview.totalOrders.delta : 0, color: 'blue',   spark: (overview.sparklines && overview.sparklines.orders) || [0], iconType: 'blue', tooltip: tx('kpi.orders.tooltip', 'إجمالي الطلبات داخل لقطة لوحة التحكم الحالية حسب الحساب المحدد.') },
   ];
 
+  var deliveredSalesInTarget = convert((overview.totalDeliveredSales && overview.totalDeliveredSales.value) || 0, "SAR", targetCurrency);
+  var netRoas = roiLive.adSpend > 0 ? (deliveredSalesInTarget / roiLive.adSpend) : 0;
+  var netRoasDelta = overview.netRoas && overview.netRoas.delta != null ? Number(overview.netRoas.delta || 0) : 0;
+
   var NEW_KPI_CARDS = [
-    { label: s8Txt('Total Sales', 'إجمالي المبيعات'), value: overview.totalSales ? overview.totalSales.value : 0, unit: 'SAR', delta: undefined, color: 'green', spark: [], iconType: 'green', tooltip: tx('kpi.totalSales.tooltip', 'إجمالي مبالغ المبيعات (مجموع السعر الكلي بالشحن) لجميع الطلبات في الفترة الحالية، بعد إصلاح وتعبئة الخلايا المفقودة.') },
-    { label: s8Txt('Average Order Value (AOV)', 'متوسط قيمة الطلب (AOV)'), value: overview.overallAov ? overview.overallAov.value : 0, unit: 'SAR', delta: undefined, color: 'blue', spark: [], iconType: 'blue', tooltip: tx('kpi.overallAov.tooltip', 'متوسط قيمة الطلب الإجمالي ويحسب بقسمة إجمالي المبيعات على إجمالي الطلبات.') },
-    { label: s8Txt('Total Delivered Sales', 'إجمالي المبيعات المستلمة'), value: overview.totalDeliveredSales ? overview.totalDeliveredSales.value : 0, unit: 'SAR', delta: undefined, color: 'green', spark: [], iconType: 'green', tooltip: tx('kpi.totalDeliveredSales.tooltip', 'إجمالي مبالغ المبيعات (مجموع السعر الكلي بالشحن) للطلبات المستلمة فقط في الفترة الحالية، مفلترة بالتحديث الأخير.') },
-    { label: s8Txt('Average Order Value (Delivered)', 'متوسط قيمة الطلب المستلم'), value: overview.deliveredAov ? overview.deliveredAov.value : 0, unit: 'SAR', delta: undefined, color: 'blue', spark: [], iconType: 'blue', tooltip: tx('kpi.deliveredAov.tooltip', 'متوسط قيمة الطلب المستلم ويحسب بقسمة إجمالي المبيعات المستلمة على عدد الطلبات المستلمة.') }
+    { label: s8Txt('Total Sales', 'إجمالي المبيعات'), value: overview.totalSales ? overview.totalSales.value : 0, unit: 'SAR', delta: overview.totalSales ? overview.totalSales.delta : 0, color: 'green', spark: [], iconType: 'green', tooltip: tx('kpi.totalSales.tooltip', 'إجمالي مبالغ المبيعات (مجموع السعر الكلي بالشحن) لجميع الطلبات في الفترة الحالية، بعد إصلاح وتعبئة الخلايا المفقودة.') },
+    { label: s8Txt('Average Order Value (AOV)', 'متوسط قيمة الطلب (AOV)'), value: overview.overallAov ? overview.overallAov.value : 0, unit: 'SAR', delta: overview.overallAov ? overview.overallAov.delta : 0, color: 'blue', spark: [], iconType: 'blue', tooltip: tx('kpi.overallAov.tooltip', 'متوسط قيمة الطلب الإجمالي ويحسب بقسمة إجمالي المبيعات على إجمالي الطلبات.') },
+    { label: s8Txt('Total Delivered Sales', 'إجمالي المبيعات المستلمة'), value: overview.totalDeliveredSales ? overview.totalDeliveredSales.value : 0, unit: 'SAR', delta: overview.totalDeliveredSales ? overview.totalDeliveredSales.delta : 0, color: 'green', spark: [], iconType: 'green', tooltip: tx('kpi.totalDeliveredSales.tooltip', 'إجمالي مبالغ المبيعات (مجموع السعر الكلي بالشحن) للطلبات المستلمة فقط في الفترة الحالية، مفلترة بالتحديث الأخير.') },
+    { label: s8Txt('Average Order Value (Delivered)', 'متوسط قيمة الطلب المستلم'), value: overview.deliveredAov ? overview.deliveredAov.value : 0, unit: 'SAR', delta: overview.deliveredAov ? overview.deliveredAov.delta : 0, color: 'blue', spark: [], iconType: 'blue', tooltip: tx('kpi.deliveredAov.tooltip', 'متوسط قيمة الطلب المستلم ويحسب بقسمة إجمالي المبيعات المستلمة على عدد الطلبات المستلمة.') },
+    { label: s8Txt('Net ROAS', 'العائد الصافي على الإعلان'), value: netRoas.toFixed(2), unit: 'x', delta: netRoasDelta, color: 'purple', spark: [], iconType: 'purple', tooltip: tx('kpi.netRoas.tooltip', s8Txt('Net ROAS = delivered sales divided by ad spend. It uses only successfully delivered order revenue, so pending, canceled, and returned orders do not inflate ad performance.', 'العائد الصافي على الإعلان = مبيعات الطلبات المسلمة مقسومة على الإنفاق الإعلاني. يستخدم مبيعات الطلبات المسلمة فقط حتى لا ترفع الطلبات المعلقة أو الملغاة أو المرتجعة نتيجة الإعلان.')) }
   ];
 
   // Health bar percentages
@@ -163,10 +168,11 @@ window.renderSection8 = function (mountEl, data, ctx) {
   var pDeliveredSales = overview.totalDeliveredSales ? num(overview.totalDeliveredSales.value, 0) : 0;
   var pDeliveredAov = overview.deliveredAov ? num(overview.deliveredAov.value, 0) : 0;
   var pNdr = cod.ndrPct != null ? num(cod.ndrPct, 0) : (d.roi ? num(d.roi.ndrPct, 0) : 0);
+  var pNdrColor = window.dashboardRateColor ? window.dashboardRateColor(pNdr) : (pNdr >= 40 ? '#22d3ee' : pNdr >= 30 ? '#00e676' : pNdr >= 20 ? '#f59e0b' : '#ef4444');
   
   var PIPELINE_SUMMARY = [
     { label: s8Txt('Total Orders', 'إجمالي الطلبات'),  value: String(totalOrders),  color: '#fff'    },
-    { label: s8Txt('Net Delivery Rate (NDR)', 'معدل التسليم'),    value: pNdr.toFixed(1) + '%', color: '#22d3ee' },
+    { label: s8Txt('Net Delivery Rate (NDR)', 'معدل التسليم'),    value: pNdr.toFixed(1) + '%', color: pNdrColor },
     { label: s8Txt('Delivered AOV', 'متوسط قيمة الطلبات المسلمة'), value: pDeliveredAov.toFixed(0), suffix: 'SAR', color: '#a855f7' },
     { label: s8Txt('Total Delivered Sales', 'إجمالي مبيعات الطلبات المسلمة'), value: fmt(pDeliveredSales), suffix: 'SAR', color: '#3b82f6' },
     { label: s8Txt('Average Delivery Time', 'متوسط وقت التسليم'), value: (cod.avgDays == null ? s8Txt('Unavailable', 'غير متاح') : s8Txt(cod.avgDays + ' days', cod.avgDays + ' يوم')), color: '#fff' },
@@ -182,10 +188,12 @@ window.renderSection8 = function (mountEl, data, ctx) {
   var codNdrPct = cod.ndrPct != null ? num(cod.ndrPct, 0) : 0;
   var ndrBaseOrders = cod.ndrBaseOrders != null ? num(cod.ndrBaseOrders, 0) : totalOrders;
   var remainingRate = totalDue > 0 ? parseFloat(((remaining / totalDue) * 100).toFixed(1)) : 0;
+  var codDrColor = window.dashboardRateColor ? window.dashboardRateColor(drPct) : (drPct >= 40 ? '#22d3ee' : drPct >= 30 ? '#00e676' : drPct >= 20 ? '#f59e0b' : '#ef4444');
+  var codNdrColor = window.dashboardRateColor ? window.dashboardRateColor(codNdrPct) : (codNdrPct >= 40 ? '#22d3ee' : codNdrPct >= 30 ? '#00e676' : codNdrPct >= 20 ? '#f59e0b' : '#ef4444');
 
   var COD_METRICS = [
-    { label: 'DR', value: drPct.toFixed(1) + '%',  pct: drDeliveredOrders + ' / ' + drBaseOrders,  color: '#3b82f6', icon: 'box'    },
-    { label: 'NDR', value: codNdrPct.toFixed(1) + '%', pct: drDeliveredOrders + ' / ' + ndrBaseOrders, color: '#22d3ee', icon: 'box'    },
+    { label: 'DR', value: drPct.toFixed(1) + '%',  pct: drDeliveredOrders + ' / ' + drBaseOrders,  color: codDrColor, icon: 'box'    },
+    { label: 'NDR', value: codNdrPct.toFixed(1) + '%', pct: drDeliveredOrders + ' / ' + ndrBaseOrders, color: codNdrColor, icon: 'box'    },
     { label: s8Txt('Collected', 'تم التحصيل'), value: fmt(collected), pct: s8Txt(drDeliveredOrders + ' orders', drDeliveredOrders + ' طلب'), color: '#00e676', icon: 'box'  },
     { label: s8Txt('Gap', 'الفجوة'),     value: fmt(remaining), pct: remainingRate.toFixed(1) + '%', color: '#ef4444', icon: 'xcircle'},
   ];
@@ -296,17 +304,19 @@ window.renderSection8 = function (mountEl, data, ctx) {
   var ndrSub = s8Txt(deliveredCount + ' of ' + totalOrders, deliveredCount + ' من ' + totalOrders);
   var drVal = drPct.toFixed(1) + '%';
   var drSub = s8Txt(drDeliveredOrders + ' of ' + drBaseOrders, drDeliveredOrders + ' من ' + drBaseOrders);
+  var ndrMetricColor = window.dashboardRateColor ? window.dashboardRateColor(ndrPct) : (ndrPct >= 40 ? '#22d3ee' : ndrPct >= 30 ? '#00e676' : ndrPct >= 20 ? '#f59e0b' : '#ef4444');
+  var drMetricColor = window.dashboardRateColor ? window.dashboardRateColor(drPct) : (drPct >= 40 ? '#22d3ee' : drPct >= 30 ? '#00e676' : drPct >= 20 ? '#f59e0b' : '#ef4444');
   var earnedDelta = overview.earnedCommission ? overview.earnedCommission.delta : 0;
   var deltaSign = earnedDelta >= 0 ? '↑ ' : '↓ ';
   var deltaColor = earnedDelta >= 0 ? '#84cc16' : '#ef4444';
 
   var SUMMARY_ITEMS = [
     { id: 1, label: s8Txt('Products driving 80% of commission', 'منتجات تحقق 80% من العمولة'), iconColor: '#3b82f6', value: String(top80PctProducts), sub: s8Txt('products', 'منتجات'), iconType: 'pie' },
-    { id: 2, label: s8Txt('Net delivery rate', 'نسبة تسليم الطلبات'), iconColor: '#22c55e', value: ndrVal, sub: ndrSub, iconType: 'shield' },
+    { id: 2, label: s8Txt('Net delivery rate', 'نسبة تسليم الطلبات'), iconColor: ndrMetricColor, value: ndrVal, sub: ndrSub, iconType: 'shield' },
     { id: 3, label: s8Txt('Average delivery time', 'متوسط وقت التسليم'), iconColor: '#06b6d4', value: avgShippingValue == null ? '—' : avgShippingValue, sub: avgShippingValue == null ? s8Txt('Unavailable', 'غير متاح') : dayLabel(avgShippingValue), iconType: 'clock' },
     { id: 4, label: s8Txt('Average delivered order value', 'متوسط قيمة الطلبات المسلمة'), iconColor: '#8b5cf6', value: averageDeliveredOrderValue.toFixed(1), sub: null, suffix: 'SAR', iconType: 'tag' },
     { id: 5, label: s8Txt('Active cities', 'إجمالي المدن النشطة'), iconColor: '#f59e0b', value: String(activeCitiesCount), sub: s8Txt('cities', 'مدن'), iconType: 'map' },
-    { id: 6, label: s8Txt('Delivery Rate (DR)', 'معدل التسليم (DR)'), iconColor: '#22d3ee', value: drVal, sub: drSub, iconType: 'shield' },
+    { id: 6, label: s8Txt('Delivery Rate (DR)', 'معدل التسليم (DR)'), iconColor: drMetricColor, value: drVal, sub: drSub, iconType: 'shield' },
     { id: 7, label: s8Txt('Commission growth', 'نمو العمولة'), iconColor: '#84cc16', value: deltaSign + Math.abs(earnedDelta).toFixed(1) + '%', sub: s8Txt('vs previous period', 'عن الفترة السابقة'), valueColor: deltaColor, iconType: 'trend' },
     { id: 8, label: s8Txt('Delivered sales', 'مبيعات الطلبات المسلمة'), iconColor: '#00e676', value: fmt(deliveredSalesValue), sub: 'SAR', iconType: 'money' },
   ];
@@ -646,6 +656,17 @@ window.renderSection8 = function (mountEl, data, ctx) {
     '</div>';
   }).join('');
 
+  var pipelineSummaryAllHtml = PIPELINE_SUMMARY.map(function (s) {
+    var valHtml = '<span class="s8-pipeline-summary-value" style="color:' + s.color + ';">' + s.value + '</span>';
+    if (s.suffix) {
+      valHtml += '<span class="s8-pipeline-summary-unit">' + s.suffix + '</span>';
+    }
+    return '<div class="s8-pipeline-summary-item">' +
+      '<span class="s8-pipeline-summary-label">' + s.label + '</span>' +
+      '<div class="s8-pipeline-summary-number">' + valHtml + '</div>' +
+    '</div>';
+  }).join('');
+
   var donutPaths = codDonutSvg(drBaseOrders || 1, drDeliveredOrders, Math.max(0, drBaseOrders - drDeliveredOrders), 65, 65, 52, 16);
   var codMetricsHtml = COD_METRICS.map(function (m) {
     var metricUnit = (m.label === 'DR' || m.label === 'NDR') ? '' : 'SAR';
@@ -725,7 +746,7 @@ window.renderSection8 = function (mountEl, data, ctx) {
   }
 
   var viewAllBtnHtml = '<button id="s8-btn-products-bottom" style="margin-top:16px;background:rgba(251,191,36,0.1);border:1px solid rgba(251,191,36,0.3);color:#fbbf24;border-radius:8px;padding:8px 14px;font-size:11px;display:flex;align-items:center;justify-content:center;gap:8px;font-weight:700;cursor:pointer;width:100%;font-family:inherit;box-shadow:0 4px 10px rgba(0,0,0,0.2);">' +
-    s8Txt('VIEW ALL PRODUCTS', 'عرض كل المنتجات') +
+    s8Txt('VIEW ALL PRODUCTS', 'عرض Ùƒل المنتجات') +
   '</button>';
 
   var chartStatsHtml = CHART_STATS.map(function (s, i) {
@@ -823,7 +844,7 @@ window.renderSection8 = function (mountEl, data, ctx) {
     '<div style="display:grid;grid-template-columns:minmax(0,1.05fr) minmax(260px,.95fr);gap:18px;align-items:stretch;flex:1;" class="s8-roi-preview-grid">' +
       '<div style="display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:12px;align-content:start;">' +
         roiMetricCard(s8Txt('Ad spend', 'الإنفاق الإعلاني'), fmt(roiDefaultBudget) + ' SAR', s8Txt('from calculator', 'من الحاسبة'), '#3b82f6', '<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 1v22"/><path d="M17 5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6"/></svg>') +
-        roiMetricCard(s8Txt('Delivered orders', 'الطلبات المسلمة'), fmt(roiDeliveredOrders, 0), fmt(roiTotalOrders, 0) + ' × ' + ndrVal, '#22c55e', '<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M20 6 9 17l-5-5"/></svg>') +
+        roiMetricCard(s8Txt('Delivered orders', 'الطلبات المسلمة'), fmt(roiDeliveredOrders, 0), fmt(roiTotalOrders, 0) + ' × ' + ndrVal, ndrMetricColor, '<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M20 6 9 17l-5-5"/></svg>') +
         roiMetricCard(s8Txt('Revenue', 'الإيراد'), fmt(roiRevenue) + ' SAR', s8Txt('delivered × avg commission', 'المسلم × متوسط العمولة'), '#06b6d4', '<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 3v18h18"/><path d="m7 15 4-4 3 3 5-7"/></svg>') +
         roiMetricCard(s8Txt('Net profit', 'صافي الربح'), fmt(roiNetProfit) + ' SAR', s8Txt('revenue - spend', 'الإيراد - الإنفاق'), roiProfitColor, '<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="8" r="7"/><path d="M8.21 13.89 7 23l5-3 5 3-1.21-9.12"/></svg>') +
         roiMetricCard('CPA', fmt(roiCpa) + ' SAR', s8Txt('spend ÷ total orders', 'الإنفاق ÷ إجمالي الطلبات'), '#a855f7', '<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><circle cx="12" cy="12" r="5"/><circle cx="12" cy="12" r="1"/></svg>') +
@@ -910,12 +931,9 @@ window.renderSection8 = function (mountEl, data, ctx) {
             '<span style="font-size:14px;font-weight:700;color:#fff;font-family:\'Inter\', \'Cairo\', sans-serif;">' + s8Txt('Order Pipeline (Fulfillment Funnel)', 'خط سير الطلبات (قمع الإنجاز)') + '</span>' +
           '</div>' +
           '<div class="s8-pipeline-stages" style="display:flex;flex:1;gap:0;overflow-x:auto;">' + pipelineStagesHtml + '</div>' +
-          '<div style="display:flex;flex-direction:column;padding:10px 14px;background:rgba(0,0,0,0.3);border:1px solid rgba(255,255,255,0.04);border-radius:12px;margin-top:16px;box-shadow:inset 0 0 20px rgba(0,0,0,0.4);gap:10px;">' +
-            /* Row 1: Total Orders, NDR, Delivered AOV */
-            '<div style="display:flex;align-items:center;gap:20px;border-bottom:1px solid rgba(255,255,255,0.05);padding-bottom:10px;">' + pipelineSummaryRow1Html + '</div>' +
-            /* Row 2: Total Delivered Sales, Avg Delivery Time + button */
-            '<div style="display:flex;align-items:center;justify-content:space-between;gap:14px;">' +
-              '<div style="display:flex;align-items:center;gap:20px;">' + pipelineSummaryRow2Html + '</div>' +
+          '<div class="s8-pipeline-summary-box">' +
+            '<div class="s8-pipeline-summary-strip">' + pipelineSummaryAllHtml + '</div>' +
+            '<div class="s8-pipeline-summary-action">' +
               '<button id="s8-btn-pipeline" style="background:rgba(59,130,246,0.1);border:1px solid rgba(59,130,246,0.3);color:#3b82f6;border-radius:8px;padding:7px 12px;font-size:10px;display:flex;align-items:center;gap:6px;font-weight:700;cursor:pointer;direction:' + (isAr ? 'rtl' : 'ltr') + ';box-shadow:0 0 10px rgba(59,130,246,0.15);font-family:inherit;flex-shrink:0;white-space:nowrap;">' +
                 '<svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="#3b82f6" stroke-width="2"><line x1="4" y1="6" x2="20" y2="6"/><line x1="8" y1="12" x2="20" y2="12"/><line x1="12" y1="18" x2="20" y2="18"/></svg>' +
                 s8Txt('View Order Details', 'عرض تفاصيل الطلبات') +
@@ -1081,7 +1099,7 @@ window.renderSection8 = function (mountEl, data, ctx) {
       var rank = i + 1;
       var rankColor = rank === 1 ? '#f59e0b' : rank === 2 ? '#94a3b8' : rank === 3 ? '#cd7f32' : 'rgba(255,255,255,0.25)';
       var ndr = typeof c.ndrPct === 'number' ? c.ndrPct.toFixed(1) : '—';
-      var ndrColor = parseFloat(ndr) >= 75 ? '#00e676' : parseFloat(ndr) >= 55 ? '#f59e0b' : '#ef4444';
+      var ndrColor = window.dashboardRateColor ? window.dashboardRateColor(parseFloat(ndr)) : (parseFloat(ndr) >= 40 ? '#22d3ee' : parseFloat(ndr) >= 30 ? '#00e676' : parseFloat(ndr) >= 20 ? '#f59e0b' : '#ef4444');
       var barW = Math.max(4, Math.round(c.scalingScore || 0));
 
       return '<div style="display:grid;grid-template-columns:28px 1fr 70px 60px 60px 60px;' +

@@ -49,7 +49,7 @@
     var calc = context.localCalculations || {};
     var issues = [];
 
-    if (h.ndr && h.ndr < 55) {
+    if (h.ndr && h.ndr < 20) {
       issues.push({
         key: "low_ndr",
         severity: "high",
@@ -57,7 +57,7 @@
         body: "Low NDR means too many generated orders are not becoming earned commission. This is usually the first place to fix before adding more traffic."
       });
     }
-    if (p && p.ndr < 55) {
+    if (p && p.ndr < 20) {
       issues.push({
         key: "unstable_product",
         severity: "high",
@@ -73,16 +73,23 @@
         body: "After spend, " + p.name + " is around " + fmt(Math.abs(p.profit)) + " " + (calc.currency || "") + " negative. That points to a CPA or conversion-quality problem, not just a sales-volume problem."
       });
     }
-    if (p && p.cpa != null && p.delivered > 0) {
-      var avgCommission = p.commission / Math.max(1, p.delivered);
-      if (p.cpa > avgCommission) {
+    if (p && p.cpa != null && p.breakEvenCpa) {
+      if (p.cpa > p.breakEvenCpa) {
         issues.push({
           key: "high_cpa",
           severity: "high",
-          title: "CPA is above delivered commission",
-          body: "CPA is about " + p.cpa + " while average delivered commission is about " + Math.round(avgCommission * 100) / 100 + ". Scaling this as-is likely increases losses."
+          title: "CPA is above break-even CPA",
+          body: "CPA is about " + p.cpa + " while break-even CPA is about " + p.breakEvenCpa + " " + (p.breakEvenCurrency || "") + ". Break-even CPA is avg commission times NDR, so scaling this as-is likely increases losses."
         });
       }
+    }
+    if (!p && h.actualCpa != null && h.breakEvenCpa && h.actualCpa > h.breakEvenCpa) {
+      issues.push({
+        key: "account_cpa_above_break_even",
+        severity: "high",
+        title: "Account CPA is above break-even CPA",
+        body: "Account CPA is about " + h.actualCpa + " while break-even CPA is about " + h.breakEvenCpa + " " + (h.breakEvenCurrency || "") + ". This means the selected account scope is losing at the current CPA."
+      });
     }
     if (c && c.riskScore >= 65) {
       issues.push({
@@ -143,8 +150,8 @@
     (context.opportunities || []).slice(0, 3).forEach(function (item) {
       opportunities.push(String(item));
     });
-    if (p && p.ndr >= 65 && (p.profit == null || p.profit > 0)) {
-      opportunities.push(p.name + " can be tested for controlled scaling because delivery quality is relatively stable.");
+    if (p && p.ndr >= 40 && p.isCpaAboveBreakEven !== true && (p.profit == null || p.profit > 0)) {
+      opportunities.push(p.name + " can be tested for controlled scaling because delivery quality is relatively stable and CPA is below break-even.");
     }
     if (c && c.scalingScore >= 60) {
       opportunities.push(c.name + " may be a scale candidate if spend and CPA stay controlled.");
@@ -156,7 +163,7 @@
     var keys = {};
     issues.forEach(function (i) { keys[i.key] = true; });
     var tips = [];
-    if (keys.margin_collapse || keys.high_cpa) tips.push("Reduce spend temporarily until CPA is below delivered commission.");
+    if (keys.margin_collapse || keys.high_cpa || keys.account_cpa_above_break_even) tips.push("Reduce or pause spend until CPA is below break-even CPA.");
     if (keys.low_ndr || keys.unstable_product) tips.push("Improve confirmation and delivery workflow before scaling traffic.");
     if (keys.weak_city) tips.push("Inspect city-level delivery/COD patterns and pause weak city targeting if needed.");
     if (keys.refund_spike) tips.push("Review product promise, quality, and refund reasons before increasing traffic.");
@@ -191,17 +198,26 @@
     }
 
     var relationship = [];
+    if (h.deliveredSales) relationship.push("delivered sales " + fmt(h.deliveredSales) + " SAR");
+    if (h.deliveredAov) relationship.push("delivered AOV " + fmt(h.deliveredAov) + " SAR");
+    if (h.revenue) relationship.push("earned commission " + fmt(h.revenue) + " SAR");
+    if (h.lostCommission) relationship.push("lost commission " + fmt(h.lostCommission) + " SAR");
     if (h.ndr) relationship.push("account NDR " + pct(h.ndr) + "%");
+    if (h.breakEvenCpa) relationship.push("account break-even CPA " + h.breakEvenCpa + " " + (h.breakEvenCurrency || "SAR"));
+    if (h.actualCpa != null) relationship.push("account CPA " + h.actualCpa + " " + (h.breakEvenCurrency || ""));
+    if (p && p.deliveredSales) relationship.push("product delivered sales " + fmt(p.deliveredSales) + " SAR");
+    if (p && p.deliveredAov) relationship.push("product delivered AOV " + fmt(p.deliveredAov) + " SAR");
     if (p && p.cpa != null) relationship.push("CPA " + p.cpa);
+    if (p && p.breakEvenCpa) relationship.push("break-even CPA " + p.breakEvenCpa + " " + (p.breakEvenCurrency || ""));
     if (p && p.marginPct != null) relationship.push("margin " + p.marginPct + "%");
     if (c) relationship.push(c.name + " risk score " + fmt(c.riskScore));
 
     var kpiRelationship = relationship.length
-      ? "The key relationship to watch is " + relationship.join(", ") + ". Treat these together; a good-looking order count can still lose money when delivery quality or CPA is unstable."
-      : "The key is to judge order volume together with delivery quality, CPA, and earned commission rather than reading any single KPI alone.";
+      ? "The key relationship to watch is " + relationship.join(", ") + ". Treat these together; a good-looking order count can still lose money when delivery quality is weak or CPA is above break-even CPA."
+      : "The key is to judge order volume together with delivered sales, delivered AOV, delivery quality, CPA, break-even CPA, and earned commission rather than reading any single KPI alone.";
 
     strategicInterpretation = issues.length
-      ? "Operationally, fix the leak before scaling. More traffic will not solve a weak delivery, CPA, refund, or approval relationship."
+      ? "Operationally, fix the leak before scaling. More traffic will not solve a weak delivery, CPA above break-even, refund, or approval relationship."
       : "Operationally, use this as a controlled scaling signal, not a reason to increase spend blindly.";
 
     var message = "Main insight: " + mainInsight +

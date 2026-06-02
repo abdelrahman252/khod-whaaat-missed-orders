@@ -104,6 +104,9 @@ function flattenRuns(runs) {
       accountLabel: r.accountLabel || r.accountEmail || "",
       runId:        r.runId        || "",
       runDate:      r.runDate      || "",
+      runTimestamp: r.runTimestamp || null,
+      runStartedAt: r.runStartedAt || null,
+      runEndedAt:   r.runEndedAt   || null,
     }))
   );
 }
@@ -146,7 +149,7 @@ function accountKey(item) {
 function accountDisplay(item) {
   if (!item) return "—";
   if (typeof item === "string") return item === "__single__" ? "—" : item;
-  return item.accountEmail || item.accountLabel || item.accountId || "—";
+  return item.accountLabel || item.accountEmail || item.accountId || "—";
 }
 
 function accountMatches(item, key) {
@@ -195,9 +198,23 @@ function renderCustomSelect(container, options, currentValue, onChange, config) 
     '"': "&quot;",
     "'": "&#39;"
   })[ch]);
+  const optionLabel = option => option ? String(option.label ?? "") : "";
+  const optionSubLabel = option => option ? String(option.subLabel || option.email || "") : "";
+  const optionText = option => [optionLabel(option), optionSubLabel(option)].filter(Boolean).join(" ");
+  const optionMarkup = (option, compact) => {
+    const labelText = escapeSelectHtml(optionLabel(option));
+    const subText = escapeSelectHtml(optionSubLabel(option));
+    if (!subText) return `<span class="custom-select-label">${labelText}</span>`;
+    return `
+      <span class="custom-select-label-stack${compact ? " compact" : ""}">
+        <span class="custom-select-label-main">${labelText}</span>
+        <span class="custom-select-label-sub">${subText}</span>
+      </span>
+    `;
+  };
 
   const currentOpt = options.find(o => o.value === currentValue) || options[0];
-  const label = currentOpt ? currentOpt.label : "";
+  const label = currentOpt ? optionText(currentOpt) : "";
   const dropdownStyle = config.maxHeight ? `style="max-height:${config.maxHeight};overflow-y:auto;"` : "";
 
   let searchHtml = "";
@@ -218,7 +235,7 @@ function renderCustomSelect(container, options, currentValue, onChange, config) 
   container.innerHTML = `
     <div class="custom-select-container">
       <button class="custom-select-trigger" type="button" aria-haspopup="listbox" aria-expanded="false" aria-label="${escapeSelectHtml(config.ariaLabel || label)}">
-        <span class="custom-select-value">${escapeSelectHtml(label)}</span>
+        <span class="custom-select-value">${currentOpt ? optionMarkup(currentOpt, true) : escapeSelectHtml(label)}</span>
         <svg class="custom-select-arrow" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
           <polyline points="6 9 12 15 18 9"></polyline>
         </svg>
@@ -229,8 +246,8 @@ function renderCustomSelect(container, options, currentValue, onChange, config) 
           const selected = o.value === currentValue ? "selected" : "";
           const checkmark = o.value === currentValue ? '<span class="custom-select-checkmark">✓</span>' : "";
           return `
-            <div class="custom-select-option ${selected}" role="option" aria-selected="${o.value === currentValue ? "true" : "false"}" data-value="${escapeSelectHtml(o.value)}" tabindex="-1">
-              <span>${escapeSelectHtml(o.label)}</span>
+            <div class="custom-select-option ${selected}" role="option" aria-selected="${o.value === currentValue ? "true" : "false"}" data-value="${escapeSelectHtml(o.value)}" data-search="${escapeSelectHtml(optionText(o).toLowerCase())}" tabindex="-1">
+              ${optionMarkup(o, false)}
               ${checkmark}
             </div>
           `;
@@ -280,8 +297,9 @@ function renderCustomSelect(container, options, currentValue, onChange, config) 
         // Update trigger label
         const triggerLabel = container.querySelector(".custom-select-value");
         if (triggerLabel) {
-          const selectedLabel = opt.querySelector("span") ? opt.querySelector("span").textContent : "";
-          triggerLabel.textContent = selectedLabel;
+          const selected = options.find(o => String(o.value) === String(val));
+          if (selected) triggerLabel.innerHTML = optionMarkup(selected, true);
+          else triggerLabel.textContent = opt.textContent || "";
         }
         
         // Update selected classes and checkmark
@@ -319,7 +337,7 @@ function renderCustomSelect(container, options, currentValue, onChange, config) 
       searchInput.addEventListener("input", function(e) {
         const val = e.target.value.toLowerCase();
         container.querySelectorAll(".custom-select-option").forEach(opt => {
-          const text = opt.querySelector("span").textContent.toLowerCase();
+          const text = (opt.getAttribute("data-search") || opt.textContent || "").toLowerCase();
           if (text.includes(val)) {
             opt.style.display = "";
           } else {
@@ -489,7 +507,7 @@ function _mountCollapseHandle(shell) {
 
   var EXPANDED_W  = 200; // matches main.css .sv3-sidebar { width: 200px }
   var COLLAPSED_W = 44;  // icon-only mode width
-  var collapsed   = false;
+  var collapsed   = shell.classList.contains('dashboard-page-shell');
   var isRtl       = document.documentElement.getAttribute('dir') === 'rtl';
 
   function placeHandle(width) {
@@ -498,6 +516,22 @@ function _mountCollapseHandle(shell) {
   }
   function handleTransform(rotated) {
     return 'translateX(' + (isRtl ? '50%' : '-50%') + ') translateY(-50%)' + (rotated ? ' rotate(180deg)' : '');
+  }
+  function applyCollapsedState(nextCollapsed) {
+    collapsed = !!nextCollapsed;
+    if (collapsed) {
+      sidebar.classList.add('sv3-sb--icon');
+      sidebar.style.width    = COLLAPSED_W + 'px';
+      sidebar.style.minWidth = COLLAPSED_W + 'px';
+      placeHandle(COLLAPSED_W);
+      handle.style.transform = handleTransform(true);
+    } else {
+      sidebar.classList.remove('sv3-sb--icon');
+      sidebar.style.width    = EXPANDED_W + 'px';
+      sidebar.style.minWidth = EXPANDED_W + 'px';
+      placeHandle(EXPANDED_W);
+      handle.style.transform = handleTransform(false);
+    }
   }
 
   // Sidebar animates width; overflow:hidden clips content during transition
@@ -512,13 +546,14 @@ function _mountCollapseHandle(shell) {
   handle.innerHTML = isRtl ? '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="9 18 15 12 9 6"></polyline></svg>' : '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="15 18 9 12 15 6"></polyline></svg>';
 
   // Start position: centered exactly on the sidebar/content divider.
-  placeHandle(EXPANDED_W);
-  handle.style.transform = handleTransform(false);
+  applyCollapsedState(collapsed);
 
   shell.appendChild(handle);
 
   handle.addEventListener('click', function () {
     collapsed = !collapsed;
+    applyCollapsedState(collapsed);
+    return;
     if (collapsed) {
       // Switch to icon-only CSS class (hides labels/footer, centers icons)
       sidebar.classList.add('sv3-sb--icon');

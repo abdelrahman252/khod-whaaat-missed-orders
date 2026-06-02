@@ -1,36 +1,36 @@
-/* ══════════════════════════════════════════════════════════════════════════════
+﻿/* â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•
    section-prepaid.js  (T-24 Part B)
    Full Prepaid Intelligence section UI.
 
    Layout:
      1. Header + KPI summary strip
      2. Global Comparison Panel  (Prepaid vs COD side-by-side)
-     3. City Ranking Chart       (horizontal CSS bars, clickable → CityDrawer)
+     3. City Ranking Chart       (horizontal CSS bars, clickable â†’ CityDrawer)
      4. Product Prepaid vs COD Table (sortable)
      5. Recommendation Cards     (from forcePrepaidRecs + codDangerousCombos)
 
    Depends on:
-     window.formatSAR()               — dashboard-shared.js
-     window.animateNumber()            — dashboard-shared.js
-     window.scoreBadge()               — dashboard-shared.js (T-03)
-     window.sectionTopBar()            — dashboard-shared.js
-     window.icon()                     — dashboard-shared.js
-     window.CityIntelligenceDrawer     — section-city-drawer.js (T-21) [optional]
-     window.DashboardFilterBus         — dashboard-filter-bus.js (T-13)  [optional]
-     window.dashboardGeoData           — set by aggregator after aggregation
+     window.formatSAR()               â€” dashboard-shared.js
+     window.animateNumber()            â€” dashboard-shared.js
+     window.scoreBadge()               â€” dashboard-shared.js (T-03)
+     window.sectionTopBar()            â€” dashboard-shared.js
+     window.icon()                     â€” dashboard-shared.js
+     window.CityIntelligenceDrawer     â€” section-city-drawer.js (T-21) [optional]
+     window.DashboardFilterBus         â€” dashboard-filter-bus.js (T-13)  [optional]
+     window.dashboardGeoData           â€” set by aggregator after aggregation
 
    Exposed on window:
      window.renderSectionPrepaid(mountEl, data, ctx)
-       mountEl — DOM element to render into
-       data    — full aggregator output (data.geo.prepaidIntelligence)
-       ctx     — optional context object {account, month}
-   ══════════════════════════════════════════════════════════════════════════════ */
+       mountEl â€” DOM element to render into
+       data    â€” full aggregator output (data.geo.prepaidIntelligence)
+       ctx     â€” optional context object {account, month}
+   â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â• */
 (function () {
   'use strict';
   var isAr = (document.documentElement.getAttribute('lang') || window._kbotLang || localStorage.getItem('kbot-lang') || 'ar') === 'ar';
   function sTx(en, ar) { return isAr ? ar : en; }
 
-  /* ── Design tokens (matches dashboard dark theme) ─────────────────────────── */
+  /* â”€â”€ Design tokens (matches dashboard dark theme) â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€ */
   var C = {
     bg:        '#0a0f1e',
     surface:   '#0d1525',
@@ -38,22 +38,22 @@
     border:    'rgba(255,255,255,0.07)',
     muted:     'rgba(255,255,255,0.35)',
     text:      'rgba(255,255,255,0.88)',
-    prepaid:   '#3b82f6',   // blue   — prepaid
-    cod:       '#f59e0b',   // amber  — COD
+    prepaid:   '#3b82f6',   // blue   â€” prepaid
+    cod:       '#f59e0b',   // amber  â€” COD
     green:     '#00e676',
     red:       '#ef4444',
     purple:    '#a855f7'
   };
 
-  /* ── Helpers ──────────────────────────────────────────────────────────────── */
+  /* â”€â”€ Helpers â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€ */
   function pct(v, decimals) {
     var d = decimals === undefined ? 1 : decimals;
-    return (typeof v === 'number' ? v * 100 : 0).toFixed(d) + '%';
+    return (typeof v === 'number' ? clamp(v, 0, 1) * 100 : 0).toFixed(d) + '%';
   }
 
   function fmtSAR(n) {
     if (window.formatSAR) return window.formatSAR(n);
-    return Number(n || 0).toLocaleString('en-US', { maximumFractionDigits: 0 }) + ' ' + sTx('SAR', 'ر.س');
+    return Number(n || 0).toLocaleString('en-US', { maximumFractionDigits: 0 }) + ' ' + sTx('SAR', 'Ø±.Ø³');
   }
 
   function clamp(v, lo, hi) { return Math.max(lo, Math.min(hi, v)); }
@@ -70,17 +70,15 @@
   function normalizeProductSearch(value) {
     return String(value || '')
       .replace(/[\u064B-\u065F\u0670]/g, '')
-      .replace(/[أإآا]/g, 'ا')
-      .replace(/ة/g, 'ه')
-      .replace(/ى/g, 'ي')
+      .replace(/[Ø£Ø¥Ø¢Ø§]/g, 'Ø§')
+      .replace(/Ø©/g, 'Ù‡')
+      .replace(/Ù‰/g, 'ÙŠ')
       .trim()
       .toLowerCase();
   }
 
   function ndrColor(rate) {
-    if (rate >= 0.75) return C.green;
-    if (rate >= 0.55) return C.cod;
-    return C.red;
+    return window.dashboardRateColor ? window.dashboardRateColor(rate, { scale: 'ratio' }) : (rate >= 0.40 ? '#22d3ee' : rate >= 0.30 ? C.green : rate >= 0.20 ? C.cod : C.red);
   }
 
   function prepaidColor(prepaidPct) {
@@ -90,16 +88,16 @@
   }
 
   function deltaLabel(advantage) {
-    if (advantage > 0.15) return { color: C.green,  label: sTx('↑ Much Better', '↑ أفضل بكثير') };
-    if (advantage > 0.05) return { color: C.prepaid, label: sTx('↑ Better', '↑ أفضل') };
-    if (advantage < 0)    return { color: C.red,     label: sTx('↓ COD Better', '↓ COD أفضل') };
-    return { color: C.muted, label: sTx('≈ Similar', '≈ متقارب') };
+    if (advantage > 0.15) return { color: C.green,  label: sTx('â†‘ Much Better', 'â†‘ Ø£ÙØ¶Ù„ Ø¨ÙƒØ«ÙŠØ±') };
+    if (advantage > 0.05) return { color: C.prepaid, label: sTx('â†‘ Better', 'â†‘ Ø£ÙØ¶Ù„') };
+    if (advantage < 0)    return { color: C.red,     label: sTx('â†“ COD Better', 'â†“ COD Ø£ÙØ¶Ù„') };
+    return { color: C.muted, label: sTx('â‰ˆ Similar', 'â‰ˆ Ù…ØªÙ‚Ø§Ø±Ø¨') };
   }
 
   function emptyState(msg) {
     return '<div style="display:flex;align-items:center;justify-content:center;' +
       'padding:40px;color:' + C.muted + ';font-size:13px;gap:8px;">' +
-      '<span style="font-size:22px;">📭</span>' + msg + '</div>';
+      '<span style="font-size:22px;">ðŸ“­</span>' + msg + '</div>';
   }
 
   function sectionCard(title, iconName, content, extra) {
@@ -181,46 +179,46 @@
     return html;
   }
 
-  /* ── 1. Global KPI Strip ─────────────────────────────────────────────────── */
+  /* â”€â”€ 1. Global KPI Strip â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€ */
   function buildKpiStrip(pi) {
     var noData = !pi || pi.globalPrepaidPct === 0;
 
     var items = [
       {
-        label: sTx('Prepaid Share', 'نسبة الدفع المسبق'),
-        value: noData ? '—' : pct(pi.globalPrepaidPct),
+        label: sTx('Prepaid Share', 'Ù†Ø³Ø¨Ø© Ø§Ù„Ø¯ÙØ¹ Ø§Ù„Ù…Ø³Ø¨Ù‚'),
+        value: noData ? 'â€”' : pct(pi.globalPrepaidPct),
         color: C.prepaid,
-        sub: noData ? sTx('No data available', 'لا تتوفر بيانات') : sTx('of total orders', 'من إجمالي الطلبات')
+        sub: noData ? sTx('No data available', 'Ù„Ø§ ØªØªÙˆÙØ± Ø¨ÙŠØ§Ù†Ø§Øª') : sTx('of total orders', 'Ù…Ù† Ø¥Ø¬Ù…Ø§Ù„ÙŠ Ø§Ù„Ø·Ù„Ø¨Ø§Øª')
       },
       {
-        label: sTx('Prepaid NDR', 'NDR المسبق'),
-        value: noData ? '—' : pct(pi.prepaidNdr),
-        color: (pi && pi.prepaidNdr >= 0.75) ? C.green : C.red,
-        sub: sTx('Prepaid delivery quality', 'مرتجعات الدفع المسبق')
+        label: sTx('Prepaid NDR', 'NDR Ø§Ù„Ù…Ø³Ø¨Ù‚'),
+        value: noData ? 'â€”' : pct(pi.prepaidNdr),
+        color: pi ? ndrColor(pi.prepaidNdr) : C.red,
+        sub: sTx('Prepaid delivery quality', 'Ù…Ø±ØªØ¬Ø¹Ø§Øª Ø§Ù„Ø¯ÙØ¹ Ø§Ù„Ù…Ø³Ø¨Ù‚')
       },
       {
-        label: sTx('COD NDR', 'NDR الدفع عند الاستلام'),
-        value: noData ? '—' : pct(pi.codNdr),
-        color: (pi && pi.codNdr >= 0.55) ? C.cod : C.red,
-        sub: sTx('COD Delivery Quality', 'مرتجعات COD')
+        label: sTx('COD NDR', 'NDR Ø§Ù„Ø¯ÙØ¹ Ø¹Ù†Ø¯ Ø§Ù„Ø§Ø³ØªÙ„Ø§Ù…'),
+        value: noData ? 'â€”' : pct(pi.codNdr),
+        color: pi ? ndrColor(pi.codNdr) : C.red,
+        sub: sTx('COD Delivery Quality', 'Ù…Ø±ØªØ¬Ø¹Ø§Øª COD')
       },
       {
-        label: sTx('Prepaid Advantage', 'أفضلية الدفع المسبق'),
-        value: (pi && pi.prepaidDrAdvantage > 0) ? '+' + pct(pi.prepaidDrAdvantage) : (noData ? '—' : pct(pi.prepaidDrAdvantage)),
-        color: (pi && pi.prepaidDrAdvantage > 0.05) ? C.green : C.muted,
-        sub: sTx('Delivery rate delta', 'فارق معدل التسليم')
+        label: sTx('Prepaid Advantage', 'Ø£ÙØ¶Ù„ÙŠØ© Ø§Ù„Ø¯ÙØ¹ Ø§Ù„Ù…Ø³Ø¨Ù‚'),
+        value: (pi && pi.prepaidNdrAdvantage > 0) ? '+' + pct(pi.prepaidNdrAdvantage) : (noData ? 'â€”' : pct(pi.prepaidNdrAdvantage)),
+        color: (pi && pi.prepaidNdrAdvantage > 0.05) ? C.green : C.muted,
+        sub: sTx('NDR delta', 'ÙØ§Ø±Ù‚ NDR')
       },
       {
-        label: sTx('Risky COD Cities', 'مدن COD خطرة'),
+        label: sTx('Risky COD Cities', 'Ù…Ø¯Ù† COD Ø®Ø·Ø±Ø©'),
         value: (pi && pi.codHeavyCities) ? pi.codHeavyCities.length : '0',
         color: (pi && pi.codHeavyCities && pi.codHeavyCities.length > 0) ? C.red : C.muted,
-        sub: 'COD > 85% + NDR < 45%'
+        sub: 'COD > 85% + NDR < 20%'
       },
       {
-        label: sTx('Mandatory Actions', 'توصيات إلزامية'),
+        label: sTx('Mandatory Actions', 'ØªÙˆØµÙŠØ§Øª Ø¥Ù„Ø²Ø§Ù…ÙŠØ©'),
         value: (pi && pi.forcePrepaidRecs) ? pi.forcePrepaidRecs.length : '0',
         color: (pi && pi.forcePrepaidRecs && pi.forcePrepaidRecs.length > 0) ? C.purple : C.muted,
-        sub: sTx('Convert to Prepaid', 'تحويل إلى مسبق')
+        sub: sTx('Convert to Prepaid', 'ØªØ­ÙˆÙŠÙ„ Ø¥Ù„Ù‰ Ù…Ø³Ø¨Ù‚')
       }
     ];
 
@@ -240,25 +238,25 @@
     '</div>';
   }
 
-  /* ── 2. Global Comparison Panel ──────────────────────────────────────────── */
+  /* â”€â”€ 2. Global Comparison Panel â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€ */
   function buildComparisonPanel(pi) {
     var noData = !pi || (pi.globalPrepaidPct === 0 && pi.globalCodPct === 0);
 
     if (noData) {
-      return sectionCard(sTx('Payment Method Comparison', 'مقارنة أسلوب الدفع'), 'creditCard',
+      return sectionCard(sTx('Payment Method Comparison', 'Ù…Ù‚Ø§Ø±Ù†Ø© Ø£Ø³Ù„ÙˆØ¨ Ø§Ù„Ø¯ÙØ¹'), 'creditCard',
         '<div style="display:flex;flex-direction:column;align-items:center;gap:12px;padding:30px;">' +
-          '<div style="font-size:40px;">💳</div>' +
+          '<div style="font-size:40px;">ðŸ’³</div>' +
           '<div style="color:' + C.muted + ';font-size:13px;text-align:center;max-width:320px;">' +
             sTx(
               'Payment method data is not available. You need to export the <code style="background:rgba(255,255,255,0.07);padding:1px 5px;border-radius:4px;">paymentMethod</code> field from the orders source to enable this analysis.',
-              'بيانات طريقة الدفع غير متوفرة. تحتاج إلى تصدير حقل <code style="background:rgba(255,255,255,0.07);padding:1px 5px;border-radius:4px;">paymentMethod</code> من مصدر الطلبات لتفعيل هذا التحليل.'
+              'Ø¨ÙŠØ§Ù†Ø§Øª Ø·Ø±ÙŠÙ‚Ø© Ø§Ù„Ø¯ÙØ¹ ØºÙŠØ± Ù…ØªÙˆÙØ±Ø©. ØªØ­ØªØ§Ø¬ Ø¥Ù„Ù‰ ØªØµØ¯ÙŠØ± Ø­Ù‚Ù„ <code style="background:rgba(255,255,255,0.07);padding:1px 5px;border-radius:4px;">paymentMethod</code> Ù…Ù† Ù…ØµØ¯Ø± Ø§Ù„Ø·Ù„Ø¨Ø§Øª Ù„ØªÙØ¹ÙŠÙ„ Ù‡Ø°Ø§ Ø§Ù„ØªØ­Ù„ÙŠÙ„.'
             ) +
           '</div>' +
         '</div>'
       );
     }
 
-    var adv = pi.prepaidDrAdvantage || 0;
+    var adv = pi.prepaidNdrAdvantage || 0;
     var dl  = deltaLabel(adv);
 
     function side(label, color, emoji, ndr, dr, codPct) {
@@ -268,7 +266,7 @@
         'border-radius:14px;padding:22px;text-align:center;">' +
         '<div style="font-size:28px;margin-bottom:6px;">' + emoji + '</div>' +
         '<div style="font-size:14px;font-weight:800;color:' + color + ';margin-bottom:16px;">' + label + '</div>' +
-        '<div style="font-size:11px;color:' + C.muted + ';margin-bottom:2px;">' + sTx('Order Share', 'نسبة الطلبات') + '</div>' +
+        '<div style="font-size:11px;color:' + C.muted + ';margin-bottom:2px;">' + sTx('Order Share', 'Ù†Ø³Ø¨Ø© Ø§Ù„Ø·Ù„Ø¨Ø§Øª') + '</div>' +
         '<div style="font-size:26px;font-weight:900;color:' + color + ';margin-bottom:16px;">' + pct(codPct) + '</div>' +
         '<div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;">' +
           '<div style="background:rgba(255,255,255,0.05);border-radius:10px;padding:10px;">' +
@@ -276,7 +274,7 @@
             '<div style="font-size:18px;font-weight:900;color:' + ndrColor(ndrVal) + ';">' + pct(ndrVal) + '</div>' +
           '</div>' +
           '<div style="background:rgba(255,255,255,0.05);border-radius:10px;padding:10px;">' +
-            '<div style="font-size:10px;color:' + C.muted + ';margin-bottom:3px;">' + sTx('DR (Estimated)', 'DR (تقدير)') + '</div>' +
+            '<div style="font-size:10px;color:' + C.muted + ';margin-bottom:3px;">' + sTx('DR (Estimated)', 'DR (ØªÙ‚Ø¯ÙŠØ±)') + '</div>' +
             '<div style="font-size:18px;font-weight:900;color:' + ndrColor(drVal) + ';">' + pct(drVal) + '</div>' +
           '</div>' +
         '</div>' +
@@ -286,30 +284,182 @@
     var advBadge = '<span style="display:inline-flex;align-items:center;gap:5px;' +
       'padding:4px 12px;border-radius:20px;font-size:11px;font-weight:800;' +
       'background:' + dl.color + '1a;color:' + dl.color + ';border:1px solid ' + dl.color + '44;">' +
-      dl.label + sTx(' | Delta ', ' | فارق ') + pct(Math.abs(adv)) +
+      dl.label + sTx(' | Delta ', ' | ÙØ§Ø±Ù‚ ') + pct(Math.abs(adv)) +
     '</span>';
 
-    return sectionCard(sTx('Payment Method Comparison', 'مقارنة أسلوب الدفع'), 'creditCard',
+    return sectionCard(sTx('Payment Method Comparison', 'Ù…Ù‚Ø§Ø±Ù†Ø© Ø£Ø³Ù„ÙˆØ¨ Ø§Ù„Ø¯ÙØ¹'), 'creditCard',
       '<div style="display:flex;gap:16px;align-items:stretch;">' +
-        side(sTx('Prepaid', 'الدفع المسبق'), C.prepaid, '💳', pi.prepaidNdr, pi.globalPrepaidDr || pi.prepaidDr, pi.globalPrepaidPct) +
+        side(sTx('Prepaid', 'Ø§Ù„Ø¯ÙØ¹ Ø§Ù„Ù…Ø³Ø¨Ù‚'), C.prepaid, 'ðŸ’³', pi.prepaidNdr, pi.globalPrepaidDr || pi.prepaidDr, pi.globalPrepaidPct) +
         '<div style="display:flex;flex-direction:column;align-items:center;justify-content:center;' +
           'padding:0 10px;gap:10px;min-width:80px;">' +
-          '<div style="font-size:24px;">⚡</div>' +
+          '<div style="font-size:24px;">âš¡</div>' +
           advBadge +
-          '<div style="font-size:10px;color:' + C.muted + ';text-align:center;">' + sTx('Prepaid Delivery Rate Advantage', 'أفضلية الدفع المسبق في معدل التسليم') + '</div>' +
+          '<div style="font-size:10px;color:' + C.muted + ';text-align:center;">' + sTx('Prepaid NDR Advantage', 'Ø£ÙØ¶Ù„ÙŠØ© NDR Ù„Ù„Ø¯ÙØ¹ Ø§Ù„Ù…Ø³Ø¨Ù‚') + '</div>' +
         '</div>' +
-        side(sTx('Cash on Delivery (COD)', 'الدفع عند الاستلام (COD)'), C.cod, '💰', pi.codNdr, pi.globalCodDr || pi.codDr, pi.globalCodPct) +
+        side(sTx('Cash on Delivery (COD)', 'Ø§Ù„Ø¯ÙØ¹ Ø¹Ù†Ø¯ Ø§Ù„Ø§Ø³ØªÙ„Ø§Ù… (COD)'), C.cod, 'ðŸ’°', pi.codNdr, pi.globalCodDr || pi.codDr, pi.globalCodPct) +
       '</div>'
     );
   }
 
-  /* ── 3. City Ranking Chart ───────────────────────────────────────────────── */
+  function buildPrepaidPromoSuggester(pi, geo) {
+    var avgCommission = geo && geo.kpis ? Number(geo.kpis.avgCommission || 0) : 0;
+    var codNdr = pi ? Number(pi.codNdr || 0) : 0;
+    var prepaidNdr = pi ? Number(pi.prepaidNdr || pi.globalPrepaidDr || pi.prepaidDr || 0) : 0;
+    var hasData = avgCommission > 0 && codNdr > 0 && prepaidNdr > 0;
+
+    if (!hasData) {
+      return sectionCard(
+        sTx('Prepaid Promo Code Suggester', 'مقترح كود خصم الدفع المسبق'),
+        'tag',
+        '<div style="color:' + C.muted + ';font-size:13px;line-height:1.8;">' +
+          sTx(
+            'Add commission and payment-method delivery data to calculate the safe prepaid discount.',
+            'أضف بيانات العمولة والتسليم حسب طريقة الدفع لحساب خصم الدفع المسبق الآمن.'
+          ) +
+        '</div>'
+      );
+    }
+
+    var codExpected = avgCommission * codNdr;
+    var maxDiscountSar = Math.max(0, avgCommission - (codExpected / prepaidNdr));
+    var maxDiscountPct = avgCommission > 0 ? (maxDiscountSar / avgCommission) * 100 : 0;
+    var suggestedPct = Math.max(0, Math.min(30, Math.floor(maxDiscountPct)));
+    var code = suggestedPct > 0 ? 'PREPAID' + suggestedPct : 'PREPAID';
+    var targetCities = [];
+
+    if (pi && Array.isArray(pi.codHeavyCities)) {
+      targetCities = pi.codHeavyCities.slice(0, 5).map(function (city) {
+        return city.city || city.name;
+      }).filter(Boolean);
+    }
+
+    var suggestedText = suggestedPct > 0
+      ? sTx('Offer ' + suggestedPct + '% prepaid discount', 'قدم خصم ' + suggestedPct + '% للدفع المسبق')
+      : sTx('Do not offer a discount yet', 'لا تقدم خصما الآن');
+    var actionText = suggestedPct > 0
+      ? sTx(
+          'Create a prepaid-only promo code in your store, then use this text in the ad creative.',
+          'أنشئ كود خصم للدفع المسبق فقط داخل المتجر، ثم استخدم هذا النص في الإعلان.'
+        )
+      : sTx(
+          'The data does not show enough room for a prepaid discount. Keep the regular offer for now.',
+          'البيانات لا تعطي مساحة كافية لخصم الدفع المسبق. استخدم العرض العادي حاليا.'
+        );
+    var creativeText = suggestedPct > 0
+      ? sTx(
+          'Pay online and use code ' + code + ' for ' + suggestedPct + '% off.',
+          'ادفع أونلاين واستخدم كود ' + code + ' للحصول على خصم ' + suggestedPct + '%.'
+        )
+      : '';
+
+    var metrics = [
+      {
+        label: sTx('What should I do?', 'ماذا أفعل؟'),
+        value: suggestedText,
+        sub: actionText,
+        color: suggestedPct > 0 ? C.green : C.cod
+      },
+      {
+        label: sTx('Code to create', 'الكود الذي تنشئه'),
+        value: code,
+        sub: suggestedPct > 0 ? sTx('Make this prepaid-only in your store.', 'اجعله للدفع المسبق فقط داخل المتجر.') : sTx('No discount recommended yet.', 'لا يوجد خصم مقترح الآن.'),
+        color: C.prepaid
+      },
+      {
+        label: sTx('Safety limit', 'حد الأمان'),
+        value: fmtSAR(maxDiscountSar),
+        sub: sTx('Do not give more than this discount per order.', 'لا تعط خصما أعلى من هذا لكل طلب.'),
+        color: C.green
+      }
+    ].map(function (item) {
+      return '<div style="background:rgba(255,255,255,0.045);border:1px solid rgba(255,255,255,0.07);' +
+        'border-radius:12px;padding:14px;min-height:96px;">' +
+        '<div style="font-size:11px;color:' + C.muted + ';margin-bottom:7px;">' + item.label + '</div>' +
+        '<div style="font-size:18px;font-weight:900;color:' + item.color + ';line-height:1.35;">' + esc(item.value) + '</div>' +
+        '<div style="font-size:11px;color:' + C.muted + ';line-height:1.6;margin-top:8px;">' + esc(item.sub) + '</div>' +
+      '</div>';
+    }).join('');
+
+    var cityChips = targetCities.map(function (name) {
+      return '<span style="display:inline-flex;padding:5px 9px;border-radius:999px;' +
+        'background:rgba(245,158,11,0.12);border:1px solid rgba(245,158,11,0.26);' +
+        'color:#fde68a;font-size:11px;font-weight:800;">' + esc(name) + '</span>';
+    }).join('');
+
+    return sectionCard(
+      sTx('Prepaid Promo Code Suggester', 'مقترح كود خصم الدفع المسبق'),
+      'tag',
+      '<div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:12px;margin-bottom:14px;">' +
+        metrics +
+      '</div>' +
+      (creativeText ? '<div style="background:rgba(59,130,246,0.10);border:1px solid rgba(59,130,246,0.24);' +
+        'border-radius:12px;padding:14px;margin-bottom:12px;display:flex;align-items:center;justify-content:space-between;gap:12px;flex-wrap:wrap;">' +
+        '<div>' +
+          '<div style="font-size:11px;color:' + C.muted + ';font-weight:800;margin-bottom:5px;">' + sTx('Ad text you can copy', 'نص إعلان يمكنك نسخه') + '</div>' +
+          '<div id="sp-promo-copy-text" style="font-size:14px;color:' + C.text + ';font-weight:900;line-height:1.6;">' + esc(creativeText) + '</div>' +
+        '</div>' +
+        '<button id="sp-promo-copy-btn" style="padding:9px 14px;border-radius:10px;border:1px solid rgba(59,130,246,0.4);' +
+          'background:rgba(59,130,246,0.16);color:#93c5fd;font-size:12px;font-weight:900;font-family:inherit;cursor:pointer;">' +
+          sTx('Copy ad text', 'نسخ نص الإعلان') +
+        '</button>' +
+      '</div>' : '') +
+      '<div style="font-size:12px;color:' + C.muted + ';line-height:1.8;margin-bottom:12px;">' +
+        sTx('Why: prepaid orders deliver better than COD, so you can spend part of that improvement as a discount without hurting margin.', 'السبب: طلبات الدفع المسبق تصل أفضل من COD، لذلك يمكنك استخدام جزء من هذا التحسن كخصم بدون تدمير الهامش.') +
+      '</div>' +
+      '<div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;">' +
+        '<span style="font-size:11px;color:' + C.muted + ';font-weight:800;">' + sTx('Target cities:', 'المدن المستهدفة:') + '</span>' +
+        (cityChips || '<span style="font-size:11px;color:' + C.muted + ';line-height:1.7;">' + sTx('No specific city has enough bad COD data yet. Test this prepaid offer broadly, or wait until a city shows many COD orders with weak delivery.', 'لا توجد مدينة محددة لديها بيانات COD سيئة كافية بعد. اختبر عرض الدفع المسبق بشكل عام، أو انتظر حتى تظهر مدينة فيها طلبات COD كثيرة مع تسليم ضعيف.') + '</span>') +
+      '</div>'
+    );
+  }
+
+  /* â”€â”€ 3. City Ranking Chart â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€ */
   var cityPagination = {
+    allItems: [],
     items: [],
     page: 1,
     pageSize: 5,
-    geo: null
+    geo: null,
+    sortKey: 'prepaidPct',
+    sortDir: 1
   };
+
+  var CITY_DEFAULT_SORT_KEY = 'prepaidPct';
+  var CITY_DEFAULT_SORT_DIR = 1;
+
+  function sortCities(arr, key, dir) {
+    return arr.slice().sort(function (a, b) {
+      var av = key === 'name' ? String(a.name || '') : Number(a[key] || 0);
+      var bv = key === 'name' ? String(b.name || '') : Number(b[key] || 0);
+      var comparison = key === 'name'
+        ? av.localeCompare(bv, isAr ? 'ar' : 'en')
+        : (av - bv);
+      if (comparison === 0 && key !== 'orders') comparison = (Number(a.orders || 0) - Number(b.orders || 0));
+      return dir === 1 ? -comparison : comparison;
+    });
+  }
+
+  function updateCitySortHeaders() {
+    document.querySelectorAll('.sp-city-sort-btn').forEach(function (btn) {
+      var key = btn.dataset.sortKey;
+      var isActive = key === cityPagination.sortKey;
+      var arrow = btn.querySelector('.sp-city-sort-arrow');
+      if (arrow) {
+        arrow.textContent = isActive
+          ? (cityPagination.sortDir === 1 ? ' â–¼' : ' â–²')
+          : ' â‡…';
+        arrow.style.opacity = isActive ? '1' : '0.4';
+      }
+      btn.style.opacity = isActive ? '1' : '0.65';
+    });
+  }
+
+  function applyCitySort() {
+    cityPagination.items = sortCities(cityPagination.allItems, cityPagination.sortKey, cityPagination.sortDir);
+    cityPagination.page = 1;
+    updateCitySortHeaders();
+    updateCityPage();
+  }
 
   function updateCityPage() {
     var container = document.getElementById('sp-city-rows-container');
@@ -353,7 +503,7 @@
           '</div>' : '') +
         '</div>' +
         '<div style="text-align:center;font-size:12px;font-weight:800;color:' + ndrC + ';">' +
-          (city.ndr > 0 ? pct(city.ndr, 0) : '—') +
+          (city.ndr > 0 ? pct(city.ndr, 0) : 'â€”') +
         '</div>' +
         '<div style="text-align:center;font-size:11px;color:' + C.muted + ';">' +
           city.orders.toLocaleString('en-US') +
@@ -396,7 +546,8 @@
         var cs = geo.cityStats[cityName];
         if ((cs.count || 0) < 5) return;
         var prepaidPct = cs.prepaidCount > 0 ? (cs.prepaidCount / cs.count) : 0;
-        var ndrVal = (cs.count || 0) > 0 ? (cs.deliveredOrders || 0) / (cs.count || 0) : 0;
+        var ndrBase = cs.ndrBaseOrders || cs.count || 0;
+        var ndrVal = ndrBase > 0 ? clamp((cs.deliveredOrders || 0) / ndrBase, 0, 1) : 0;
         cityList.push({
           name:       cityName,
           prepaidPct: prepaidPct,
@@ -420,40 +571,56 @@
     }
 
     if (cityList.length === 0) {
-      return sectionCard(sTx('City Ranking by Prepaid Share', 'تصنيف المدن حسب الدفع المسبق'), 'mapPin', emptyState(sTx('No city data available', 'لا تتوفر بيانات مدن')));
+      return sectionCard(sTx('City Ranking by Prepaid Share', 'ØªØµÙ†ÙŠÙ Ø§Ù„Ù…Ø¯Ù† Ø­Ø³Ø¨ Ø§Ù„Ø¯ÙØ¹ Ø§Ù„Ù…Ø³Ø¨Ù‚'), 'mapPin', emptyState(sTx('No city data available', 'Ù„Ø§ ØªØªÙˆÙØ± Ø¨ÙŠØ§Ù†Ø§Øª Ù…Ø¯Ù†')));
     }
 
-    cityList.sort(function (a, b) { return b.prepaidPct - a.prepaidPct; });
-
-    cityPagination.items = cityList;
+    cityPagination.sortKey = CITY_DEFAULT_SORT_KEY;
+    cityPagination.sortDir = CITY_DEFAULT_SORT_DIR;
+    cityPagination.allItems = cityList;
+    cityPagination.items = sortCities(cityList, CITY_DEFAULT_SORT_KEY, CITY_DEFAULT_SORT_DIR);
     cityPagination.page = 1;
     cityPagination.geo = geo;
 
     var legend = '<div style="display:flex;align-items:center;gap:16px;margin-bottom:14px;' +
       'font-size:10px;color:' + C.muted + ';">' +
       '<div style="display:flex;align-items:center;gap:4px;"><div style="width:10px;height:10px;' +
-        'border-radius:3px;background:' + C.prepaid + ';"></div>' + sTx('Prepaid', 'مسبق') + '</div>' +
+        'border-radius:3px;background:' + C.prepaid + ';"></div>' + sTx('Prepaid', 'Ù…Ø³Ø¨Ù‚') + '</div>' +
       '<div style="display:flex;align-items:center;gap:4px;"><div style="width:10px;height:10px;' +
         'border-radius:3px;background:' + C.cod + '55;"></div>COD</div>' +
-      '<span style="margin-right:auto;">' + sTx('NDR | Orders', 'NDR | الطلبات') + '</span>' +
+      '<span style="margin-right:auto;">' + sTx('NDR | Orders', 'NDR | Ø§Ù„Ø·Ù„Ø¨Ø§Øª') + '</span>' +
     '</div>';
+
+    function citySortHdr(key, label, align) {
+      var isActive = cityPagination.sortKey === key;
+      var arrow = isActive ? (cityPagination.sortDir === 1 ? ' â–¼' : ' â–²') : ' â‡…';
+      return '<button class="sp-city-sort-btn" data-sort-key="' + key + '" style="all:unset;cursor:pointer;opacity:' + (isActive ? '1' : '0.65') + ';font-size:10px;color:' + C.muted + ';text-align:' + (align || 'start') + ';transition:opacity 0.15s,transform 0.1s;">' +
+        label + '<span class="sp-city-sort-arrow" style="opacity:' + (isActive ? '1' : '0.4') + ';">' + arrow + '</span>' +
+      '</button>';
+    }
 
     var header = '<div style="display:grid;grid-template-columns:140px 1fr 70px 60px;' +
       'gap:12px;padding:0 12px;margin-bottom:8px;">' +
-      '<span style="font-size:10px;color:' + C.muted + ';">' + sTx('City', 'المدينة') + '</span>' +
-      '<span style="font-size:10px;color:' + C.muted + ';">' + sTx('Payment Mix', 'توزيع أسلوب الدفع') + '</span>' +
-      '<span style="font-size:10px;color:' + C.muted + ';text-align:center;">NDR</span>' +
-      '<span style="font-size:10px;color:' + C.muted + ';text-align:center;">' + sTx('Orders', 'طلبات') + '</span>' +
+      '<span style="font-size:10px;color:' + C.muted + ';">' + sTx('City', 'Ø§Ù„Ù…Ø¯ÙŠÙ†Ø©') + '</span>' +
+      '<span style="font-size:10px;color:' + C.muted + ';">' + sTx('Payment Mix', 'ØªÙˆØ²ÙŠØ¹ Ø£Ø³Ù„ÙˆØ¨ Ø§Ù„Ø¯ÙØ¹') + '</span>' +
+      citySortHdr('ndr', 'NDR', 'center') +
+      '<span style="font-size:10px;color:' + C.muted + ';text-align:center;">' + sTx('Orders', 'Ø·Ù„Ø¨Ø§Øª') + '</span>' +
     '</div>';
 
-    return sectionCard(sTx('City Ranking by Prepaid Share', 'تصنيف المدن حسب الدفع المسبق'), 'mapPin',
-      legend + header +
+    return sectionCard(sTx('City Ranking by Prepaid Share', 'ØªØµÙ†ÙŠÙ Ø§Ù„Ù…Ø¯Ù† Ø­Ø³Ø¨ Ø§Ù„Ø¯ÙØ¹ Ø§Ù„Ù…Ø³Ø¨Ù‚'), 'mapPin',
+      legend + (
+        '<div style="display:grid;grid-template-columns:140px 1fr 70px 60px;gap:12px;padding:0 12px;margin-bottom:8px;">' +
+        citySortHdr('name', sTx('City', 'Ã˜Â§Ã™â€žÃ™â€¦Ã˜Â¯Ã™Å Ã™â€ Ã˜Â©')) +
+        citySortHdr('prepaidPct', sTx('Payment Mix', 'Ã˜ÂªÃ™Ë†Ã˜Â²Ã™Å Ã˜Â¹ Ã˜Â£Ã˜Â³Ã™â€žÃ™Ë†Ã˜Â¨ Ã˜Â§Ã™â€žÃ˜Â¯Ã™ÂÃ˜Â¹')) +
+        citySortHdr('ndr', 'NDR', 'center') +
+        citySortHdr('orders', sTx('Orders', 'Ã˜Â·Ã™â€žÃ˜Â¨Ã˜Â§Ã˜Âª'), 'center') +
+        '</div>'
+      ) +
       '<div id="sp-city-rows-container"></div>',
-      '<span style="margin-right:auto;font-size:10px;color:' + C.muted + ';">' + sTx('All cities · Click for details', 'جميع المدن · انقر للتفاصيل') + '</span>'
+      '<span style="margin-right:auto;font-size:10px;color:' + C.muted + ';">' + sTx('All cities Â· Click for details', 'Ø¬Ù…ÙŠØ¹ Ø§Ù„Ù…Ø¯Ù† Â· Ø§Ù†Ù‚Ø± Ù„Ù„ØªÙØ§ØµÙŠÙ„') + '</span>'
     );
   }
 
-  /* ── 4. Product Prepaid vs COD Table ─────────────────────────────────────── */
+  /* â”€â”€ 4. Product Prepaid vs COD Table â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€ */
   var productPagination = {
     items: [],
     allItems: [],
@@ -469,7 +636,7 @@
   var PRODUCT_DEFAULT_SORT_DIR = 1;
 
   function sortProducts(arr, key, dir) {
-    // dir: 1 = descending (largest first, ▼), -1 = ascending (smallest first, ▲)
+    // dir: 1 = descending (largest first, â–¼), -1 = ascending (smallest first, â–²)
     return arr.slice().sort(function (a, b) {
       var av = (a[key] !== null && a[key] !== undefined) ? a[key] : -Infinity;
       var bv = (b[key] !== null && b[key] !== undefined) ? b[key] : -Infinity;
@@ -490,8 +657,8 @@
       var arrow = btn.querySelector('.sp-sort-arrow');
       if (arrow) {
         arrow.textContent = isActive
-          ? (productPagination.sortDir === 1 ? ' ▼' : ' ▲')
-          : ' ⇅';
+          ? (productPagination.sortDir === 1 ? ' â–¼' : ' â–²')
+          : ' â‡…';
         arrow.style.opacity = isActive ? '1' : '0.4';
       }
       btn.style.opacity = isActive ? '1' : '0.65';
@@ -528,21 +695,21 @@
     var pageItems = productPagination.items.slice(start, end);
 
     var recStyles = {
-      force:   { label: sTx('Mandatory Prepaid', 'إلزامي مسبق'), bg: C.green  + '18', color: C.green,  border: C.green  + '44' },
-      prefer:  { label: sTx('Prefer Prepaid', 'يُفضَّل مسبق'), bg: C.prepaid + '18', color: C.prepaid, border: C.prepaid + '44' },
-      ok:      { label: sTx('Both Acceptable', 'كلاهما مقبول'), bg: 'rgba(255,255,255,0.05)', color: C.muted,  border: C.border },
-      unknown: { label: sTx('Incomplete Data', 'بيانات ناقصة'), bg: 'rgba(255,255,255,0.04)', color: C.muted,  border: C.border }
+      force:   { label: sTx('Mandatory Prepaid', 'Ø¥Ù„Ø²Ø§Ù…ÙŠ Ù…Ø³Ø¨Ù‚'), bg: C.green  + '18', color: C.green,  border: C.green  + '44' },
+      prefer:  { label: sTx('Prefer Prepaid', 'ÙŠÙÙØ¶ÙŽÙ‘Ù„ Ù…Ø³Ø¨Ù‚'), bg: C.prepaid + '18', color: C.prepaid, border: C.prepaid + '44' },
+      ok:      { label: sTx('Both Acceptable', 'ÙƒÙ„Ø§Ù‡Ù…Ø§ Ù…Ù‚Ø¨ÙˆÙ„'), bg: 'rgba(255,255,255,0.05)', color: C.muted,  border: C.border },
+      unknown: { label: sTx('Incomplete Data', 'Ø¨ÙŠØ§Ù†Ø§Øª Ù†Ø§Ù‚ØµØ©'), bg: 'rgba(255,255,255,0.04)', color: C.muted,  border: C.border }
     };
 
     var geo = productPagination.geo;
 
     var rowsHtml = pageItems.map(function (p) {
       var rs       = recStyles[p.rec] || recStyles.ok;
-      var prepNdrDisp = p.prepaidNdr !== null ? pct(p.prepaidNdr, 1) : '—';
-      var codNdrDisp  = p.codNdr     !== null ? pct(p.codNdr, 1)     : '—';
+      var prepNdrDisp = p.prepaidNdr !== null ? pct(p.prepaidNdr, 1) : 'â€”';
+      var codNdrDisp  = p.codNdr     !== null ? pct(p.codNdr, 1)     : 'â€”';
       var diffDisp    = p.ndrDiff    !== null
         ? (p.ndrDiff > 0 ? '+' : '') + pct(p.ndrDiff, 1)
-        : '—';
+        : 'â€”';
       var diffColor   = p.ndrDiff > 0.10 ? C.green : p.ndrDiff > 0 ? C.prepaid : p.ndrDiff < 0 ? C.red : C.muted;
 
       var pStat = (geo && geo.productStats && geo.productStats[p.name]) ? geo.productStats[p.name] : null;
@@ -567,7 +734,7 @@
         '<div style="overflow:hidden;padding-left:10px;">' +
           '<div style="font-size:13px;font-weight:700;color:' + C.text + ';line-height:1.4;">' + name + '</div>' +
           '<div style="font-size:11px;color:rgba(255,255,255,0.4);margin-top:5px;font-weight:600;">' +
-            '💰 ' + sTx(fmtSAR(p.totalCommission) + ' commission', fmtSAR(p.totalCommission) + ' عمولة') +
+            'ðŸ’° ' + sTx(fmtSAR(p.totalCommission) + ' commission', fmtSAR(p.totalCommission) + ' Ø¹Ù…ÙˆÙ„Ø©') +
           '</div>' +
         '</div>' +
         '<div style="text-align:center;">' +
@@ -584,7 +751,7 @@
         '<div style="display:flex;justify-content:center;">' +
           '<span style="padding:3px 10px;border-radius:8px;font-size:10px;font-weight:800;' +
             'background:' + rs.bg + ';color:' + rs.color + ';border:1px solid ' + rs.border + ';' +
-            'white-space:nowrap;">' + rs.label + '</span>' +
+            'white-space:normal;overflow-wrap:anywhere;word-break:normal;max-width:100%;line-height:1.2;">' + rs.label + '</span>' +
         '</div>' +
       '</div>';
     }).join('');
@@ -593,7 +760,7 @@
     var paginationHtml = generatePagination(productPagination.page, totalPages, 'sp-page-btn');
 
     if (!rowsHtml) {
-      rowsHtml = emptyState(sTx('No products match this search', 'لا توجد منتجات تطابق البحث'));
+      rowsHtml = emptyState(sTx('No products match this search', 'Ù„Ø§ ØªÙˆØ¬Ø¯ Ù…Ù†ØªØ¬Ø§Øª ØªØ·Ø§Ø¨Ù‚ Ø§Ù„Ø¨Ø­Ø«'));
     }
 
     container.innerHTML = '<div id="sp-product-rows">' + rowsHtml + '</div>' + paginationHtml;
@@ -609,7 +776,7 @@
 
   function buildProductTable(geo) {
     if (!geo || !geo.geoProductMap) {
-      return sectionCard(sTx('Product Comparison: Prepaid vs COD', 'مقارنة المنتجات: مسبق مقابل COD'), 'package', emptyState(sTx('No product data available', 'لا تتوفر بيانات منتجات')));
+      return sectionCard(sTx('Product Comparison: Prepaid vs COD', 'Ù…Ù‚Ø§Ø±Ù†Ø© Ø§Ù„Ù…Ù†ØªØ¬Ø§Øª: Ù…Ø³Ø¨Ù‚ Ù…Ù‚Ø§Ø¨Ù„ COD'), 'package', emptyState(sTx('No product data available', 'Ù„Ø§ ØªØªÙˆÙØ± Ø¨ÙŠØ§Ù†Ø§Øª Ù…Ù†ØªØ¬Ø§Øª')));
     }
 
     var productAgg = {};
@@ -620,6 +787,7 @@
           productAgg[productKey] = {
             name:              productKey,
             totalOrders:       0, prepaidOrders: 0, codOrders: 0,
+            prepaidNdrBase:    0, codNdrBase: 0,
             prepaidDelivered:  0, prepaidCanceled: 0,
             codDelivered:      0, codCanceled: 0,
             totalCommission:   0
@@ -629,6 +797,8 @@
         p.totalOrders      += cell.orders      || 0;
         p.prepaidOrders    += cell.prepaidCount || 0;
         p.codOrders        += cell.codCount     || 0;
+        p.prepaidNdrBase   += cell.prepaidNdrBaseOrders || cell.prepaidCount || 0;
+        p.codNdrBase       += cell.codNdrBaseOrders || cell.codCount || 0;
         p.totalCommission  += cell.commission   || 0;
 
         if (cell.prepaidDelivered !== undefined || cell.prepaidCanceled !== undefined ||
@@ -650,15 +820,15 @@
     });
 
     var products = Object.values(productAgg).filter(function (p) { return p.totalOrders >= 5; });
-    if (products.length === 0) return sectionCard(sTx('Product Comparison: Prepaid vs COD', 'مقارنة المنتجات: مسبق مقابل COD'), 'package', emptyState(sTx('Insufficient data for comparison', 'بيانات غير كافية للمقارنة')));
+    if (products.length === 0) return sectionCard(sTx('Product Comparison: Prepaid vs COD', 'Ù…Ù‚Ø§Ø±Ù†Ø© Ø§Ù„Ù…Ù†ØªØ¬Ø§Øª: Ù…Ø³Ø¨Ù‚ Ù…Ù‚Ø§Ø¨Ù„ COD'), 'package', emptyState(sTx('Insufficient data for comparison', 'Ø¨ÙŠØ§Ù†Ø§Øª ØºÙŠØ± ÙƒØ§ÙÙŠØ© Ù„Ù„Ù…Ù‚Ø§Ø±Ù†Ø©')));
 
     products.forEach(function (p) {
       var pStat = (geo.productStats && geo.productStats[p.name]) ? geo.productStats[p.name] : null;
       p.productName = (pStat && pStat.name) ? pStat.name : p.name;
       p.sku = (pStat && pStat.sku) ? pStat.sku : '';
       p.displayName = p.sku && p.sku !== p.productName ? p.productName + ' (' + p.sku + ')' : p.productName;
-      p.prepaidNdr = p.prepaidOrders > 0 ? p.prepaidDelivered / p.prepaidOrders : null;
-      p.codNdr     = p.codOrders     > 0 ? p.codDelivered     / p.codOrders     : null;
+      p.prepaidNdr = p.prepaidNdrBase > 0 ? clamp(p.prepaidDelivered / p.prepaidNdrBase, 0, 1) : null;
+      p.codNdr     = p.codNdrBase     > 0 ? clamp(p.codDelivered / p.codNdrBase, 0, 1) : null;
       p.ndrDiff    = (p.prepaidNdr !== null && p.codNdr !== null) ? (p.prepaidNdr - p.codNdr) : null;
       p.rec = p.ndrDiff === null ? 'unknown'
         : p.ndrDiff > 0.15 ? 'force'
@@ -674,29 +844,29 @@
     productPagination.geo = geo;
     productPagination.searchQuery = '';
 
-    /* ── Search bar + Reset sort button ── */
+    /* â”€â”€ Search bar + Reset sort button â”€â”€ */
     var searchBar =
       '<div style="display:flex;gap:8px;margin-bottom:10px;">' +
-        '<input id="sp-product-search" type="text" placeholder="' + esc(sTx('Search product name or SKU...', 'ابحث باسم المنتج أو الكود...')) + '" ' +
+        '<input id="sp-product-search" type="text" placeholder="' + esc(sTx('Search product name or SKU...', 'Ø§Ø¨Ø­Ø« Ø¨Ø§Ø³Ù… Ø§Ù„Ù…Ù†ØªØ¬ Ø£Ùˆ Ø§Ù„ÙƒÙˆØ¯...')) + '" ' +
           'style="flex:1;min-width:0;background:#0b1120;border:1px solid rgba(255,255,255,0.1);' +
           'border-radius:10px;color:#fff;font-family:Cairo,sans-serif;font-size:12px;padding:9px 12px;outline:none;' +
           'transition:border-color 0.2s;" />' +
-        '<button id="sp-sort-reset" title="' + esc(sTx('Reset to default sort (Gap ▼)', 'إعادة الترتيب الافتراضي (الفارق ▼)')) + '" ' +
+        '<button id="sp-sort-reset" title="' + esc(sTx('Reset to default sort (Gap desc)', 'إعادة الترتيب الافتراضي (الفارق تنازلي)')) + '" ' +
           'style="flex-shrink:0;display:flex;align-items:center;gap:5px;padding:0 14px;height:38px;' +
           'background:transparent;border:1px solid rgba(255,255,255,0.08);border-radius:10px;' +
           'color:rgba(255,255,255,0.3);font-size:11px;font-weight:700;font-family:Cairo,sans-serif;' +
           'cursor:pointer;white-space:nowrap;transition:all 0.18s;' +
           'opacity:0.35;pointer-events:none;">' +
-          '⇅ ' + sTx('Reset', 'إعادة') +
+          sTx('Reset', 'إعادة') +
         '</button>' +
       '</div>';
 
-    /* ── Column header builder ── */
+    /* â”€â”€ Column header builder â”€â”€ */
     function sortHdr(key, color, label, sub) {
       var isActive = productPagination.sortKey === key;
-      var arrow    = isActive ? (productPagination.sortDir === 1 ? ' ▼' : ' ▲') : ' ⇅';
+      var arrow    = isActive ? (productPagination.sortDir === 1 ? ' â–¼' : ' â–²') : ' â‡…';
       var opacity  = isActive ? '1' : '0.65';
-      /* Use data attributes for hover — avoids broken inline quote escaping */
+      /* Use data attributes for hover â€” avoids broken inline quote escaping */
       return '<button class="sp-sort-btn" data-sort-key="' + key + '" data-active-opacity="' + opacity + '" ' +
         'style="all:unset;display:flex;flex-direction:column;align-items:center;gap:2px;' +
         'cursor:pointer;width:100%;opacity:' + opacity + ';transition:opacity 0.15s,transform 0.1s;">' +
@@ -712,25 +882,25 @@
       'gap:8px;padding:10px 14px 12px;border-bottom:1px solid ' + C.border + ';margin-bottom:6px;' +
       'background:rgba(255,255,255,0.015);border-radius:10px 10px 0 0;">' +
         '<div style="display:flex;flex-direction:column;gap:2px;">' +
-          '<span style="font-size:10px;font-weight:800;color:' + C.text + ';letter-spacing:0.5px;text-transform:uppercase;">' + sTx('Product', 'المنتج') + '</span>' +
-          '<span style="font-size:9px;color:' + C.muted + ';font-weight:500;">' + sTx('Name · SKU · Commission', 'الاسم · الكود · العمولة') + '</span>' +
+          '<span style="font-size:10px;font-weight:800;color:' + C.text + ';letter-spacing:0.5px;text-transform:uppercase;">' + sTx('Product', 'Ø§Ù„Ù…Ù†ØªØ¬') + '</span>' +
+          '<span style="font-size:9px;color:' + C.muted + ';font-weight:500;">' + sTx('Name Â· SKU Â· Commission', 'Ø§Ù„Ø§Ø³Ù… Â· Ø§Ù„ÙƒÙˆØ¯ Â· Ø§Ù„Ø¹Ù…ÙˆÙ„Ø©') + '</span>' +
         '</div>' +
-        sortHdr('prepaidOrders', C.prepaid, sTx('Prepaid', 'مسبق'),  sTx('Orders', 'طلبات')) +
-        sortHdr('codOrders',     C.cod,     'COD',                   sTx('Orders', 'طلبات')) +
-        sortHdr('prepaidNdr',    C.prepaid, sTx('Prepaid', 'مسبق'),  sTx('Delivery %', 'نسبة التسليم')) +
-        sortHdr('codNdr',        C.cod,     'COD',                   sTx('Delivery %', 'نسبة التسليم')) +
-        sortHdr('ndrDiff',       C.green,   sTx('Gap', 'الفارق'),   sTx('Prepaid − COD', 'مسبق − COD')) +
+        sortHdr('prepaidOrders', C.prepaid, sTx('Prepaid', 'Ù…Ø³Ø¨Ù‚'),  sTx('Orders', 'Ø·Ù„Ø¨Ø§Øª')) +
+        sortHdr('codOrders',     C.cod,     'COD',                   sTx('Orders', 'Ø·Ù„Ø¨Ø§Øª')) +
+        sortHdr('prepaidNdr',    C.prepaid, sTx('Prepaid', 'Ù…Ø³Ø¨Ù‚'),  'NDR') +
+        sortHdr('codNdr',        C.cod,     'COD',                   'NDR') +
+        sortHdr('ndrDiff',       C.green,   sTx('Gap', 'Ø§Ù„ÙØ§Ø±Ù‚'),   sTx('Prepaid âˆ’ COD', 'Ù…Ø³Ø¨Ù‚ âˆ’ COD')) +
         '<div style="display:flex;flex-direction:column;align-items:center;gap:2px;">' +
-          '<span style="font-size:10px;font-weight:800;color:' + C.text + ';letter-spacing:0.5px;text-transform:uppercase;">' + sTx('Action', 'الإجراء') + '</span>' +
-          '<span style="font-size:9px;color:' + C.muted + ';font-weight:500;">' + sTx('What to do', 'ماذا تفعل') + '</span>' +
+          '<span style="font-size:10px;font-weight:800;color:' + C.text + ';letter-spacing:0.5px;text-transform:uppercase;">' + sTx('Action', 'Ø§Ù„Ø¥Ø¬Ø±Ø§Ø¡') + '</span>' +
+          '<span style="font-size:9px;color:' + C.muted + ';font-weight:500;">' + sTx('What to do', 'Ù…Ø§Ø°Ø§ ØªÙØ¹Ù„') + '</span>' +
         '</div>' +
       '</div>';
 
-    return sectionCard(sTx('Product Comparison: Prepaid vs COD', 'مقارنة المنتجات: مسبق مقابل COD'), 'package',
+    return sectionCard(sTx('Product Comparison: Prepaid vs COD', 'Ù…Ù‚Ø§Ø±Ù†Ø© Ø§Ù„Ù…Ù†ØªØ¬Ø§Øª: Ù…Ø³Ø¨Ù‚ Ù…Ù‚Ø§Ø¨Ù„ COD'), 'package',
       searchBar + header + '<div id="sp-product-table-content"></div>');
   }
 
-  /* ── 5. Recommendation Cards ─────────────────────────────────────────────── */
+  /* â”€â”€ 5. Recommendation Cards â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€ */
   var recsState = {
     activeTab: 'actions',
     page: 1,
@@ -747,9 +917,9 @@
     if (pi.forcePrepaidRecs) {
       pi.forcePrepaidRecs.forEach(function (rec) {
         recsState.data.actions.push({
-          type: 'action', emoji: '🚨', title: sTx('Apply Prepaid Immediately', 'تطبيق الدفع المسبق فوراً'),
+          type: 'action', emoji: 'ðŸš¨', title: sTx('Apply Prepaid Immediately', 'ØªØ·Ø¨ÙŠÙ‚ Ø§Ù„Ø¯ÙØ¹ Ø§Ù„Ù…Ø³Ø¨Ù‚ ÙÙˆØ±Ø§Ù‹'),
           city: rec.city, product: rec.product,
-          reason: rec.reason || (sTx('COD NDR ' + Math.round((rec.codNdr || 0) * 100) + '% vs ' + Math.round((rec.prepaidNdr || 0) * 100) + '% for Prepaid', 'NDR COD ' + Math.round((rec.codNdr || 0) * 100) + '% مقابل ' + Math.round((rec.prepaidNdr || 0) * 100) + '% للمسبق')),
+          reason: rec.reason || (sTx('COD NDR ' + Math.round((rec.codNdr || 0) * 100) + '% vs ' + Math.round((rec.prepaidNdr || 0) * 100) + '% for Prepaid', 'NDR COD ' + Math.round((rec.codNdr || 0) * 100) + '% Ù…Ù‚Ø§Ø¨Ù„ ' + Math.round((rec.prepaidNdr || 0) * 100) + '% Ù„Ù„Ù…Ø³Ø¨Ù‚')),
           accentColor: '#3DDC97'
         });
       });
@@ -758,9 +928,9 @@
     if (pi.codDangerousCombos) {
       pi.codDangerousCombos.forEach(function (combo) {
         recsState.data.risks.push({
-          type: 'risk', emoji: '⚠️', title: sTx('Dangerous COD Concentration', 'تركيز COD خطر'),
+          type: 'risk', emoji: 'âš ï¸', title: sTx('Dangerous COD Concentration', 'ØªØ±ÙƒÙŠØ² COD Ø®Ø·Ø±'),
           city: combo.city, product: combo.product,
-          reason: combo.recommendation || sTx('COD NDR is extremely high for this product in this city', 'NDR COD مرتفع جداً في هذه المدينة للمنتج'),
+          reason: combo.recommendation || sTx('COD NDR is extremely high for this product in this city', 'NDR COD Ù…Ø±ØªÙØ¹ Ø¬Ø¯Ø§Ù‹ ÙÙŠ Ù‡Ø°Ù‡ Ø§Ù„Ù…Ø¯ÙŠÙ†Ø© Ù„Ù„Ù…Ù†ØªØ¬'),
           accentColor: '#F4B860'
         });
       });
@@ -769,9 +939,9 @@
     if (pi.codHeavyCities) {
       pi.codHeavyCities.forEach(function (c) {
         recsState.data.cities.push({
-          type: 'city', emoji: '📍', title: sTx('Heavy COD City', 'مدينة COD ثقيلة'),
+          type: 'city', emoji: 'ðŸ“', title: sTx('Heavy COD City', 'Ù…Ø¯ÙŠÙ†Ø© COD Ø«Ù‚ÙŠÙ„Ø©'),
           city: c.city, product: null,
-          reason: sTx('COD share ' + Math.round((c.codPct || 0) * 100) + '% · NDR ' + Math.round((c.codNdr || 0) * 100) + '%', 'نسبة COD ' + Math.round((c.codPct || 0) * 100) + '% · NDR ' + Math.round((c.codNdr || 0) * 100) + '%'),
+          reason: sTx('COD share ' + Math.round((c.codPct || 0) * 100) + '% Â· NDR ' + Math.round((c.codNdr || 0) * 100) + '%', 'Ù†Ø³Ø¨Ø© COD ' + Math.round((c.codPct || 0) * 100) + '% Â· NDR ' + Math.round((c.codNdr || 0) * 100) + '%'),
           accentColor: '#8B7CF6'
         });
       });
@@ -786,6 +956,7 @@
             city: city, product: product,
             prepaidNdr: cell.prepaidNdr, codNdr: cell.codNdr,
             codCount: cell.codCount, prepaidCount: cell.prepaidCount,
+            prepaidNdrBaseOrders: cell.prepaidNdrBaseOrders,
             prepaidDelivered: cell.prepaidDelivered
           });
         });
@@ -795,9 +966,9 @@
         var diff = (cell.prepaidNdr !== undefined && cell.codNdr !== undefined) ? (cell.prepaidNdr - cell.codNdr) : 0;
         if (diff > 0.05 && diff <= 0.15 && (cell.codCount || 0) >= 5 && (cell.prepaidCount || 0) >= 5) {
           recsState.data.opportunities.push({
-            type: 'opportunity', emoji: '📈', title: sTx('Performance Improvement Opportunity', 'فرصة تحسين الأداء'),
+            type: 'opportunity', emoji: 'ðŸ“ˆ', title: sTx('Performance Improvement Opportunity', 'ÙØ±ØµØ© ØªØ­Ø³ÙŠÙ† Ø§Ù„Ø£Ø¯Ø§Ø¡'),
             city: cell.city, product: cell.product,
-            reason: sTx('Prepaid outperforms by ' + Math.round(diff * 100) + '% - encourage it', 'الدفع المسبق يتفوق بنسبة ' + Math.round(diff * 100) + '% - يُفضل تشجيعه'),
+            reason: sTx('Prepaid outperforms by ' + Math.round(diff * 100) + '% - encourage it', 'Ø§Ù„Ø¯ÙØ¹ Ø§Ù„Ù…Ø³Ø¨Ù‚ ÙŠØªÙÙˆÙ‚ Ø¨Ù†Ø³Ø¨Ø© ' + Math.round(diff * 100) + '% - ÙŠÙÙØ¶Ù„ ØªØ´Ø¬ÙŠØ¹Ù‡'),
             accentColor: '#3DDC97'
           });
         }
@@ -806,23 +977,24 @@
       var productAgg = {};
       allCells.forEach(function(cell) {
         var pk = cell.product;
-        if (!productAgg[pk]) productAgg[pk] = { name: pk, prepaidCount: 0, codCount: 0, prepaidDelivered: 0 };
+        if (!productAgg[pk]) productAgg[pk] = { name: pk, prepaidCount: 0, codCount: 0, prepaidNdrBase: 0, prepaidDelivered: 0 };
         productAgg[pk].prepaidCount += cell.prepaidCount || 0;
         productAgg[pk].codCount += cell.codCount || 0;
+        productAgg[pk].prepaidNdrBase += cell.prepaidNdrBaseOrders || cell.prepaidCount || 0;
         productAgg[pk].prepaidDelivered += cell.prepaidDelivered || 0;
       });
 
       var topProducts = Object.values(productAgg).filter(function(p) { return p.prepaidCount >= 10; });
-      topProducts.forEach(function(p) { p.ndr = p.prepaidCount > 0 ? p.prepaidDelivered / p.prepaidCount : 0; });
+      topProducts.forEach(function(p) { p.ndr = p.prepaidNdrBase > 0 ? clamp(p.prepaidDelivered / p.prepaidNdrBase, 0, 1) : 0; });
       topProducts.sort(function(a, b) { return b.ndr - a.ndr; });
 
       topProducts.slice(0, 10).forEach(function(p) {
-        if (p.ndr > 0.75) {
+        if (p.ndr >= 0.40) {
           recsState.data.products.push({
-            type: 'product', emoji: '🌟', title: sTx('Outstanding Prepaid Product', 'منتج متميز بالدفع المسبق'),
+            type: 'product', emoji: 'ðŸŒŸ', title: sTx('Outstanding Prepaid Product', 'Ù…Ù†ØªØ¬ Ù…ØªÙ…ÙŠØ² Ø¨Ø§Ù„Ø¯ÙØ¹ Ø§Ù„Ù…Ø³Ø¨Ù‚'),
             city: null, product: p.name,
-            reason: sTx('Prepaid delivery rate ' + Math.round(p.ndr * 100) + '% of ' + p.prepaidCount + ' orders', 'معدل تسليم المسبق ' + Math.round(p.ndr * 100) + '% من ' + p.prepaidCount + ' طلب'),
-            accentColor: '#D4B15A'
+            reason: sTx('Prepaid delivery rate ' + Math.round(p.ndr * 100) + '% of ' + p.prepaidCount + ' orders', 'Ù…Ø¹Ø¯Ù„ ØªØ³Ù„ÙŠÙ… Ø§Ù„Ù…Ø³Ø¨Ù‚ ' + Math.round(p.ndr * 100) + '% Ù…Ù† ' + p.prepaidCount + ' Ø·Ù„Ø¨'),
+            accentColor: '#22d3ee'
           });
         }
       });
@@ -838,12 +1010,12 @@
     Object.keys(recsState.data).forEach(function(k) { totalActive += recsState.data[k].length; });
 
     var subtitleEl = document.getElementById('sp-recs-subtitle');
-    if (subtitleEl) subtitleEl.innerText = totalActive + sTx(' active recommendations', ' توصية نشطة');
+    if (subtitleEl) subtitleEl.innerText = totalActive + sTx(' active recommendations', ' ØªÙˆØµÙŠØ© Ù†Ø´Ø·Ø©');
 
     if (items.length === 0) {
       container.innerHTML = '<div style="display:flex;flex-direction:column;align-items:center;justify-content:center;height:200px;gap:12px;">' +
-          '<div style="font-size:32px;opacity:0.6;">✨</div>' +
-          '<div style="color:' + C.muted + ';font-size:13px;">' + sTx('No recommendations in this category', 'لا توجد توصيات في هذه الفئة') + '</div>' +
+          '<div style="font-size:32px;opacity:0.6;">âœ¨</div>' +
+          '<div style="color:' + C.muted + ';font-size:13px;">' + sTx('No recommendations in this category', 'Ù„Ø§ ØªÙˆØ¬Ø¯ ØªÙˆØµÙŠØ§Øª ÙÙŠ Ù‡Ø°Ù‡ Ø§Ù„ÙØ¦Ø©') + '</div>' +
         '</div>';
       return;
     }
@@ -859,7 +1031,7 @@
         var cityTag = card.city
           ? '<span style="padding:2px 6px;border-radius:4px;font-size:10px;font-weight:600;' +
               'background:rgba(255,255,255,0.03);color:rgba(255,255,255,0.7);border:1px solid rgba(255,255,255,0.06);">' +
-              '📍 ' + card.city + '</span>'
+              'ðŸ“ ' + card.city + '</span>'
           : '';
         var pStat = (card.product && geo && geo.productStats && geo.productStats[card.product]) ? geo.productStats[card.product] : null;
         var pName = (pStat && pStat.name) ? pStat.name : card.product;
@@ -872,7 +1044,7 @@
         var productTag = card.product
           ? '<span style="padding:2px 6px;border-radius:4px;font-size:10px;font-weight:600;' +
               'background:rgba(255,255,255,0.03);color:rgba(255,255,255,0.7);border:1px solid rgba(255,255,255,0.06);">' +
-              '📦 ' + (displayProduct && displayProduct.length > 30 ? displayProduct.slice(0, 28) + '…' : (displayProduct || '')) + '</span>'
+              'ðŸ“¦ ' + (displayProduct && displayProduct.length > 30 ? displayProduct.slice(0, 28) + 'â€¦' : (displayProduct || '')) + '</span>'
           : '';
 
         var priority = isFeatured ? 'high' : (index === 1 ? 'medium' : 'low');
@@ -890,7 +1062,7 @@
               'style="margin-top:10px;width:100%;padding:6px;border:1px solid rgba(255,255,255,0.04);' +
               'background:rgba(255,255,255,0.015);color:rgba(255,255,255,0.4);border-radius:6px;' +
               'font-size:10px;font-weight:600;cursor:pointer;transition:all 0.2s cubic-bezier(0.22, 1, 0.36, 1);box-shadow:none;transform:translateY(0);">' +
-              sTx('Details →', 'التفاصيل ←') +
+              sTx('Details â†’', 'Ø§Ù„ØªÙØ§ØµÙŠÙ„ â†') +
             '</button>'
           : '';
 
@@ -983,11 +1155,11 @@
     updateRecsState(pi, geo);
 
     var tabs = [
-      { id: 'actions',       label: sTx('Prepaid Actions', 'إجراءات الدفع المسبق'),     icon: '🔥', count: recsState.data.actions.length,       color: '#3DDC97' },
-      { id: 'risks',         label: sTx('COD Risks', 'مخاطر COD'),                       icon: '⚠️', count: recsState.data.risks.length,         color: '#F4B860' },
-      { id: 'opportunities', label: sTx('Improvement Opportunities', 'فرص التحسين'),     icon: '📈', count: recsState.data.opportunities.length, color: '#3DDC97' },
-      { id: 'cities',        label: sTx('Critical Cities', 'المدن الحرجة'),               icon: '📍', count: recsState.data.cities.length,        color: '#8B7CF6' },
-      { id: 'products',      label: sTx('Featured Products', 'المنتجات المميزة'),         icon: '🌟', count: recsState.data.products.length,      color: '#D4B15A' }
+      { id: 'actions',       label: sTx('Prepaid Actions', 'Ø¥Ø¬Ø±Ø§Ø¡Ø§Øª Ø§Ù„Ø¯ÙØ¹ Ø§Ù„Ù…Ø³Ø¨Ù‚'),     icon: 'ðŸ”¥', count: recsState.data.actions.length,       color: '#3DDC97' },
+      { id: 'risks',         label: sTx('COD Risks', 'Ù…Ø®Ø§Ø·Ø± COD'),                       icon: 'âš ï¸', count: recsState.data.risks.length,         color: '#F4B860' },
+      { id: 'opportunities', label: sTx('Improvement Opportunities', 'ÙØ±Øµ Ø§Ù„ØªØ­Ø³ÙŠÙ†'),     icon: 'ðŸ“ˆ', count: recsState.data.opportunities.length, color: '#3DDC97' },
+      { id: 'cities',        label: sTx('Critical Cities', 'Ø§Ù„Ù…Ø¯Ù† Ø§Ù„Ø­Ø±Ø¬Ø©'),               icon: 'ðŸ“', count: recsState.data.cities.length,        color: '#8B7CF6' },
+      { id: 'products',      label: sTx('Featured Products', 'Ø§Ù„Ù…Ù†ØªØ¬Ø§Øª Ø§Ù„Ù…Ù…ÙŠØ²Ø©'),         icon: 'ðŸŒŸ', count: recsState.data.products.length,      color: '#D4B15A' }
     ];
 
     var totalActive = 0;
@@ -1001,7 +1173,7 @@
         var color = isActive ? t.color : 'rgba(255,255,255,0.4)';
         var fontWeight = isActive ? '600' : '500';
         return '<button class="sp-rec-tab-btn" data-tab="' + t.id + '" data-color="' + t.color + '" ' +
-          'style="display:flex;align-items:center;gap:6px;padding:5px 12px;border-radius:6px;' +
+          'style="display:flex;align-items:center;gap:6px;flex:0 0 auto;box-sizing:border-box;padding:5px 12px;border-radius:6px;' +
           'background:' + bg + ';border:' + border + ';color:' + color + ';' +
           'font-size:11px;font-weight:' + fontWeight + ';cursor:pointer;transition:all 0.15s;white-space:nowrap;box-shadow:' + (isActive ? '0 2px 4px rgba(0,0,0,0.1)' : 'none') + '">' +
           '<span style="font-size:12px;opacity:0.8;">' + t.icon + '</span>' +
@@ -1012,10 +1184,10 @@
     '</div>';
 
     var legendHtml = '<div style="display:flex;align-items:center;gap:12px;margin-right:auto;font-size:10px;color:rgba(255,255,255,0.4);">' +
-      '<div style="display:flex;align-items:center;gap:4px;"><span style="color:#3DDC97;font-size:14px;line-height:0.5;">●</span> ' + sTx('Prepaid Opportunities', 'فرص الدفع') + '</div>' +
-      '<div style="display:flex;align-items:center;gap:4px;"><span style="color:#F4B860;font-size:14px;line-height:0.5;">●</span> ' + sTx('COD Risks', 'مخاطر COD') + '</div>' +
-      '<div style="display:flex;align-items:center;gap:4px;"><span style="color:#8B7CF6;font-size:14px;line-height:0.5;">●</span> ' + sTx('Critical Cities', 'المدن الحرجة') + '</div>' +
-      '<div style="display:flex;align-items:center;gap:4px;"><span style="color:#D4B15A;font-size:14px;line-height:0.5;">●</span> ' + sTx('Featured Products', 'المنتجات') + '</div>' +
+      '<div style="display:flex;align-items:center;gap:4px;"><span style="color:#3DDC97;font-size:14px;line-height:0.5;">â—</span> ' + sTx('Prepaid Opportunities', 'ÙØ±Øµ Ø§Ù„Ø¯ÙØ¹') + '</div>' +
+      '<div style="display:flex;align-items:center;gap:4px;"><span style="color:#F4B860;font-size:14px;line-height:0.5;">â—</span> ' + sTx('COD Risks', 'Ù…Ø®Ø§Ø·Ø± COD') + '</div>' +
+      '<div style="display:flex;align-items:center;gap:4px;"><span style="color:#8B7CF6;font-size:14px;line-height:0.5;">â—</span> ' + sTx('Critical Cities', 'Ø§Ù„Ù…Ø¯Ù† Ø§Ù„Ø­Ø±Ø¬Ø©') + '</div>' +
+      '<div style="display:flex;align-items:center;gap:4px;"><span style="color:#D4B15A;font-size:14px;line-height:0.5;">â—</span> ' + sTx('Featured Products', 'Ø§Ù„Ù…Ù†ØªØ¬Ø§Øª') + '</div>' +
     '</div>';
 
     var headerHtml = '<div style="display:flex;flex-direction:column;gap:14px;margin-bottom:16px;">' +
@@ -1023,8 +1195,8 @@
         '<div style="display:flex;align-items:center;gap:10px;">' +
           ((window.icon && window.icon('alertCircle')) ? window.icon('alertCircle', { size: 16, color: 'rgba(255,255,255,0.8)' }) : '') +
           '<div>' +
-            '<div style="font-size:13px;font-weight:700;color:rgba(255,255,255,0.9);letter-spacing:0.3px;">' + sTx('Recommendations & Alerts', 'التوصيات والتحذيرات') + '</div>' +
-            '<div id="sp-recs-subtitle" style="font-size:11px;color:rgba(255,255,255,0.4);margin-top:2px;">' + sTx(totalActive + ' active recommendations', totalActive + ' توصية نشطة') + '</div>' +
+            '<div style="font-size:13px;font-weight:700;color:rgba(255,255,255,0.9);letter-spacing:0.3px;">' + sTx('Recommendations & Alerts', 'Ø§Ù„ØªÙˆØµÙŠØ§Øª ÙˆØ§Ù„ØªØ­Ø°ÙŠØ±Ø§Øª') + '</div>' +
+            '<div id="sp-recs-subtitle" style="font-size:11px;color:rgba(255,255,255,0.4);margin-top:2px;">' + sTx(totalActive + ' active recommendations', totalActive + ' ØªÙˆØµÙŠØ© Ù†Ø´Ø·Ø©') + '</div>' +
           '</div>' +
         '</div>' +
         legendHtml +
@@ -1040,26 +1212,26 @@
     '</div>';
   }
 
-  /* ── 6. No-data banner ───────────────────────────────────────────────────── */
+  /* â”€â”€ 6. No-data banner â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€ */
   function buildNoDataBanner() {
     return '<div style="background:rgba(59,130,246,0.07);border:1px solid rgba(59,130,246,0.20);' +
       'border-radius:14px;padding:18px 22px;margin-bottom:20px;display:flex;align-items:center;gap:14px;">' +
-      '<span style="font-size:24px;flex-shrink:0;">ℹ️</span>' +
+      '<span style="font-size:24px;flex-shrink:0;">â„¹ï¸</span>' +
       '<div>' +
-        '<div style="font-size:13px;font-weight:700;color:' + C.prepaid + ';margin-bottom:4px;">' + sTx('Limited Prepaid Data', 'بيانات الدفع المسبق محدودة') + '</div>' +
+        '<div style="font-size:13px;font-weight:700;color:' + C.prepaid + ';margin-bottom:4px;">' + sTx('Limited Prepaid Data', 'Ø¨ÙŠØ§Ù†Ø§Øª Ø§Ù„Ø¯ÙØ¹ Ø§Ù„Ù…Ø³Ø¨Ù‚ Ù…Ø­Ø¯ÙˆØ¯Ø©') + '</div>' +
         '<div style="font-size:12px;color:' + C.muted + ';line-height:1.6;">' +
           sTx(
             'Most of your orders do not contain the <code style="background:rgba(255,255,255,0.08);padding:1px 5px;border-radius:4px;">paymentMethod</code> field. ' +
             'Currently displaying analysis for categorized orders only. To enable full analysis, please add the payment method field to your export file.',
-            'معظم طلباتك لا تحتوي على حقل <code style="background:rgba(255,255,255,0.08);padding:1px 5px;border-radius:4px;">paymentMethod</code>. ' +
-            'يُعرض الآن تحليل الطلبات المصنفة فقط. لتفعيل التحليل الكامل، يرجى إضافة حقل طريقة الدفع إلى ملف التصدير.'
+            'Ù…Ø¹Ø¸Ù… Ø·Ù„Ø¨Ø§ØªÙƒ Ù„Ø§ ØªØ­ØªÙˆÙŠ Ø¹Ù„Ù‰ Ø­Ù‚Ù„ <code style="background:rgba(255,255,255,0.08);padding:1px 5px;border-radius:4px;">paymentMethod</code>. ' +
+            'ÙŠÙØ¹Ø±Ø¶ Ø§Ù„Ø¢Ù† ØªØ­Ù„ÙŠÙ„ Ø§Ù„Ø·Ù„Ø¨Ø§Øª Ø§Ù„Ù…ØµÙ†ÙØ© ÙÙ‚Ø·. Ù„ØªÙØ¹ÙŠÙ„ Ø§Ù„ØªØ­Ù„ÙŠÙ„ Ø§Ù„ÙƒØ§Ù…Ù„ØŒ ÙŠØ±Ø¬Ù‰ Ø¥Ø¶Ø§ÙØ© Ø­Ù‚Ù„ Ø·Ø±ÙŠÙ‚Ø© Ø§Ù„Ø¯ÙØ¹ Ø¥Ù„Ù‰ Ù…Ù„Ù Ø§Ù„ØªØµØ¯ÙŠØ±.'
           ) +
         '</div>' +
       '</div>' +
     '</div>';
   }
 
-  /* ── Wire events after render ────────────────────────────────────────────── */
+  /* â”€â”€ Wire events after render â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€ */
   function wireEvents(mountEl, geo) {
 
     /* Recommendation tabs */
@@ -1098,8 +1270,51 @@
       productSearch.addEventListener('blur',  function () { this.style.borderColor = 'rgba(255,255,255,0.1)'; });
     }
 
-    /* Sort column buttons — attached via event delegation to avoid re-attaching on page changes */
-    mountEl.addEventListener('click', function (e) {
+    var promoCopyBtn = document.getElementById('sp-promo-copy-btn');
+    var promoCopyText = document.getElementById('sp-promo-copy-text');
+    if (promoCopyBtn && promoCopyText) {
+      promoCopyBtn.addEventListener('click', function () {
+        var text = promoCopyText.textContent || '';
+        function markCopied() {
+          promoCopyBtn.textContent = sTx('Copied', 'تم النسخ');
+          setTimeout(function () {
+            promoCopyBtn.textContent = sTx('Copy ad text', 'نسخ نص الإعلان');
+          }, 1400);
+        }
+        if (navigator.clipboard && navigator.clipboard.writeText) {
+          navigator.clipboard.writeText(text).then(markCopied);
+        } else {
+          var temp = document.createElement('textarea');
+          temp.value = text;
+          document.body.appendChild(temp);
+          temp.select();
+          document.execCommand('copy');
+          temp.remove();
+          markCopied();
+        }
+      });
+    }
+
+    /* Sort column buttons â€” attached via event delegation to avoid re-attaching on page changes */
+    if (mountEl._spSortClickHandler) mountEl.removeEventListener('click', mountEl._spSortClickHandler);
+    if (mountEl._spSortMouseOverHandler) mountEl.removeEventListener('mouseover', mountEl._spSortMouseOverHandler);
+    if (mountEl._spSortMouseOutHandler) mountEl.removeEventListener('mouseout', mountEl._spSortMouseOutHandler);
+
+    mountEl._spSortClickHandler = function (e) {
+      var cityBtn = e.target.closest('.sp-city-sort-btn');
+      if (cityBtn) {
+        var cityKey = cityBtn.dataset.sortKey;
+        if (!cityKey) return;
+        if (cityPagination.sortKey === cityKey) {
+          cityPagination.sortDir = cityPagination.sortDir === 1 ? -1 : 1;
+        } else {
+          cityPagination.sortKey = cityKey;
+          cityPagination.sortDir = 1;
+        }
+        applyCitySort();
+        return;
+      }
+
       var btn = e.target.closest('.sp-sort-btn');
       if (!btn) return;
       var key = btn.dataset.sortKey;
@@ -1111,22 +1326,69 @@
         productPagination.sortDir = 1;
       }
       applySort();
-    });
+    };
+    mountEl.addEventListener('click', mountEl._spSortClickHandler);
 
-    /* Sort hover effects — event delegation so they survive table re-renders */
-    mountEl.addEventListener('mouseover', function (e) {
+    /* Sort hover effects â€” event delegation so they survive table re-renders */
+    mountEl._spSortMouseOverHandler = function (e) {
+      var cityBtn = e.target.closest('.sp-city-sort-btn');
+      if (cityBtn) {
+        cityBtn.style.opacity = '1';
+        cityBtn.style.transform = 'translateY(-1px)';
+        return;
+      }
       var btn = e.target.closest('.sp-sort-btn');
       if (!btn) return;
       btn.style.opacity = '1';
       btn.style.transform = 'translateY(-1px)';
-    });
-    mountEl.addEventListener('mouseout', function (e) {
+    };
+    mountEl.addEventListener('mouseover', mountEl._spSortMouseOverHandler);
+    mountEl._spSortMouseOutHandler = function (e) {
+      var cityBtn = e.target.closest('.sp-city-sort-btn');
+      if (cityBtn) {
+        var cityActive = cityBtn.dataset.sortKey === cityPagination.sortKey;
+        cityBtn.style.opacity = cityActive ? '1' : '0.65';
+        cityBtn.style.transform = 'none';
+        return;
+      }
       var btn = e.target.closest('.sp-sort-btn');
       if (!btn) return;
       var isActive = btn.dataset.sortKey === productPagination.sortKey;
       btn.style.opacity = isActive ? '1' : '0.65';
       btn.style.transform = 'none';
-    });
+    };
+    mountEl.addEventListener('mouseout', mountEl._spSortMouseOutHandler);
+
+    var excludeBtn = document.getElementById('sp-exclude-export');
+    if (excludeBtn) {
+      excludeBtn.addEventListener('click', function () {
+        var uniqueCities = {};
+        if (recsState && recsState.data) {
+          if (Array.isArray(recsState.data.cities)) {
+            recsState.data.cities.forEach(function(item) {
+              if (item.city) uniqueCities[item.city] = true;
+            });
+          }
+          if (Array.isArray(recsState.data.actions)) {
+            recsState.data.actions.forEach(function(item) {
+              if (item.city) uniqueCities[item.city] = true;
+            });
+          }
+        }
+        var list = Object.keys(uniqueCities).map(function(name) {
+          return { name: name, ndr: null };
+        });
+        openExclusionModal(list, sTx('Low delivery / COD-heavy cities recommended for exclusion', 'المدن ذات التوصيل المنخفض الموصى باستبعادها من إعلانات الدفع عند الاستلام'));
+      });
+      excludeBtn.addEventListener('mouseover', function () {
+        this.style.borderColor = '#a855f7';
+        this.style.background = 'rgba(168,85,247,0.2)';
+      });
+      excludeBtn.addEventListener('mouseout', function () {
+        this.style.borderColor = 'rgba(168,85,247,0.3)';
+        this.style.background = 'rgba(168,85,247,0.1)';
+      });
+    }
 
     /* Reset sort button */
     var resetBtn = document.getElementById('sp-sort-reset');
@@ -1151,13 +1413,13 @@
       });
     }
 
-    /* Reset sort button hover effects — also handle in pagination re-render via applySort */
+    /* Reset sort button hover effects â€” also handle in pagination re-render via applySort */
     updateCityPage();
     updateProductPage();
     updateRecsPage();
   }
 
-  /* ── Main render function ────────────────────────────────────────────────── */
+  /* â”€â”€ Main render function â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€ */
   window.renderSectionPrepaid = function (mountEl, data, ctx) {
     if (!mountEl) return;
 
@@ -1179,11 +1441,11 @@
       '<div style="display:flex;align-items:center;gap:12px;margin-bottom:22px;">' +
         '<div style="width:40px;height:40px;border-radius:12px;background:rgba(59,130,246,0.15);' +
           'border:1px solid rgba(59,130,246,0.30);display:flex;align-items:center;justify-content:center;' +
-          'font-size:20px;flex-shrink:0;">💳</div>' +
+          'font-size:20px;flex-shrink:0;">ðŸ’³</div>' +
         '<div>' +
-          '<div style="font-size:20px;font-weight:900;color:' + C.text + ';">' + sTx('Prepaid Intelligence', 'ذكاء الدفع المسبق') + '</div>' +
+          '<div style="font-size:20px;font-weight:900;color:' + C.text + ';">' + sTx('Prepaid Intelligence', 'Ø°ÙƒØ§Ø¡ Ø§Ù„Ø¯ÙØ¹ Ø§Ù„Ù…Ø³Ø¨Ù‚') + '</div>' +
           '<div style="font-size:12px;color:' + C.muted + ';margin-top:2px;">' +
-            sTx('Analysis of prepaid vs cash on delivery performance · Cities · Products · Recommendations', 'تحليل أداء الدفع المسبق مقابل الدفع عند الاستلام · المدن · المنتجات · التوصيات') +
+            sTx('Analysis of prepaid vs cash on delivery performance Â· Cities Â· Products Â· Recommendations', 'ØªØ­Ù„ÙŠÙ„ Ø£Ø¯Ø§Ø¡ Ø§Ù„Ø¯ÙØ¹ Ø§Ù„Ù…Ø³Ø¨Ù‚ Ù…Ù‚Ø§Ø¨Ù„ Ø§Ù„Ø¯ÙØ¹ Ø¹Ù†Ø¯ Ø§Ù„Ø§Ø³ØªÙ„Ø§Ù… Â· Ø§Ù„Ù…Ø¯Ù† Â· Ø§Ù„Ù…Ù†ØªØ¬Ø§Øª Â· Ø§Ù„ØªÙˆØµÙŠØ§Øª') +
           '</div>' +
         '</div>' +
       '</div>';
@@ -1195,6 +1457,7 @@
         (!hasPrepaidData && hasGeoData ? buildNoDataBanner() : '') +
         buildKpiStrip(pi) +
         buildComparisonPanel(pi) +
+        buildPrepaidPromoSuggester(pi, geoData) +
         buildCityRanking(pi, geoData) +
         buildProductTable(geoData) +
         buildRecommendationCards(pi, geoData) +

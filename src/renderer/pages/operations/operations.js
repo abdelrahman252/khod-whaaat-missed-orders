@@ -10,6 +10,8 @@ async function renderOperations(onBack) {
   let _odTablePage = 1;
   let _activeTab = "overview";
   let _activeAccount = "";
+  const _skeletonShownAt = performance.now();
+  const _minSkeletonMs = 1000;
 
   // ── Shell (rendered immediately so skeleton is visible during data fetch) ──
   root.innerHTML = `
@@ -19,7 +21,7 @@ async function renderOperations(onBack) {
       ${renderSharedSidebar('operations')}
 
       <!-- ── Scrollable content area ── -->
-      <div style="flex:1;overflow:hidden;min-width:0;display:flex;flex-direction:column;position:relative;">
+      <div class="sv3-content-scroll operations-scroll-root" style="flex:1;min-height:0;overflow-y:auto;overflow-x:hidden;min-width:0;display:flex;flex-direction:column;position:relative;">
 
     <!-- ── Skeleton Preloader ── -->
     <div id="ops-skeleton" class="page-skeleton-overlay" style="background:var(--bg);padding:20px;gap:16px;">
@@ -40,7 +42,19 @@ async function renderOperations(onBack) {
       </div>
     </div>
 
-    <div class="ops-page">
+      <div class="ops-page">
+      <div class="ops-tour-row">
+        <button type="button" class="khod-tour-quick-guide" id="ops-tour-btn" title="${window.t_ops('tour.common.quickGuide', { default: 'Quick Guide' })}">
+          <span class="khod-tour-guide-mark">?</span><span>${window.t_ops('tour.common.quickGuide', { default: 'Quick Guide' })}</span>
+        </button>
+      </div>
+      <div class="ops-first-run-guidance" id="ops-first-run-guidance" style="display:none;margin:0 0 14px;padding:14px 16px;border:1px solid var(--border);border-radius:12px;background:var(--bg2);align-items:center;justify-content:space-between;gap:14px;box-shadow:0 10px 28px rgba(0,0,0,.10);">
+        <div style="min-width:0;">
+          <div style="font-size:13px;font-weight:800;color:var(--text);margin-bottom:3px;">${window.t_ops('emptyGuidance.title', { default: 'Operations is ready' })}</div>
+          <div style="font-size:12px;color:var(--text2);line-height:1.5;">${window.t_ops('emptyGuidance.body', { default: 'Run the bot once to populate each operations section with run history, order details, account performance, product performance, and live activity.' })}</div>
+        </div>
+        <button type="button" class="btn btn-primary" id="ops-first-run-btn" style="white-space:nowrap;font-size:12px;padding:8px 12px;">${window.t_ops('emptyGuidance.action', { default: 'Go to Run' })}</button>
+      </div>
       <div class="ops-account-tabs" id="ops-account-tabs"></div>
       <div class="ops-grid" id="ops-main-grid">
 
@@ -78,16 +92,19 @@ async function renderOperations(onBack) {
   // Keep app-level navigation responsive while the Operations skeleton is visible.
   wireSharedSidebar(root);
 
-  try {
-    const r = await window.api.getAnalyticsRuns();
-    _allRuns = window.KhodPremiumPreview && window.KhodPremiumPreview.isActive("operations")
-      ? window.KhodPremiumPreview.runs()
-      : (Array.isArray(r) ? r : (r?.runs || []));
-  } catch(e) {
-    _allRuns = window.KhodPremiumPreview && window.KhodPremiumPreview.isActive("operations")
-      ? window.KhodPremiumPreview.runs()
-      : [];
+  async function _loadOperationRuns() {
+    if (window.KhodPremiumPreview && window.KhodPremiumPreview.isActive("operations")) {
+      return window.KhodPremiumPreview.runs();
+    }
+    try {
+      const r = await window.api.getAnalyticsRuns();
+      return Array.isArray(r) ? r : (r?.runs || []);
+    } catch(e) {
+      return [];
+    }
   }
+
+  _allRuns = await _loadOperationRuns();
 
   // Apply entrance animation classes to mount points BEFORE filling content
   const _opsPanels = [
@@ -110,10 +127,14 @@ async function renderOperations(onBack) {
   // Fade out skeleton only after the first real panels are in the DOM.
   const opsSk = document.getElementById("ops-skeleton");
   if (opsSk) {
-    requestAnimationFrame(() => {
-      opsSk.classList.add("sk-exit");
-      setTimeout(() => opsSk.remove(), 120);
-    });
+    const elapsed = performance.now() - _skeletonShownAt;
+    const waitMs = Math.max(0, _minSkeletonMs - elapsed);
+    setTimeout(() => {
+      requestAnimationFrame(() => {
+        opsSk.classList.add("sk-exit");
+        setTimeout(() => opsSk.remove(), 220);
+      });
+    }, waitMs);
   }
 
   // ── Wire sidebar nav ────────────────────────────────────────────────────────
@@ -121,6 +142,7 @@ async function renderOperations(onBack) {
   root.querySelector("#ops-back-to-orders")?.addEventListener("click", _clearOrderDetails);
   root.addEventListener("click", (e) => {
     if (e.target.closest("#ops-scroll-history")) _scrollToRunHistory();
+    if (e.target.closest("#ops-first-run-btn") && typeof goToSetup === "function") goToSetup("run");
   });
   if (window._opsFocusProductPerformance) {
     window._opsFocusProductPerformance = false;
@@ -132,16 +154,21 @@ async function renderOperations(onBack) {
   }
   root._opsRunsUpdatedHandler = async function opsRunsUpdatedHandler() {
     try {
-      const r = await window.api.getAnalyticsRuns();
-      _allRuns = window.KhodPremiumPreview && window.KhodPremiumPreview.isActive("operations")
-        ? window.KhodPremiumPreview.runs()
-        : (Array.isArray(r) ? r : (r?.runs || []));
+      _allRuns = await _loadOperationRuns();
       _renderPanels({ selectLatest: false });
     } catch (e) {
       console.warn("[Operations] Failed to refresh runs:", e);
     }
   };
   window.addEventListener("khod-analytics-runs-updated", root._opsRunsUpdatedHandler);
+
+  if (window.KhodGuidedTour) {
+    const guideOpts = { root };
+    document.getElementById("ops-tour-btn")?.addEventListener("click", () => {
+      window.KhodGuidedTour.start("operations", guideOpts);
+    });
+    setTimeout(() => window.KhodGuidedTour.mountPagePrompt("operations", guideOpts), 700);
+  }
 
   // Global click to close custom dropdown
   document.addEventListener("click", e => {
@@ -174,6 +201,8 @@ async function renderOperations(onBack) {
   function _renderPanels(opts) {
     opts = opts || {};
     const filteredRuns = _getFilteredRuns();
+    const firstRunGuidance = root.querySelector("#ops-first-run-guidance");
+    if (firstRunGuidance) firstRunGuidance.style.display = (_allRuns || []).length === 0 ? "flex" : "none";
 
     _renderAccountFilter();
     renderOpsMonitor(root.querySelector("#ops-monitor-mount"));
@@ -218,7 +247,8 @@ async function renderOperations(onBack) {
     const options = [{ value: "", label: `${allLabel}  ${countFor("").toLocaleString()} ${ordersLabel}` }]
       .concat(accounts.map(a => ({
         value: a.key,
-        label: `${_opsShortEmail(a.label)}  ${countFor(a.key).toLocaleString()} ${ordersLabel}`,
+        label: `${a.label || a.email || a.key}  ${countFor(a.key).toLocaleString()} ${ordersLabel}`,
+        subLabel: a.email && a.email !== a.label ? a.email : "",
       })));
 
     tabBar.innerHTML = `

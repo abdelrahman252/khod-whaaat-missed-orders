@@ -24,20 +24,42 @@ function matchesDateRange(val, dateFrom, dateTo) {
 
 function normalizeProductName(name) {
   if (!name) return "";
-  let s = name.toString().trim();
+  let s = name
+    .toString()
+    .normalize("NFKC")
+    .replace(/[\u200B-\u200F\u202A-\u202E\u2060\uFEFF]/g, "")
+    .replace(/[\u064B-\u065F\u0670\u0640]/g, "")
+    .replace(/[\u00A0\u1680\u180E\u2000-\u200A\u202F\u205F\u3000]/g, " ")
+    .trim();
   s = s.replace(/^\d+x\s*/i, "");
+  s = s.replace(/[‐‑‒–—―]+/g, "-");
   s = s.replace(/[-\s]+$/, "");
   s = s.replace(/\s+/g, " ").trim();
   return s;
+}
+
+function productLookupKey(name) {
+  return normalizeProductName(name)
+    .toLowerCase()
+    .replace(/\s+/g, "")
+    .replace(/[.,،:;؛"'`´()[\]{}<>|\\/!؟?_*~]+/g, "")
+    .replace(/[أإآٱ]/g, "ا")
+    .replace(/ى/g, "ي")
+    .replace(/ة/g, "ه");
 }
 
 function productNamesMatch(nameA, nameB) {
   if (!nameA || !nameB) return false;
   const a = normalizeProductName(nameA).toLowerCase();
   const b = normalizeProductName(nameB).toLowerCase();
+  const keyA = productLookupKey(nameA);
+  const keyB = productLookupKey(nameB);
   if (a === b) return true;
+  if (keyA && keyA === keyB) return true;
   if (a.length >= 4 && b.includes(a)) return true;
   if (b.length >= 4 && a.includes(b)) return true;
+  if (keyA.length >= 4 && keyB.includes(keyA)) return true;
+  if (keyB.length >= 4 && keyA.includes(keyB)) return true;
   return false;
 }
 
@@ -67,6 +89,17 @@ function makeOrderKey(normPhone, sku) {
 function rowDateString(rawDate) {
   try {
     return parseExcelDate(rawDate)?.toISOString().slice(0, 10) || "";
+  } catch (_) {
+    return "";
+  }
+}
+
+function rowDateTimeString(rawDate) {
+  try {
+    const d = parseExcelDate(rawDate);
+    if (!d || isNaN(d.getTime())) return "";
+    const pad = (n) => String(n).padStart(2, "0");
+    return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}T${pad(d.getHours())}:${pad(d.getMinutes())}:${pad(d.getSeconds())}`;
   } catch (_) {
     return "";
   }
@@ -125,6 +158,7 @@ function explodeRealOrderRow(row, phoneMeta) {
     region: "",
     address: (row["Address"] || "").toString().trim() || null,
     date: rowDateString(rawDate),
+    createdAt: rowDateTimeString(rawDate),
     // ── Analytics fields ──
     // NOTE: explodeRealOrderRow processes the Easy-Orders export (English headers).
     // The Khod affiliate sheet (Arabic headers) is parsed separately via parseKhodAnalyticsMap().
@@ -252,6 +286,7 @@ function parseMissedOrders(buffer, dateFrom, dateTo) {
       region: "",
       address: (row["Address"] || "").toString().trim() || null,
       date: rowDateString(row["Created At"]),
+      createdAt: rowDateTimeString(row["Created At"]),
       rawProducts,
       productName: stripProductBrackets(rawProducts),
       sku: null,
@@ -284,11 +319,12 @@ function modeNumber(values) {
 function buildProductCatalog(realOrders) {
   const byName = {};
   const bySku = {};
+  const byLookupKey = {};
 
   for (const order of realOrders) {
     if (!order.sku || !order.productName) continue;
 
-    const name = order.productName.trim();
+    const name = normalizeProductName(order.productName);
     if (!byName[name]) {
       byName[name] = { sku: order.sku, productName: name, prices: {}, qtyCounts: {} };
     }
@@ -303,6 +339,9 @@ function buildProductCatalog(realOrders) {
     if (!bySku[order.sku]) bySku[order.sku] = { sku: order.sku, names: new Set(), count: 0 };
     bySku[order.sku].names.add(name);
     bySku[order.sku].count++;
+
+    const lookupKey = productLookupKey(name);
+    if (lookupKey && !byLookupKey[lookupKey]) byLookupKey[lookupKey] = name;
   }
 
   const result = {};
@@ -324,21 +363,33 @@ function buildProductCatalog(realOrders) {
     enumerable: false,
   });
 
+  Object.defineProperty(result, "__lookupIndex", {
+    value: byLookupKey,
+    enumerable: false,
+  });
+
   console.log(`📚 Product catalog: ${Object.keys(result).length} products | ${Object.keys(result.__skuIndex).length} SKUs`);
   return result;
 }
 
 function findProductInCatalog(productName, catalog) {
   if (!productName) return null;
-  const clean = productName.trim();
+  const clean = normalizeProductName(productName);
   if (catalog[clean]) return catalog[clean];
 
   const lower = clean.toLowerCase();
+  const lookupKey = productLookupKey(clean);
+  const lookupName = catalog.__lookupIndex && catalog.__lookupIndex[lookupKey];
+  if (lookupName && catalog[lookupName]) return catalog[lookupName];
+
   for (const [key, val] of Object.entries(catalog)) {
     if (!val || !val.sku) continue;
     const k = key.toLowerCase();
+    const kLookup = productLookupKey(key);
     if (k === lower) return val;
     if (k.includes(lower) || lower.includes(k)) return val;
+    if (lookupKey.length >= 4 && kLookup.includes(lookupKey)) return val;
+    if (kLookup.length >= 4 && lookupKey.includes(kLookup)) return val;
   }
   return null;
 }
@@ -350,6 +401,8 @@ function parseMissedProductNamesFromCatalog(rawProducts, catalog) {
   const matches = [];
   const names = Object.keys(catalog).sort((a, b) => b.length - a.length);
   let masked = source;
+  const normalizedSourceKey = productLookupKey(source);
+  const compactMatches = [];
 
   for (const name of names) {
     if (!name) continue;
@@ -359,11 +412,29 @@ function parseMissedProductNamesFromCatalog(rawProducts, catalog) {
       masked = masked.slice(0, index) + " ".repeat(name.length) + masked.slice(index + name.length);
       index = masked.indexOf(name);
     }
+
+    const nameKey = productLookupKey(name);
+    if (nameKey && normalizedSourceKey.includes(nameKey)) {
+      compactMatches.push({ name, index: normalizedSourceKey.indexOf(nameKey), length: nameKey.length });
+    }
   }
 
   if (matches.length > 0) {
     return matches
       .sort((a, b) => a.index - b.index)
+      .map((match) => match.name);
+  }
+
+  if (compactMatches.length > 0) {
+    const used = [];
+    return compactMatches
+      .sort((a, b) => a.index - b.index || b.length - a.length)
+      .filter((match) => {
+        const overlaps = used.some((range) => match.index < range.end && match.index + match.length > range.start);
+        if (overlaps) return false;
+        used.push({ start: match.index, end: match.index + match.length });
+        return true;
+      })
       .map((match) => match.name);
   }
 

@@ -327,9 +327,103 @@
 
   var _marketingByAccount = {};
   var _marketingListeners = [];
+  var MARKETING_PLATFORMS = ['tiktok', 'snapchat', 'facebook'];
+  var _marketingSyncSeq = 0;
+  var _marketingSyncRequests = {};
+
+  function normalizeMarketingPlatform(platform) {
+    platform = String(platform || 'tiktok').toLowerCase();
+    return MARKETING_PLATFORMS.indexOf(platform) === -1 ? 'tiktok' : platform;
+  }
+
+  function platformLabel(platform) {
+    platform = normalizeMarketingPlatform(platform);
+    return platform === 'snapchat' ? 'Snapchat' : platform === 'facebook' ? 'Facebook' : 'TikTok';
+  }
 
   function marketingAccountId(accountId) {
     return roiAccountId(accountId);
+  }
+
+  function marketingAccountLabel(account) {
+    return String(account && (
+      account.memberName ||
+      account.easyEmail ||
+      account.easy_email ||
+      account.khodEmail ||
+      account.khod_email ||
+      account.email ||
+      account.label ||
+      account.name ||
+      account.id ||
+      ''
+    ) || '');
+  }
+
+  function marketingAccountKeys(account) {
+    var keys = [];
+    function push(value) {
+      var key = String(value || '').trim().toLowerCase();
+      if (key && keys.indexOf(key) === -1) keys.push(key);
+    }
+    if (typeof account === 'string') {
+      push(account);
+      return keys;
+    }
+    push(account && account.id);
+    push(account && account.khodEmail);
+    push(account && account.khod_email);
+    push(account && account.easyEmail);
+    push(account && account.easy_email);
+    push(account && account.email);
+    push(account && account.label);
+    push(account && account.name);
+    push(account && account.memberName);
+    push(marketingAccountLabel(account));
+    return keys;
+  }
+
+  function marketingStableKey(account) {
+    var keys = marketingAccountKeys(account);
+    return keys.filter(function (key) {
+      return key.indexOf('@') !== -1;
+    })[0] || keys[1] || keys[0] || '';
+  }
+
+  function dashboardMarketingAccounts() {
+    var source = Array.isArray(window.dashboardAccountsList) && window.dashboardAccountsList.length
+      ? window.dashboardAccountsList
+      : (Array.isArray(window._kbotAccounts) ? window._kbotAccounts : []);
+    var seen = {};
+    return source.map(function (account) {
+      var id = String(account && (account.id || account.accountId || account.key || '') || '');
+      if (!id || id === '__all__' || seen[id]) return null;
+      seen[id] = true;
+      return account;
+    }).filter(Boolean);
+  }
+
+  function buildMarketingSyncAllSettings(accountId, platform) {
+    var summary = summarizeMarketingPlatforms(accountId);
+    var platformStatus = platform ? normalizeMarketingStatus(marketingBucket(accountId)[normalizeMarketingPlatform(platform)], accountId, platform) : null;
+    var mappings = (platformStatus && platformStatus.mappings) || (summary && summary.mappings) || {};
+    return dashboardMarketingAccounts().map(function (account) {
+      var id = String(account && (account.id || account.accountId || account.key || '') || '');
+      var keys = marketingAccountKeys(account);
+      var mappedKey = keys.filter(function (key) {
+        return Array.isArray(mappings[key]) && mappings[key].length;
+      })[0];
+      var roi = window.DashboardRoiState && typeof window.DashboardRoiState.get === 'function'
+        ? window.DashboardRoiState.get(id, {})
+        : {};
+      return {
+        dashboardAccountId: id,
+        dashboardAccountKey: mappedKey || marketingStableKey(account) || id,
+        dashboardAccountKeys: keys,
+        currency: 'SAR',
+        egpRate: Number(roi.egpRate) || 52
+      };
+    });
   }
 
   function manualMarketingKey(accountId) {
@@ -352,7 +446,7 @@
       return String(candidate && candidate.id || '') === id;
     })[0];
     if (account) {
-      [account.easyEmail, account.email, account.khodEmail, account.label, account.name].forEach(function (value) {
+      [account.memberName, account.easyEmail, account.email, account.khodEmail, account.label, account.name].forEach(function (value) {
         var key = String(value || '').trim().toLowerCase();
         if (key) keys.push(key);
       });
@@ -360,8 +454,9 @@
     return keys.filter(function (key, index) { return key && keys.indexOf(key) === index; });
   }
 
-  function normalizeMarketingStatus(value, accountId) {
+  function normalizeMarketingStatus(value, accountId, platform) {
     value = value || {};
+    platform = normalizeMarketingPlatform(platform || value.platform);
     var summary = value.summary && typeof value.summary === 'object' ? value.summary : null;
     var adSpend = summary ? Number(summary.adSpend) : NaN;
     var linkedAccounts = Array.isArray(value.linkedAccounts) ? value.linkedAccounts.map(function (account) {
@@ -381,7 +476,8 @@
     });
     return {
       accountId: marketingAccountId(accountId),
-      platform: 'tiktok',
+      platform: platform,
+      platformLabel: platformLabel(platform),
       status: value.status || 'disconnected',
       sourceAccountId: value.sourceAccountId || '',
       sourceAccountName: value.sourceAccountName || '',
@@ -401,8 +497,121 @@
       offline: !!value.offline,
       error: value.error || '',
       errorCode: value.errorCode || value.error || '',
+      limit: value.limit && typeof value.limit === 'object' ? value.limit : null,
+      limits: value.limits && typeof value.limits === 'object' ? value.limits : null,
       reconnectRequired: !!value.reconnectRequired,
       loading: !!value.loading,
+      manualOverride: readManualMarketingOverride(accountId)
+    };
+  }
+
+  function marketingBucket(accountId) {
+    var id = marketingAccountId(accountId);
+    var bucket = _marketingByAccount[id];
+    if (!bucket || typeof bucket !== 'object' || bucket.platform || bucket.status || bucket.summary) {
+      bucket = bucket ? { tiktok: bucket } : {};
+      _marketingByAccount[id] = bucket;
+    }
+    return bucket;
+  }
+
+  function summarizeMarketingPlatforms(accountId) {
+    var id = marketingAccountId(accountId);
+    var bucket = marketingBucket(id);
+    var statuses = MARKETING_PLATFORMS.map(function (platform) {
+      return normalizeMarketingStatus(bucket[platform], id, platform);
+    });
+    var activeStatuses = statuses.filter(function (status) {
+      return status.status === 'connected' && status.summary && !status.manualOverride;
+    });
+    var connectedStatuses = statuses.filter(function (status) { return status.status === 'connected'; });
+    var linkedAccounts = [];
+    var mappings = {};
+    var selectedSourceAccounts = [];
+    var sourceBreakdown = [];
+    var campaignBreakdown = [];
+    var summary = activeStatuses.length ? {
+      adSpend: 0,
+      currency: 'SAR',
+      egpRate: 52,
+      impressions: 0,
+      clicks: 0,
+      campaignCount: 0,
+      rowCount: 0,
+      dateFrom: '',
+      dateTo: '',
+      sourceBreakdown: sourceBreakdown,
+      campaignBreakdown: campaignBreakdown,
+      platformBreakdown: []
+    } : null;
+    var latestSyncAt = null;
+
+    statuses.forEach(function (status) {
+      (status.linkedAccounts || []).forEach(function (account) {
+        linkedAccounts.push(Object.assign({ platform: status.platform }, account));
+      });
+      Object.keys(status.mappings || {}).forEach(function (key) {
+        var rows = Array.isArray(status.mappings[key]) ? status.mappings[key] : [];
+        mappings[key] = (mappings[key] || []).concat(rows.map(function (row) {
+          return Object.assign({ platform: status.platform }, row);
+        }));
+      });
+      selectedSourceAccounts = selectedSourceAccounts.concat((status.selectedSourceAccounts || []).map(function (row) {
+        return Object.assign({ platform: status.platform }, row);
+      }));
+      if (status.lastSyncAt && (!latestSyncAt || new Date(status.lastSyncAt) > new Date(latestSyncAt))) {
+        latestSyncAt = status.lastSyncAt;
+      }
+      if (!summary || !(status.status === 'connected' && status.summary && !status.manualOverride)) return;
+      var source = status.summary || {};
+      summary.adSpend += Number(source.adSpend || 0);
+      summary.impressions += Number(source.impressions || 0);
+      summary.clicks += Number(source.clicks || 0);
+      summary.campaignCount += Number(source.campaignCount || 0);
+      summary.rowCount += Number(source.rowCount || 0);
+      if (source.egpRate) summary.egpRate = Number(source.egpRate) || summary.egpRate;
+      if (source.dateFrom && (!summary.dateFrom || new Date(source.dateFrom) < new Date(summary.dateFrom))) summary.dateFrom = source.dateFrom;
+      if (source.dateTo && (!summary.dateTo || new Date(source.dateTo) > new Date(summary.dateTo))) summary.dateTo = source.dateTo;
+      (Array.isArray(source.sourceBreakdown) ? source.sourceBreakdown : []).forEach(function (row) {
+        sourceBreakdown.push(Object.assign({ platform: status.platform }, row));
+      });
+      (Array.isArray(source.campaignBreakdown) ? source.campaignBreakdown : []).forEach(function (row) {
+        campaignBreakdown.push(Object.assign({ platform: status.platform }, row));
+      });
+      summary.platformBreakdown.push({
+        platform: status.platform,
+        label: status.platformLabel,
+        adSpend: Number(source.adSpend || 0),
+        impressions: Number(source.impressions || 0),
+        clicks: Number(source.clicks || 0),
+        campaignCount: Number(source.campaignCount || 0),
+        rowCount: Number(source.rowCount || 0),
+        lastSyncAt: status.lastSyncAt || null
+      });
+    });
+    if (summary) summary.adSpend = Number(summary.adSpend.toFixed(2));
+    return {
+      accountId: id,
+      platform: 'combined',
+      platformLabel: 'TikTok + Snapchat + Facebook',
+      platforms: statuses,
+      status: connectedStatuses.length ? 'connected' : (statuses.some(function (status) { return status.loading; }) ? 'pending' : 'disconnected'),
+      sourceAccountId: '',
+      sourceAccountName: connectedStatuses.length ? connectedStatuses.length + ' connected marketing platforms' : '',
+      linkedAccounts: linkedAccounts,
+      linkedAccountCount: linkedAccounts.length,
+      mappings: mappings,
+      selectedSourceAccounts: selectedSourceAccounts,
+      selectedSourceAccountIds: selectedSourceAccounts.map(function (account) { return String(account.id || ''); }).filter(Boolean),
+      claimableAccounts: [],
+      diagnostics: null,
+      lastSyncAt: latestSyncAt,
+      summary: summary,
+      offline: statuses.some(function (status) { return !!status.offline; }),
+      error: statuses.map(function (status) { return status.error || ''; }).filter(Boolean).join('; '),
+      errorCode: statuses.map(function (status) { return status.errorCode || ''; }).filter(Boolean).join('; '),
+      reconnectRequired: statuses.some(function (status) { return !!status.reconnectRequired; }),
+      loading: statuses.some(function (status) { return !!status.loading; }),
       manualOverride: readManualMarketingOverride(accountId)
     };
   }
@@ -415,14 +624,19 @@
   }
 
   window.DashboardMarketingState = {
-    get: function (accountId) {
+    platforms: MARKETING_PLATFORMS.slice(),
+    get: function (accountId, platform) {
       var id = marketingAccountId(accountId);
-      return normalizeMarketingStatus(_marketingByAccount[id], id);
+      if (!platform) return summarizeMarketingPlatforms(id);
+      var bucket = marketingBucket(id);
+      return normalizeMarketingStatus(bucket[normalizeMarketingPlatform(platform)], id, platform);
     },
-    set: function (value, accountId) {
+    set: function (value, accountId, platform) {
       var id = marketingAccountId(accountId);
+      platform = normalizeMarketingPlatform(platform || value && value.platform);
+      var bucket = marketingBucket(id);
       if (value && value.ok === false) {
-        var previous = _marketingByAccount[id] || {};
+        var previous = bucket[platform] || {};
         if (value.reconnectRequired) {
           value = Object.assign({}, previous, value, {
             status: 'disconnected',
@@ -436,64 +650,116 @@
           !!previous.summary ||
           (Array.isArray(previous.linkedAccounts) && previous.linkedAccounts.length > 0) ||
           (previous.mappings && Object.keys(previous.mappings).length > 0);
-        value = Object.assign({}, value, previousHasConnectedState ? previous : {}, {
+        value = Object.assign({}, previousHasConnectedState ? previous : {}, value, {
           loading: false,
           error: value.error || 'MARKETING_REQUEST_FAILED'
         });
         }
       }
-      var next = normalizeMarketingStatus(value, id);
-      _marketingByAccount[id] = next;
+      var next = normalizeMarketingStatus(value, id, platform);
+      bucket[platform] = next;
       notifyMarketing(next);
+      notifyMarketing(summarizeMarketingPlatforms(id));
       return next;
     },
-    setLoading: function (loading, accountId) {
-      var current = this.get(accountId);
+    setLoading: function (loading, accountId, platform) {
+      var current = this.get(accountId, platform);
       current.loading = !!loading;
-      return this.set(current, accountId);
+      return this.set(current, accountId, platform);
     },
     useManualSpend: function (manual, accountId) {
       var id = marketingAccountId(accountId);
       try { localStorage.setItem(manualMarketingKey(id), manual ? '1' : '0'); } catch (e) {}
-      return this.set(this.get(id), id);
+      notifyMarketing(summarizeMarketingPlatforms(id));
+      return this.get(id);
     },
     isSyncedSpendActive: function (accountId) {
       var current = this.get(accountId);
       return current.status === 'connected' && !!current.summary && !current.manualOverride;
     },
-    load: function (accountId) {
+    load: function (accountId, platform) {
       var id = marketingAccountId(accountId);
-      if (!window.api || typeof window.api.getMarketingStatus !== 'function') {
-        return Promise.resolve(this.get(id));
+      if (!platform) {
+        var selfAll = this;
+        return Promise.all(MARKETING_PLATFORMS.map(function (item) {
+          return selfAll.load(id, item).catch(function () { return null; });
+        })).then(function () { return selfAll.get(id); });
       }
-      this.setLoading(true, id);
+      platform = normalizeMarketingPlatform(platform);
+      if (!window.api || typeof window.api.getMarketingStatus !== 'function') {
+        return Promise.resolve(this.get(id, platform));
+      }
+      this.setLoading(true, id, platform);
       var self = this;
-      console.info('[Marketing][Store] status request', { accountId: id, platform: 'tiktok' });
-      return window.api.getMarketingStatus(id, 'tiktok').then(function (response) {
-        console.info('[Marketing][Store] status response', response);
+      return window.api.getMarketingStatus(id, platform).then(function (response) {
         return self.set(response && response.ok ? response : Object.assign({}, response || {}, {
           ok: false,
           error: response && response.error ? response.error : 'STATUS_UNAVAILABLE'
-        }), id);
+        }), id, platform);
       }).catch(function (error) {
-        console.error('[Marketing][Store] status failed', error);
-        return self.set({ ok: false, error: error.message || String(error) }, id);
+        return self.set({ ok: false, error: error.message || String(error), platform: platform }, id, platform);
       });
     },
-    sync: function (accountId, range) {
+    sync: function (accountId, range, platform) {
       var id = marketingAccountId(accountId);
-      if (!window.api || typeof window.api.syncMarketingData !== 'function') {
-        return Promise.resolve(this.set({ ok: false, error: 'SYNC_UNAVAILABLE' }, id));
+      if (!platform) {
+        var selfAll = this;
+        var candidates = MARKETING_PLATFORMS.filter(function (item) {
+          var current = selfAll.get(id, item);
+          return current.status === 'connected' && (
+            id === '__all__' ||
+            (Array.isArray(current.selectedSourceAccountIds) && current.selectedSourceAccountIds.length) ||
+            (current.mappings && Object.keys(current.mappings).length)
+          );
+        });
+        if (!candidates.length) candidates = MARKETING_PLATFORMS.filter(function (item) {
+          return selfAll.get(id, item).status === 'connected';
+        });
+        if (!candidates.length) return Promise.resolve(selfAll.get(id));
+        return Promise.all(candidates.map(function (item) {
+          return selfAll.sync(id, range, item).catch(function () { return null; });
+        })).then(function () { return selfAll.get(id); });
       }
-      this.setLoading(true, id);
+      platform = normalizeMarketingPlatform(platform);
+      if (!window.api || typeof window.api.syncMarketingData !== 'function') {
+        return Promise.resolve(this.set({ ok: false, error: 'SYNC_UNAVAILABLE', platform: platform }, id, platform));
+      }
+      this.setLoading(true, id, platform);
       var self = this;
-      return window.api.syncMarketingData(id, 'tiktok', range || {}).then(function (response) {
+      var requestKey = id + '|' + platform;
+      var requestSeq = ++_marketingSyncSeq;
+      _marketingSyncRequests[requestKey] = requestSeq;
+      if (id === '__all__' && typeof window.api.syncAllMarketingData === 'function') {
+        var allRange = Object.assign({}, range || {}, {
+          accountSettings: Array.isArray(range && range.accountSettings) && range.accountSettings.length
+            ? range.accountSettings
+            : buildMarketingSyncAllSettings(id, platform)
+        });
+        return window.api.syncAllMarketingData(platform, allRange).then(function (response) {
+          if (_marketingSyncRequests[requestKey] !== requestSeq) return self.get(id, platform);
+          if (response && response.ok && response.accountStatuses) {
+            Object.keys(response.accountStatuses).forEach(function (accountKey) {
+              self.set(response.accountStatuses[accountKey], accountKey, platform);
+            });
+          }
+          return self.set(response && response.ok ? response : Object.assign({}, response || {}, {
+            ok: false,
+            error: response && response.error ? response.error : 'SYNC_FAILED'
+          }), id, platform);
+        }).catch(function (error) {
+          if (_marketingSyncRequests[requestKey] !== requestSeq) return self.get(id, platform);
+          return self.set({ ok: false, error: error.message || String(error), platform: platform }, id, platform);
+        });
+      }
+      return window.api.syncMarketingData(id, platform, range || {}).then(function (response) {
+        if (_marketingSyncRequests[requestKey] !== requestSeq) return self.get(id, platform);
         return self.set(response && response.ok ? response : Object.assign({}, response || {}, {
           ok: false,
           error: response && response.error ? response.error : 'SYNC_FAILED'
-        }), id);
+        }), id, platform);
       }).catch(function (error) {
-        return self.set({ ok: false, error: error.message || String(error) }, id);
+        if (_marketingSyncRequests[requestKey] !== requestSeq) return self.get(id, platform);
+        return self.set({ ok: false, error: error.message || String(error), platform: platform }, id, platform);
       });
     },
     subscribe: function (fn) {

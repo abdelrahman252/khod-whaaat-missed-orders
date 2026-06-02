@@ -20,6 +20,8 @@ async function renderAnalytics(onBack) {
   let _isolatedRunId = null;    // null = all runs, string = single run
   let _settingsOpen  = false;
   let _settings      = {};      // { minutesPerOrder }
+  const _skeletonShownAt = performance.now();
+  const _minSkeletonMs = 1000;
 
   // ── Skeleton layout ─────────────────────────────────────────────────────────
   root.innerHTML = `
@@ -29,7 +31,7 @@ async function renderAnalytics(onBack) {
       ${renderSharedSidebar('analytics')}
 
       <!-- ── Scrollable content area ── -->
-      <div style="flex:1;overflow-y:auto;overflow-x:hidden;min-width:0;display:flex;flex-direction:column;position:relative;">
+      <div class="sv3-content-scroll analytics-scroll-root" style="flex:1;min-height:0;overflow-y:auto;overflow-x:hidden;min-width:0;display:flex;flex-direction:column;position:relative;">
 
     <!-- ── Skeleton preloader (shown immediately, dismissed after data loads) ── -->
     <div id="anl-skeleton" class="page-skeleton-overlay" style="background:var(--bg);">
@@ -111,11 +113,22 @@ async function renderAnalytics(onBack) {
               <path d="M21.5 2v6h-6M21.34 15.57a10 10 0 1 1-.57-8.38l5.67-5.67"/>
             </svg>
           </button>
+          <button type="button" class="khod-tour-quick-guide" id="analytics-tour-btn" title="${window.t_anl('tour.common.quickGuide', { default: 'Quick Guide' })}">
+            <span class="khod-tour-guide-mark">?</span><span>${window.t_anl('tour.common.quickGuide', { default: 'Quick Guide' })}</span>
+          </button>
         </div>
       </div>
 
       <!-- Account selector (rendered dynamically) -->
       <div class="analytics-account-tabs" id="analytics-account-tabs"></div>
+
+      <div class="analytics-first-run-guidance" id="analytics-first-run-guidance" style="display:none;margin:0 20px 14px;padding:14px 16px;border:1px solid var(--border);border-radius:12px;background:var(--bg2);align-items:center;justify-content:space-between;gap:14px;box-shadow:0 10px 28px rgba(0,0,0,.10);">
+        <div style="min-width:0;">
+          <div style="font-size:13px;font-weight:800;color:var(--text);margin-bottom:3px;">${window.t_anl('empty.bannerTitle', { default: 'Analytics is ready' })}</div>
+          <div style="font-size:12px;color:var(--text2);line-height:1.5;">${window.t_anl('empty.bannerDesc', { default: 'Run the bot once to start filling these sections with real orders, revenue, COD, delivery, and failure data.' })}</div>
+        </div>
+        <button type="button" class="btn btn-primary" id="analytics-first-run-btn" style="white-space:nowrap;font-size:12px;padding:8px 12px;">${window.t_anl('empty.runAction', { default: 'Go to Run' })}</button>
+      </div>
 
       <!-- Isolated run banner -->
       <div class="analytics-run-banner" id="analytics-run-banner" style="display:none">
@@ -162,16 +175,26 @@ async function renderAnalytics(onBack) {
   // Keep app-level navigation responsive while the Analytics skeleton is visible.
   wireSharedSidebar(root);
 
-  const [runsResp, settingsResp] = await Promise.all([
-    window.api.getAnalyticsRuns().catch(e => {
+  function _previewAnalyticsActive() {
+    return window.KhodPremiumPreview && window.KhodPremiumPreview.isActive("analytics");
+  }
+
+  async function _loadAnalyticsRuns() {
+    if (_previewAnalyticsActive()) return window.KhodPremiumPreview.runs();
+    try {
+      const r = await window.api.getAnalyticsRuns();
+      return Array.isArray(r) ? r : (r?.runs || []);
+    } catch (e) {
       console.error("[Analytics] Failed to load runs:", e);
       return [];
-    }),
+    }
+  }
+
+  const [runsResp, settingsResp] = await Promise.all([
+    _loadAnalyticsRuns(),
     window.api.getAnalyticsSettings().catch(() => ({})),
   ]);
-  _allRuns = window.KhodPremiumPreview && window.KhodPremiumPreview.isActive("analytics")
-    ? window.KhodPremiumPreview.runs()
-    : (Array.isArray(runsResp) ? runsResp : (runsResp?.runs || []));
+  _allRuns = Array.isArray(runsResp) ? runsResp : [];
   _settings = settingsResp || {};
 
   // Apply entrance animations to empty containers BEFORE filling content (prevents flash)
@@ -210,12 +233,7 @@ async function renderAnalytics(onBack) {
     const svgIcon = refreshBtn.querySelector(".refresh-icon-svg");
     if (svgIcon) svgIcon.classList.add("rotating");
     
-    try { 
-      const r = await window.api.getAnalyticsRuns(); 
-      _allRuns = Array.isArray(r) ? r : (r?.runs || []); 
-    } catch (e) {
-      console.error("[Analytics] Refresh failed:", e);
-    }
+    _allRuns = await _loadAnalyticsRuns();
     
     // Smooth delay before resolving rotation to make the micro-interaction satisfying
     setTimeout(() => {
@@ -223,6 +241,14 @@ async function renderAnalytics(onBack) {
       _renderPage();
     }, 600);
   });
+
+  if (window.KhodGuidedTour) {
+    const guideOpts = { root };
+    document.getElementById("analytics-tour-btn")?.addEventListener("click", () => {
+      window.KhodGuidedTour.start("analytics", guideOpts);
+    });
+    setTimeout(() => window.KhodGuidedTour.mountPagePrompt("analytics", guideOpts), 700);
+  }
 
   // Date segmented visual tabs (pills)
   const tabButtons = document.querySelectorAll(".analytics-tab-btn");
@@ -267,6 +293,10 @@ async function renderAnalytics(onBack) {
     const banner = document.getElementById("analytics-run-banner");
     if (banner) banner.style.display = "none";
     _renderPage();
+  });
+
+  document.getElementById("analytics-first-run-btn")?.addEventListener("click", () => {
+    if (typeof goToSetup === "function") goToSetup("run");
   });
 
   // Smart auto-select: If the default filter yields 0 runs but there are runs available,
@@ -336,10 +366,14 @@ async function renderAnalytics(onBack) {
   // Fade out skeleton after the first real render has mounted content.
   const skEl = document.getElementById("anl-skeleton");
   if (skEl) {
-    requestAnimationFrame(() => {
-      skEl.classList.add("sk-exit");
-      setTimeout(() => skEl.remove(), 120);
-    });
+    const elapsed = performance.now() - _skeletonShownAt;
+    const waitMs = Math.max(0, _minSkeletonMs - elapsed);
+    setTimeout(() => {
+      requestAnimationFrame(() => {
+        skEl.classList.add("sk-exit");
+        setTimeout(() => skEl.remove(), 220);
+      });
+    }, waitMs);
   }
 
   // ── Core render function ────────────────────────────────────────────────────
@@ -370,19 +404,13 @@ async function renderAnalytics(onBack) {
       if (banner) banner.style.display = "none";
     }
 
+    const firstRunGuidance = document.getElementById("analytics-first-run-guidance");
+    if (firstRunGuidance) firstRunGuidance.style.display = _allRuns.length === 0 ? "flex" : "none";
+
     // Account tabs
     _renderAccountTabs(runs);
 
     const empty = document.getElementById("analytics-empty");
-    if (_allRuns.length === 0) {
-      if (empty) empty.style.display = "flex";
-      ["analytics-kpi-section","analytics-body-layout","analytics-orders-explorer"].forEach(id => {
-        const el = document.getElementById(id);
-        if (el) el.style.display = "none";
-      });
-      return;
-    }
-
     if (empty) empty.style.display = "none";
     ["analytics-kpi-section","analytics-body-layout","analytics-orders-explorer"].forEach(id => {
       const el = document.getElementById(id);
@@ -523,10 +551,12 @@ async function renderAnalytics(onBack) {
     }
 
     const options = [{ key: "", label: window.t_anl('account.allAccounts') }].concat(accounts).map(a => {
-      const text = a.key ? _shortEmail(a.label) : a.label;
+      const email = a.key ? (uniqueAccounts(_allRuns).find(r => accountKey(r) === a.key)?.accountEmail || "") : "";
+      const text = a.key ? (a.label || email || a.key) : a.label;
       return {
         value: a.key,
         label: `${text}  ${countFor(a.key).toLocaleString()} ${window.t_anl('account.orders')}`,
+        subLabel: email && email !== text ? email : "",
       };
     });
 

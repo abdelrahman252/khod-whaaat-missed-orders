@@ -37,6 +37,10 @@ const _STRINGS = {
     "setup.store_label":  "Store Name",
     "setup.store_hint":   "(required)",
     "setup.store_ph":     "e.g. themnzl",
+    "setup.account_identity_section": "Account Display",
+    "setup.account_name_label": "Account Name",
+    "setup.account_name_ph": "e.g. Riyadh Team, Main Store",
+    "setup.account_name_hint": "Shown first in account lists; email stays underneath for reference.",
     "setup.email_label":  "Email",
     "setup.email_ph":     "you@example.com",
     "setup.pass_label":   "Password",
@@ -96,6 +100,7 @@ const _STRINGS = {
     "run.cooldown_next":  "Next run available in",
     "run.preview_header": (n) => `📋 ${n} orders ready — uploading now`,
     "run.preview_cols":   ["Product", "Qty", "Price", "Date", "City", "Name", "Phone"],
+    "run.search_orders_placeholder": "Search by name, phone or product...",
     "run.progress_start": "Starting...",
     "results.title":      (d) => `Results — ${d}`,
     "results.completed":  "Bot run completed",
@@ -111,6 +116,7 @@ const _STRINGS = {
     "results.reason_phone_parse_failed": "Invalid phone number",
     "results.reason_phone_uncertain_zero_appended": "Phone missing digit — trailing 0 added (uncertain)",
     "results.reason_product_not_in_catalog": "Product not found in catalog",
+    "results.search_orders_placeholder": "Search by name, phone or product...",
     "results.phone_rescued_verify": "Phone rescued with trailing 0 — verify before calling",
     "results.new_orders": "New Orders",
     "results.in_khod":    "Already in Khod Whaat",
@@ -200,7 +206,18 @@ const _STRINGS = {
     "setup.locked":             "Locked",
     "setup.active":             "Active",
     "setup.edit_btn":           "✏️ Edit",
+    "setup.rename_btn":         "Rename",
     "setup.edit_account":       "Edit Account",
+    "setup.rename_account":     "Rename Account",
+    "setup.add_member_name":     "+ Member Name",
+    "setup.edit_member_name":    "Edit Member Name",
+    "setup.member_name_title":   "Member Name",
+    "setup.member_name_subtitle":"Name this account for your team. Credentials stay unchanged.",
+    "setup.member_name_label":   "Member Name",
+    "setup.member_name_ph":      "e.g. Ahmed - Riyadh team",
+    "setup.member_name_hint":    "This name appears first across the app. If empty, we show the email instead.",
+    "setup.clear_member_name":   "Clear",
+    "setup.save_member_name":    "Save Name",
     "setup.new_account":        "New Account",
     "setup.form_subtitle":      "Fill in credentials for this account.",
     "setup.keep_pass":          "Leave blank to keep existing",
@@ -375,8 +392,10 @@ const _STRINGS = {
     "ui.toast_info":              "Updated",
     "ui.help":                    "Help",
     "dashboard.fetching_title":    "Updating dashboard...",
-    "dashboard.fetching_body":     "Fetching live Khod Whaat data. This may take a few minutes. Keep the app open.",
-    "dashboard.fetching_account":  "Updating {current} of {total}: {account}",
+    "dashboard.fetching_body":     "Fetching orders, refreshing product data, and matching ad spend across accounts. This can take a few minutes; keep the app open.",
+    "dashboard.initial_sync_title": "Syncing dashboard data...",
+    "dashboard.initial_sync_body":  "Preparing saved orders, account metrics, product calculators, marketing spend, and AI context. Large workspaces can take a little while.",
+    "dashboard.fetching_account":  "Updating {current} of {total}: {account}. Pulling orders, checking product rows, and matching ad spend.",
     "dashboard.fetch_success":     "Dashboard updated",
     "dashboard.fetch_success_body":"Fetched {count} orders across {total} account(s).",
     "dashboard.fetch_partial":     "Dashboard partially updated",
@@ -394,11 +413,14 @@ const _STRINGS = {
     "license.btn_activate":       "Activate License 🔐",
     "license.btn_verifying":      "Verifying...",
     "license.btn_activated":      "✅ Activated!",
+    "license.btn_support":        "Contact Support",
     "license.err_empty":          "Please enter your license key.",
     "license.err_invalid":        "Invalid license key.",
     "license.days_remaining":     (d) => `${d} day(s) remaining`,
     "license.support_hint":       "Contact support if you need a license key.",
     "license.device_hint":        "If you see a \"different device\" error, contact support to reset the device lock.",
+    "titlebar.copy_license":      "Copy License",
+    "titlebar.copied":            "Copied!",
     // Expired overlay
     "expired.title":              "License Expired",
     "expired.subtitle":           (r) => r || "Your subscription has expired.",
@@ -504,6 +526,7 @@ const _STRINGS = {
     "run.cooldown_next":  "التشغيل التالي خلال",
     "run.preview_header": (n) => `📋 ${n} طلب جاهز — جارٍ الرفع`,
     "run.preview_cols":   ["المنتج", "الكمية", "السعر", "التاريخ", "المدينة", "الاسم", "الهاتف"],
+    "run.search_orders_placeholder": "ابحث بالاسم أو الهاتف أو المنتج...",
     "run.progress_start": "جارٍ البدء...",
     "results.title":      (d) => `النتائج — ${d}`,
     "results.completed":  "اكتمل تشغيل البوت",
@@ -519,6 +542,7 @@ const _STRINGS = {
     "results.reason_phone_parse_failed": "رقم الهاتف غير صالح",
     "results.reason_phone_uncertain_zero_appended": "رقم الهاتف ناقص — تمت إضافة 0 في النهاية مع الحاجة للمراجعة",
     "results.reason_product_not_in_catalog": "المنتج غير موجود في الكتالوج",
+    "results.search_orders_placeholder": "ابحث بالاسم أو الهاتف أو المنتج...",
     "results.phone_rescued_verify": "تم تعديل الهاتف بإضافة 0 في النهاية — راجعه قبل الاتصال",
     "results.new_orders": "طلبات جديدة",
     "results.in_khod":    "موجودة في Khod Whaat",
@@ -784,6 +808,8 @@ const _STRINGS = {
     "ui.help":                    "مساعدة",
     "dashboard.fetching_title":    "جاري تحديث لوحة التحكم...",
     "dashboard.fetching_body":     "يتم جلب بيانات Khod Whaat الحية. قد يستغرق ذلك بضع دقائق. اترك التطبيق مفتوحا.",
+    "dashboard.initial_sync_title": "جاري مزامنة بيانات لوحة التحكم...",
+    "dashboard.initial_sync_body":  "تحميل الطلبات وإنفاق تيك توك والحاسبات وإشارات الذكاء.",
     "dashboard.fetching_account":  "تحديث {current} من {total}: {account}",
     "dashboard.fetch_success":     "تم تحديث لوحة التحكم",
     "dashboard.fetch_success_body":"تم جلب {count} طلب عبر {total} حساب.",
@@ -807,6 +833,8 @@ const _STRINGS = {
     "license.days_remaining":     (d) => `متبقي ${d} يوم`,
     "license.support_hint":       "تواصل مع الدعم إذا كنت بحاجة إلى مفتاح ترخيص.",
     "license.device_hint":        "إذا ظهر خطأ \"جهاز مختلف\"، تواصل مع الدعم لإعادة ضبط قفل الجهاز.",
+    "titlebar.copy_license":      "نسخ الترخيص",
+    "titlebar.copied":            "تم النسخ!",
     // Expired overlay
     "expired.title":              "انتهى الترخيص",
     "expired.subtitle":           (r) => r || "انتهت صلاحية اشتراكك.",
@@ -991,13 +1019,66 @@ function applyLang(lang) {
 }
 
 // Cache DOM refs — avoids getElementById on every topbar update
-let _topBarName = null, _topBarDays = null, _topBarAvatar = null, _topBarAccounts = null;
+let _topBarName = null, _topBarDays = null, _topBarAvatar = null, _topBarAccounts = null, _topBarCopyBtn = null;
 function updateTopBarText() {
   if (!_topBarName)     _topBarName     = document.getElementById("top-bar-name");
   if (!_topBarDays)     _topBarDays     = document.getElementById("top-bar-days");
   if (!_topBarAvatar)   _topBarAvatar   = document.getElementById("top-bar-avatar");
   if (!_topBarAccounts) _topBarAccounts = document.getElementById("top-bar-accounts");
+  if (!_topBarCopyBtn) {
+    _topBarCopyBtn = document.getElementById("btn-copy-license");
+    if (_topBarCopyBtn) {
+      _topBarCopyBtn.addEventListener("click", () => {
+        const licKey = (window._kbotUser || {}).licenseKey || '';
+        if (licKey) {
+          navigator.clipboard.writeText(licKey).then(() => {
+            const originalTooltip = _topBarCopyBtn.getAttribute("data-tooltip");
+            const copiedText = window._t("titlebar.copied") || "Copied!";
+            
+            _topBarCopyBtn.setAttribute("data-tooltip", copiedText);
+            _topBarCopyBtn.setAttribute("aria-label", copiedText);
+            if (_topBarCopyBtn.dataset) delete _topBarCopyBtn.dataset.khodTooltipReady;
+            
+            if (window.KhodTooltip) {
+              window.KhodTooltip.hide();
+              setTimeout(() => {
+                if (document.activeElement === _topBarCopyBtn || _topBarCopyBtn.matches(":hover")) {
+                  if (window.KhodTooltip.init) window.KhodTooltip.init();
+                }
+              }, 50);
+            }
+            
+            if (window.KhodUI && window.KhodUI.toast) {
+              window.KhodUI.toast(copiedText, { kind: "success", timeout: 2000 });
+            }
+            
+            setTimeout(() => {
+              _topBarCopyBtn.setAttribute("data-tooltip", originalTooltip);
+              _topBarCopyBtn.setAttribute("aria-label", originalTooltip);
+              if (_topBarCopyBtn.dataset) delete _topBarCopyBtn.dataset.khodTooltipReady;
+            }, 2000);
+          }).catch(err => {
+            console.error("Failed to copy license key:", err);
+          });
+        }
+      });
+    }
+  }
+
   if (!_topBarName) return;
+
+  if (_topBarCopyBtn) {
+    const licKey = (window._kbotUser || {}).licenseKey || '';
+    if (licKey) {
+      _topBarCopyBtn.style.display = "inline-flex";
+      const label = window._t("titlebar.copy_license") || "Copy License";
+      _topBarCopyBtn.setAttribute("data-tooltip", `${label}: ${licKey}`);
+      _topBarCopyBtn.setAttribute("aria-label", `${label}: ${licKey}`);
+      if (_topBarCopyBtn.dataset) delete _topBarCopyBtn.dataset.khodTooltipReady;
+    } else {
+      _topBarCopyBtn.style.display = "none";
+    }
+  }
 
   const { customerName, daysLeft } = window._kbotUser;
   const welcomeFn = window._t("topbar.welcome");
@@ -1055,6 +1136,144 @@ function updateTopBarText() {
 // ── Top bar visibility ──
 const PAGES_WITH_TOPBAR = new Set(["page-setup", "page-run", "page-results", "page-license", "page-analytics", "page-operations", "page-dashboard", "page-ai-intelligence"]);
 
+const FEATURE_SCRIPT_GROUPS = {
+  analytics: [
+    "pages/analytics/chart.umd.min.js",
+    "../../node_modules/xlsx/dist/xlsx.full.min.js",
+    "locales/ar/analytics.js",
+    "locales/en/analytics.js",
+    "locales/ar/operations.js",
+    "locales/en/operations.js",
+    "page-i18n.js",
+    "pages/guided-tour.js",
+    "pages/premium-preview.js",
+    "pages/analytics/analytics-charts.js",
+    "pages/analytics/analytics-kpis.js",
+    "pages/analytics/analytics-table.js",
+    "pages/analytics/analytics-insights.js",
+    "pages/analytics/analytics.js",
+  ],
+  operations: [
+    "locales/ar/analytics.js",
+    "locales/en/analytics.js",
+    "locales/ar/operations.js",
+    "locales/en/operations.js",
+    "page-i18n.js",
+    "pages/guided-tour.js",
+    "pages/premium-preview.js",
+    "pages/operations/operations-utils.js",
+    "pages/operations/operations-monitor.js",
+    "pages/operations/operations-history.js",
+    "pages/operations/operations-presets.js",
+    "pages/operations/operations-insights.js",
+    "pages/operations/operations.js",
+  ],
+  ai: [
+    "pages/ai-intelligence/ai-intelligence-data.js",
+    "pages/ai-intelligence/engine/intent-detector.js",
+    "pages/ai-intelligence/engine/analytics-engine.js",
+    "pages/ai-intelligence/engine/context-compressor.js",
+    "pages/ai-intelligence/engine/session-memory.js",
+    "pages/ai-intelligence/engine/local-reasoning-engine.js",
+    "pages/ai-intelligence/engine/scenario-database.js",
+    "pages/ai-intelligence/engine/business-orchestrator.js",
+    "pages/ai-intelligence/ai-intelligence.js",
+  ],
+  dashboard: [
+    "pages/analytics/chart.umd.min.js",
+    "pages/guided-tour.js",
+    "pages/premium-preview.js",
+    "pages/dashboard/locales/ar/dashboard-locale.js",
+    "pages/dashboard/locales/en/dashboard-locale.js",
+    "pages/dashboard/dashboard-i18n.js",
+    "pages/dashboard/dashboard-aggregator.js",
+    "pages/dashboard/dashboard-aggregator-score.js",
+    "pages/dashboard/dashboard-aggregator-geo.js",
+    "pages/dashboard/dashboard-insight-engine.js",
+    "pages/dashboard/dashboard-filter-bus.js",
+    "pages/dashboard/dashboard-shared.js",
+    "pages/dashboard/dashboard-ai-context.js",
+    "pages/dashboard/dashboard-ai-ui.js",
+    "pages/ai-intelligence/ai-intelligence-data.js",
+    "pages/ai-intelligence/engine/intent-detector.js",
+    "pages/ai-intelligence/engine/analytics-engine.js",
+    "pages/ai-intelligence/engine/context-compressor.js",
+    "pages/ai-intelligence/engine/session-memory.js",
+    "pages/ai-intelligence/engine/local-reasoning-engine.js",
+    "pages/ai-intelligence/engine/scenario-database.js",
+    "pages/ai-intelligence/engine/business-orchestrator.js",
+    "pages/dashboard/sections/section-khod-ai.js",
+    "pages/ai-intelligence/ai-intelligence.js",
+    "pages/dashboard/sections/section1-overview.js",
+    "pages/dashboard/sections/section2-pipeline.js",
+    "pages/dashboard/sections/section3-orders.js",
+    "pages/dashboard/sections/section4-cod.js",
+    "pages/dashboard/sections/section5-products.js",
+    "pages/dashboard/sections/section6-commission.js",
+    "pages/dashboard/sections/section-marketing-connections.js",
+    "pages/dashboard/sections/section7-calculator.js",
+    "pages/dashboard/sections/section8-master.js",
+    "pages/dashboard/sections/section-cities.js",
+    "pages/dashboard/sections/section-city-drawer.js",
+    "pages/dashboard/sections/section-product-matrix.js",
+    "pages/dashboard/sections/section-prepaid.js",
+    "pages/dashboard/sections/section-insight-strip.js",
+    "pages/dashboard/sections/section9-product-forecast.js",
+    "pages/dashboard/dashboard-shell.js",
+    "pages/dashboard/dashboard.js",
+  ],
+};
+
+const _loadedFeatureScripts = new Set();
+const _featureLoadPromises = new Map();
+
+function loadScriptOnce(src) {
+  if (_loadedFeatureScripts.has(src)) return Promise.resolve();
+  if (_featureLoadPromises.has(src)) return _featureLoadPromises.get(src);
+  const promise = new Promise((resolve, reject) => {
+    const script = document.createElement("script");
+    script.src = src;
+    script.onload = () => {
+      _loadedFeatureScripts.add(src);
+      resolve();
+    };
+    script.onerror = () => reject(new Error("Failed to load " + src));
+    document.body.appendChild(script);
+  });
+  _featureLoadPromises.set(src, promise);
+  return promise;
+}
+
+async function ensureFeatureScripts(feature) {
+  const scripts = FEATURE_SCRIPT_GROUPS[feature] || [];
+  for (const src of scripts) {
+    await loadScriptOnce(src);
+  }
+}
+
+window.ensureFeatureScripts = ensureFeatureScripts;
+
+window.renderDashboard = async function lazyRenderDashboard() {
+  await ensureFeatureScripts("dashboard");
+  if (window.renderDashboard !== lazyRenderDashboard && typeof window.renderDashboard === "function") {
+    return window.renderDashboard.apply(window, arguments);
+  }
+};
+
+window.renderAnalytics = async function lazyRenderAnalytics() {
+  await ensureFeatureScripts("analytics");
+  if (window.renderAnalytics !== lazyRenderAnalytics && typeof window.renderAnalytics === "function") {
+    return window.renderAnalytics.apply(window, arguments);
+  }
+};
+
+window.renderOperations = async function lazyRenderOperations() {
+  await ensureFeatureScripts("operations");
+  if (window.renderOperations !== lazyRenderOperations && typeof window.renderOperations === "function") {
+    return window.renderOperations.apply(window, arguments);
+  }
+};
+
 // Dismiss the preloader exactly once — on the first showPage() call.
 // At this point a real page has been rendered into the DOM, so there
 // is no black-screen gap between loader exit and content appearing.
@@ -1069,8 +1288,28 @@ function dismissPreloader() {
   setTimeout(() => { if (preloader.parentNode) preloader.remove(); }, 260);
 }
 
+function setPreloaderCopy(title, body) {
+  const titleEl = document.getElementById("preloader-title");
+  const bodyEl = document.getElementById("preloader-body");
+  if (titleEl && title) titleEl.textContent = title;
+  if (bodyEl && body) bodyEl.textContent = body;
+}
+
+function dismissPreloaderWhenReady(pageId) {
+  if (_preloaderDismissed) return;
+  const dashboardReady = pageId === "page-dashboard" && window._dashboardInitialReady;
+  if (!dashboardReady || typeof dashboardReady.then !== "function") {
+    dismissPreloader();
+    return;
+  }
+  dashboardReady.then(() => dismissPreloader()).catch(() => dismissPreloader());
+}
+
 let _activePageId = null;
 function showPage(id) {
+  const activePreview = document.querySelector(".premium-preview-overlay");
+  if (activePreview) activePreview.remove();
+
   document.querySelectorAll(".page.active").forEach((activePage) => {
     if (activePage.id !== id) activePage.classList.remove("active");
   });
@@ -1081,22 +1320,96 @@ function showPage(id) {
   const centerEl = document.getElementById("top-bar-center");
   if (centerEl) centerEl.classList.toggle("visible", PAGES_WITH_TOPBAR.has(id));
   if (window.KhodUI) window.KhodUI.enhance(page);
-  // Dismiss preloader now — content is in the DOM
-  dismissPreloader();
+  if (id === "page-dashboard" && window._dashboardInitialReady) {
+    setPreloaderCopy(
+      window._t ? window._t("dashboard.initial_sync_title") : "Syncing dashboard data...",
+      window._t ? window._t("dashboard.initial_sync_body") : "Preparing saved orders, account metrics, product calculators, marketing spend, and AI context. Large workspaces can take a little while."
+    );
+  }
+  // Dismiss preloader once the first page is ready.
+  dismissPreloaderWhenReady(id);
 }
 
-// ── Periodic license re-check every 5 minutes ──
+// ── Periodic license & credentials sync every 60 seconds ──
 let licenseCheckInterval = null;
 function startPeriodicLicenseCheck() {
   if (licenseCheckInterval) clearInterval(licenseCheckInterval);
   licenseCheckInterval = setInterval(async () => {
     if (window.isExpiredOverlayVisible && window.isExpiredOverlayVisible()) return;
-    const result = await window.api.checkLicense();
-    if (!result.valid) {
-      clearInterval(licenseCheckInterval);
-      _triggerExpiredOverlay(result.reason);
+    // Skip sync if the bot is currently running to prevent UI updates mid-run
+    if (window._botIsRunning) return;
+
+    try {
+      // Use checkLicenseNocache to bypass cache and query fresh database state
+      const lr = await window.api.checkLicenseNocache();
+      if (!lr || !lr.valid) {
+        clearInterval(licenseCheckInterval);
+        if (shouldReturnToLicensePage(lr)) {
+          returnToLicensePage();
+          return;
+        }
+        _triggerExpiredOverlay(lr?.reason || "");
+        return;
+      }
+
+      if (lr.forceFlush) {
+        // Handled by force-flush event listener
+        return;
+      }
+
+      // Sync user metadata
+      window._kbotUser = {
+        ...(window._kbotUser || {}),
+        customerName: lr.customerName || (window._kbotUser || {}).customerName || null,
+        daysLeft:     lr.daysLeft,
+        licenseKey:   lr.key || (window._kbotUser || {}).licenseKey || "",
+      };
+
+      // Fetch fresh accounts & features state
+      const creds = await window.api.getCredentials();
+      
+      const maxAccountsChanged = window._maxAccounts !== (creds.maxAccounts || 1);
+      const accountsCountChanged = (window._kbotAccounts || []).length !== (creds.accounts || []).length;
+      
+      let locksChanged = false;
+      if (!accountsCountChanged) {
+        const oldLocks = (window._kbotAccounts || []).map(a => !!a.locked);
+        const newLocks = (creds.accounts || []).map(a => !!a.locked);
+        locksChanged = oldLocks.some((l, idx) => l !== newLocks[idx]);
+      }
+
+      const featureFlagsChanged = 
+        window._analyticsEnabled !== (creds.analyticsEnabled !== false) ||
+        window._operationsEnabled !== (creds.operationsEnabled !== false) ||
+        window._dashboardEnabled !== (creds.dashboardEnabled === true);
+
+      if (maxAccountsChanged || accountsCountChanged || locksChanged || featureFlagsChanged) {
+        window._maxAccounts = creds.maxAccounts || 1;
+        window._kbotAccounts = creds.accounts || [];
+
+        const prevAnalyticsEnabled = window._analyticsEnabled;
+        const prevOperationsEnabled = window._operationsEnabled;
+        const prevDashboardEnabled = window._dashboardEnabled;
+
+        window._analyticsEnabled  = creds.analyticsEnabled  !== false;
+        window._operationsEnabled = creds.operationsEnabled !== false;
+        window._dashboardEnabled  = creds.dashboardEnabled  === true;
+
+        if (
+          prevAnalyticsEnabled !== window._analyticsEnabled ||
+          prevOperationsEnabled !== window._operationsEnabled ||
+          prevDashboardEnabled !== window._dashboardEnabled
+        ) {
+          if (window.invalidateDashboardCache) window.invalidateDashboardCache();
+        }
+
+        updateTopBarText();
+        reRenderCurrentPage();
+      }
+    } catch (err) {
+      console.warn("[PeriodicSync] Background sync failed:", err?.message || err);
     }
-  }, 5 * 60 * 1000);
+  }, 60 * 1000); // 60 seconds (1 minute)
 }
 
 function _triggerExpiredOverlay(reason) {
@@ -1120,12 +1433,35 @@ function _triggerExpiredOverlay(reason) {
   });
 }
 
+function shouldReturnToLicensePage(result) {
+  const reason = String((result && result.reason) || "").toLowerCase();
+  return !result || (!result.valid && (
+    !((window._kbotUser || {}).licenseKey) ||
+    reason.includes("not found") ||
+    reason.includes("no license key")
+  ));
+}
+
+function returnToLicensePage() {
+  clearInterval(licenseCheckInterval);
+  try { window.api.killBot(); } catch (_) {}
+  if (window.hideExpiredOverlay) window.hideExpiredOverlay();
+  window._kbotUser = {
+    ...(window._kbotUser || {}),
+    daysLeft: null,
+    licenseKey: "",
+  };
+  updateTopBarText();
+  const btn = document.getElementById("btn-admin-refresh");
+  if (btn) btn.style.display = "none";
+  renderLicense(() => afterLicense());
+  showPage("page-license");
+}
+window.returnToLicensePage = returnToLicensePage;
+
 function resolveAutoRunAccountIds(creds) {
   const accounts = (creds && creds.accounts) || [];
-  const allIds = accounts.map(a => a.id);
-  const savedIds = Array.isArray(creds && creds.autoRunAccountIds) ? creds.autoRunAccountIds : [];
-  const selected = savedIds.filter(id => allIds.includes(id));
-  return selected.length ? selected : allIds;
+  return accounts.map(a => a.id).filter(Boolean);
 }
 
 async function runAutoRunTick(dateFrom, dateTo) {
@@ -1162,9 +1498,18 @@ async function adminRefresh() {
     const lr = await window.api.checkLicenseNocache();
 
     if (!lr || !lr.valid) {
+      if (shouldReturnToLicensePage(lr)) {
+        returnToLicensePage();
+        return;
+      }
       // License is now invalid (revoked/expired) — show expired overlay
       btn.classList.remove("refreshing");
       _triggerExpiredOverlay(lr?.reason || "");
+      return;
+    }
+
+    if (lr.forceFlush) {
+      btn.classList.remove("refreshing");
       return;
     }
 
@@ -1178,12 +1523,22 @@ async function adminRefresh() {
 
     // 3. Re-fetch credentials — checkLicenseNocache also busts the main-process
     //    credential cache, so account unlocks and slot changes are fresh here.
+    const prevAnalyticsEnabled = window._analyticsEnabled;
+    const prevOperationsEnabled = window._operationsEnabled;
+    const prevDashboardEnabled = window._dashboardEnabled;
     const creds = await window.api.getCredentials();
     window._maxAccounts       = creds.maxAccounts || 1;
     window._kbotAccounts      = creds.accounts || [];
     window._analyticsEnabled  = creds.analyticsEnabled  !== false;
     window._operationsEnabled = creds.operationsEnabled !== false;
     window._dashboardEnabled  = creds.dashboardEnabled  === true;
+    if (
+      prevAnalyticsEnabled !== window._analyticsEnabled ||
+      prevOperationsEnabled !== window._operationsEnabled ||
+      prevDashboardEnabled !== window._dashboardEnabled
+    ) {
+      if (window.invalidateDashboardCache) window.invalidateDashboardCache();
+    }
 
     // 4. Refresh topbar text (expiry days, accounts badge)
     updateTopBarText();
@@ -1286,8 +1641,7 @@ async function init() {
     clearInterval(licenseCheckInterval);
     try { window.api.killBot(); } catch (_) {}
     if (window.hideExpiredOverlay) window.hideExpiredOverlay();
-    renderLicense(() => afterLicense());
-    showPage("page-license");
+    afterLicense(true);
   });
   window.api.removeAllListeners("auto-run-tick");
   window.api.onAutoRunTick(async ({ dateFrom, dateTo }) => {
@@ -1310,7 +1664,7 @@ async function init() {
   goToSetup(hasAccounts ? "run" : "accounts");
 }
 
-async function afterLicense() {
+async function afterLicense(isFlush = false) {
   window.api.removeAllListeners("license-expired");
   window.api.onLicenseExpired(() => {
     clearInterval(licenseCheckInterval);
@@ -1321,8 +1675,7 @@ async function afterLicense() {
     clearInterval(licenseCheckInterval);
     try { window.api.killBot(); } catch (_) {}
     if (window.hideExpiredOverlay) window.hideExpiredOverlay();
-    renderLicense(() => afterLicense());
-    showPage("page-license");
+    afterLicense(true);
   });
   window.api.removeAllListeners("auto-run-tick");
   window.api.onAutoRunTick(async ({ dateFrom, dateTo }) => {
@@ -1331,17 +1684,19 @@ async function afterLicense() {
 
   startPeriodicLicenseCheck();
 
-  try {
-    const lr = await window.api.checkLicense();
-    if (lr.valid) {
-      window._kbotUser = { customerName: lr.customerName || null, daysLeft: lr.daysLeft, licenseKey: lr.key || '' };
-      window._kbotAllowReset = lr.allowReset === true;
-      updateTopBarText();
-      // Show admin sync button now that license is confirmed valid
-      const _rb = document.getElementById("btn-admin-refresh");
-      if (_rb) _rb.style.display = "inline-flex";
-    }
-  } catch(e) {}
+  if (!isFlush) {
+    try {
+      const lr = await window.api.checkLicense();
+      if (lr.valid) {
+        window._kbotUser = { customerName: lr.customerName || null, daysLeft: lr.daysLeft, licenseKey: lr.key || '' };
+        window._kbotAllowReset = lr.allowReset === true;
+        updateTopBarText();
+        // Show admin sync button now that license is confirmed valid
+        const _rb = document.getElementById("btn-admin-refresh");
+        if (_rb) _rb.style.display = "inline-flex";
+      }
+    } catch(e) {}
+  }
 
   const creds = await window.api.getCredentials();
   window._maxAccounts       = creds.maxAccounts || 1;
@@ -1506,10 +1861,11 @@ function _renderLockedPage(pageId, featureNameEn, featureNameAr) {
     </div>`;
 }
 
-function goToAnalytics() {
+async function goToAnalytics() {
+  await ensureFeatureScripts("analytics");
   if (typeof renderAnalytics === "function") {
     try {
-      renderAnalytics(() => goToSetup("run"));
+      await renderAnalytics(() => goToSetup("run"));
     } catch (err) {
       if (window.KhodMonitoring) window.KhodMonitoring.captureException(err, { operation: "analytics.render" });
       throw err;
@@ -1518,10 +1874,11 @@ function goToAnalytics() {
   showPage("page-analytics");
 }
 
-function goToOperations() {
+async function goToOperations() {
+  await ensureFeatureScripts("operations");
   if (typeof renderOperations === "function") {
     try {
-      renderOperations(() => goToSetup("run"));
+      await renderOperations(() => goToSetup("run"));
     } catch (err) {
       if (window.KhodMonitoring) window.KhodMonitoring.captureException(err, { operation: "operations.render" });
       throw err;
@@ -1530,10 +1887,11 @@ function goToOperations() {
   showPage("page-operations");
 }
 
-function goToDashboard() {
+async function goToDashboard() {
+  await ensureFeatureScripts("dashboard");
   if (typeof renderDashboard === "function") {
     try {
-      renderDashboard(() => goToSetup("run"));
+      await renderDashboard(() => goToSetup("run"));
     } catch (err) {
       if (window.KhodMonitoring) window.KhodMonitoring.captureException(err, { operation: "dashboard.render" });
       throw err;
@@ -1542,12 +1900,13 @@ function goToDashboard() {
   showPage("page-dashboard");
 }
 
-function goToAiIntelligence() {
+async function goToAiIntelligence() {
   if (!window._dashboardEnabled) {
     _renderLockedPage("page-ai-intelligence", "KHOD AI", "KHOD AI");
     showPage("page-ai-intelligence");
     return;
   }
+  await ensureFeatureScripts("ai");
   if (typeof renderAiIntelligence === "function") {
     try {
       renderAiIntelligence(() => goToSetup("run"));
@@ -1559,12 +1918,13 @@ function goToAiIntelligence() {
   showPage("page-ai-intelligence");
 }
 
-function renderAiIntelligence() {
+async function renderAiIntelligence() {
   if (!window._dashboardEnabled) {
     _renderLockedPage("page-ai-intelligence", "KHOD AI", "KHOD AI");
     showPage("page-ai-intelligence");
     return;
   }
+  await ensureFeatureScripts("ai");
   if (typeof window.renderAiIntelligencePage === "function") {
     try {
       window.renderAiIntelligencePage(() => goToSetup("run"));
@@ -1620,7 +1980,7 @@ function _setDashboardFetchUi(state) {
       <div class="khod-spinner" aria-hidden="true"></div>
       <div>
         <strong>${KhodUI.esc(state.title || KhodUI.t("dashboard.fetching_title", "Updating dashboard..."))}</strong>
-        <span>${KhodUI.esc(state.body || KhodUI.t("dashboard.fetching_body", "Fetching live Khod data. This may take a few minutes. Keep the app open."))}</span>
+        <span>${KhodUI.esc(state.body || KhodUI.t("dashboard.fetching_body", "Fetching orders, refreshing product data, and matching ad spend across accounts. This can take a few minutes; keep the app open."))}</span>
       </div>
     `;
     return;
@@ -1653,19 +2013,30 @@ async function _onRunForDashboard(selectedAccountIds, period, options) {
     goToDashboard(); // opens Dashboard preview mode
     return;
   }
-  const ids = Array.isArray(selectedAccountIds) ? selectedAccountIds.filter(Boolean) : [];
-  if (!ids.length) {
-    KhodUI.toast(KhodUI.t("dashboard.fetch_error_body", "Select at least one account before updating the dashboard."), { kind: "error" });
-    return;
-  }
+  let ids = Array.isArray(selectedAccountIds) ? selectedAccountIds.filter(Boolean) : [];
 
   let totalRows = 0;
   const failures = [];
   let successCount = 0;
   const range = period || (window.DashboardPeriodState ? window.DashboardPeriodState.get() : null);
+  try {
+    if (window.api && typeof window.api.getCredentials === "function") {
+      const freshCreds = await window.api.getCredentials();
+      if (freshCreds && Array.isArray(freshCreds.accounts)) {
+        window._kbotAccounts = freshCreds.accounts;
+        if (!ids.length) ids = freshCreds.accounts.map((acc) => acc && acc.id).filter(Boolean);
+      }
+    }
+  } catch (e) {
+    console.warn("[Dashboard] Could not refresh account credentials before manual fetch:", e.message);
+  }
+  if (!ids.length) {
+    KhodUI.toast(KhodUI.t("dashboard.fetch_error_body", "Select at least one account before updating the dashboard."), { kind: "error" });
+    return;
+  }
   const accountLabels = new Map((window._kbotAccounts || window.dashboardAccountsList || []).map((acc) => [
     acc.id || acc.value,
-    acc.easyEmail || acc.khodEmail || acc.email || acc.label || acc.name || acc.id || acc.value
+    acc.memberName || acc.easyEmail || acc.email || acc.khodEmail || acc.easyStore || acc.storeName || acc.label || acc.name || acc.id || acc.value
   ]));
   _setDashboardFetchUi({
     active: true,
@@ -1676,11 +2047,10 @@ async function _onRunForDashboard(selectedAccountIds, period, options) {
   for (let i = 0; i < ids.length; i++) {
     const accountId = ids[i];
     try {
-      console.log(`[Dashboard] Manual fetch for ${accountId}...`);
       _setDashboardFetchUi({
         active: true,
         title: KhodUI.t("dashboard.fetching_title", "Updating dashboard..."),
-        body: _fmtUi("dashboard.fetching_account", { current: i + 1, total: ids.length, account: accountId }, `Updating ${i + 1} of ${ids.length}: ${accountId}`)
+        body: _fmtUi("dashboard.fetching_account", { current: i + 1, total: ids.length, account: accountLabels.get(accountId) || accountId }, `Updating ${i + 1} of ${ids.length}: ${accountLabels.get(accountId) || accountId}`)
       });
       const fetchRes = await window.api.runDashboardFetch({
         accountId,
@@ -1690,7 +2060,6 @@ async function _onRunForDashboard(selectedAccountIds, period, options) {
       if (fetchRes?.success) {
         totalRows += Number(fetchRes.rows || 0);
         successCount += 1;
-        console.log(`[Dashboard] Manual fetch done for ${accountId}: ${fetchRes.rows} rows`);
       } else {
         failures.push({ accountId, label: accountLabels.get(accountId) || accountId, error: fetchRes?.error || "UNKNOWN_ERROR" });
         console.warn(`[Dashboard] Manual fetch failed for ${accountId}:`, fetchRes?.error);

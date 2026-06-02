@@ -79,11 +79,54 @@ window.renderSection1 = function (mountEl, data, ctx) {
     { label: s1Txt('Total Orders', 'إجمالي الطلبات'), value: d.totalOrders.value,         unit: d.totalOrders.unit,         delta: d.totalOrders.delta,         color: 'blue',   spark: d.sparklines.orders,    iconType: 'blue', tooltip: tx('kpi.orders.tooltip', 'إجمالي الطلبات داخل لقطة لوحة التحكم الحالية حسب الحساب المحدد.') },
   ];
 
+  var activeAccId = (window.getActiveAccountId ? window.getActiveAccountId() : '__all__') || '__all__';
+  var roiLiveRaw = (window.DashboardRoiState && window.DashboardRoiState.get(activeAccId)) || {};
+  var marketingState = window.DashboardMarketingState ? window.DashboardMarketingState.get(activeAccId) : null;
+  var syncedSpendActive = !!(
+    marketingState &&
+    marketingState.status === "connected" &&
+    marketingState.summary &&
+    !marketingState.manualOverride
+  );
+  var sourceBreakdown = marketingState && marketingState.summary && Array.isArray(marketingState.summary.sourceBreakdown)
+    ? marketingState.summary.sourceBreakdown
+    : [];
+  var targetCurrency = roiLiveRaw.currency || 'SAR';
+  var egpRate = roiLiveRaw.egpRate != null ? roiLiveRaw.egpRate : 52.0;
+
+  function convertCurrency(val, from, to) {
+    if (from === to) return val;
+    var sar = val;
+    if (from === "USD") sar = val * 3.75;
+    else if (from === "EGP") sar = (val / egpRate) * 3.75;
+    if (to === "SAR") return sar;
+    if (to === "USD") return sar / 3.75;
+    if (to === "EGP") return (sar / 3.75) * egpRate;
+    return val;
+  }
+
+  var finalAdSpend = roiLiveRaw.adSpend != null ? roiLiveRaw.adSpend : 250;
+  if (syncedSpendActive) {
+    if (!sourceBreakdown.length) {
+      finalAdSpend = Number((marketingState.summary && marketingState.summary.adSpend) || 0);
+    } else {
+      var convertedTotal = sourceBreakdown.reduce(function (total, source) {
+        return total + convertCurrency(Number(source.rawSpend || 0), source.currency || "SAR", targetCurrency);
+      }, 0);
+      finalAdSpend = Number(convertedTotal.toFixed(2));
+    }
+  }
+
+  var deliveredSalesInTarget = convertCurrency((d.totalDeliveredSales && d.totalDeliveredSales.value) || 0, "SAR", targetCurrency);
+  var netRoas = finalAdSpend > 0 ? (deliveredSalesInTarget / finalAdSpend) : 0;
+  var netRoasDelta = d.netRoas && d.netRoas.delta != null ? Number(d.netRoas.delta || 0) : 0;
+
   var newCards = [
-    { label: s1Txt('Total Sales', 'إجمالي المبيعات'), value: d.totalSales ? d.totalSales.value : 0, unit: 'SAR', delta: undefined, color: 'green', spark: [], iconType: 'green', tooltip: tx('kpi.totalSales.tooltip', 'إجمالي مبالغ المبيعات (مجموع السعر الكلي بالشحن) لجميع الطلبات في الفترة الحالية، بعد إصلاح وتعبئة الخلايا المفقودة.') },
-    { label: s1Txt('Average Order Value (AOV)', 'متوسط قيمة الطلب (AOV)'), value: d.overallAov ? d.overallAov.value : 0, unit: 'SAR', delta: undefined, color: 'blue', spark: [], iconType: 'blue', tooltip: tx('kpi.overallAov.tooltip', 'متوسط قيمة الطلب الإجمالي ويحسب بقسمة إجمالي المبيعات على إجمالي الطلبات.') },
-    { label: s1Txt('Total Delivered Sales', 'إجمالي المبيعات المستلمة'), value: d.totalDeliveredSales ? d.totalDeliveredSales.value : 0, unit: 'SAR', delta: undefined, color: 'green', spark: [], iconType: 'green', tooltip: tx('kpi.totalDeliveredSales.tooltip', 'إجمالي مبالغ المبيعات (مجموع السعر الكلي بالشحن) للطلبات المستلمة فقط في الفترة الحالية، مفلترة بالتحديث الأخير.') },
-    { label: s1Txt('Average Order Value (Delivered)', 'متوسط قيمة الطلب المستلم'), value: d.deliveredAov ? d.deliveredAov.value : 0, unit: 'SAR', delta: undefined, color: 'blue', spark: [], iconType: 'blue', tooltip: tx('kpi.deliveredAov.tooltip', 'متوسط قيمة الطلب المستلم ويحسب بقسمة إجمالي المبيعات المستلمة على عدد الطلبات المستلمة.') }
+    { label: s1Txt('Total Sales', 'إجمالي المبيعات'), value: d.totalSales ? d.totalSales.value : 0, unit: 'SAR', delta: d.totalSales ? d.totalSales.delta : 0, color: 'green', spark: [], iconType: 'green', tooltip: tx('kpi.totalSales.tooltip', 'إجمالي مبالغ المبيعات (مجموع السعر الكلي بالشحن) لجميع الطلبات في الفترة الحالية، بعد إصلاح وتعبئة الخلايا المفقودة.') },
+    { label: s1Txt('Average Order Value (AOV)', 'متوسط قيمة الطلب (AOV)'), value: d.overallAov ? d.overallAov.value : 0, unit: 'SAR', delta: d.overallAov ? d.overallAov.delta : 0, color: 'blue', spark: [], iconType: 'blue', tooltip: tx('kpi.overallAov.tooltip', 'متوسط قيمة الطلب الإجمالي ويحسب بقسمة إجمالي المبيعات على إجمالي الطلبات.') },
+    { label: s1Txt('Total Delivered Sales', 'إجمالي المبيعات المستلمة'), value: d.totalDeliveredSales ? d.totalDeliveredSales.value : 0, unit: 'SAR', delta: d.totalDeliveredSales ? d.totalDeliveredSales.delta : 0, color: 'green', spark: [], iconType: 'green', tooltip: tx('kpi.totalDeliveredSales.tooltip', 'إجمالي مبالغ المبيعات (مجموع السعر الكلي بالشحن) للطلبات المستلمة فقط في الفترة الحالية، مفلترة بالتحديث الأخير.') },
+    { label: s1Txt('Average Order Value (Delivered)', 'متوسط قيمة الطلب المستلم'), value: d.deliveredAov ? d.deliveredAov.value : 0, unit: 'SAR', delta: d.deliveredAov ? d.deliveredAov.delta : 0, color: 'blue', spark: [], iconType: 'blue', tooltip: tx('kpi.deliveredAov.tooltip', 'متوسط قيمة الطلب المستلم ويحسب بقسمة إجمالي المبيعات المستلمة على عدد الطلبات المستلمة.') },
+    { label: s1Txt('Net ROAS', 'العائد الصافي على الإعلان'), value: netRoas.toFixed(2), unit: 'x', delta: netRoasDelta, color: 'purple', spark: [], iconType: 'purple', tooltip: tx('kpi.netRoas.tooltip', s1Txt('Net ROAS = delivered sales divided by ad spend. It uses only successfully delivered order revenue, so pending, canceled, and returned orders do not inflate ad performance.', 'العائد الصافي على الإعلان = مبيعات الطلبات المسلمة مقسومة على الإنفاق الإعلاني. يستخدم مبيعات الطلبات المسلمة فقط حتى لا ترفع الطلبات المعلقة أو الملغاة أو المرتجعة نتيجة الإعلان.')) }
   ];
 
   /* ── Health bar data ─────────────────────────────────────────────────────── */

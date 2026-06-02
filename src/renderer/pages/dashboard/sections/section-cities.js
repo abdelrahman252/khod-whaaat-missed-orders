@@ -28,6 +28,131 @@ window.renderSectionCities = function (mountEl, data, ctx) {
     return getIsAr() ? ar : en;
   }
 
+  function openExclusionModal(cities, reason) {
+    var existing = document.getElementById("sc-exclusion-modal");
+    if (existing) existing.remove();
+
+    var items = (Array.isArray(cities) ? cities : []).filter(function (city) {
+      return city && city.name;
+    });
+    var platformTemplates = {
+      plain: items.map(function (city) { return city.name; }).join(", "),
+      facebook: items.map(function (city) { return city.name; }).join("\n"),
+      tiktok: items.map(function (city) { return city.name; }).join("\n"),
+      snapchat: items.map(function (city) { return city.name; }).join("\n"),
+    };
+
+    function platformBtn(key, label, active) {
+      return (
+        '<button class="sc-exclusion-platform" data-platform="' + key + '" style="' +
+        "padding:8px 12px;border-radius:10px;border:1px solid " +
+        (active ? "rgba(168,85,247,0.55)" : "rgba(255,255,255,0.08)") +
+        ";background:" +
+        (active ? "rgba(168,85,247,0.18)" : "rgba(255,255,255,0.04)") +
+        ";color:" +
+        (active ? "#f5f3ff" : "rgba(255,255,255,0.62)") +
+        ";font-size:12px;font-weight:800;font-family:inherit;cursor:pointer;" +
+        '">' +
+        label +
+        "</button>"
+      );
+    }
+
+    var preview = items.slice(0, 10).map(function (city) {
+      var ndrLabel = typeof city.ndr === "number" ? " - NDR " + city.ndr.toFixed(1) + "%" : "";
+      return (
+        '<span style="display:inline-flex;padding:5px 9px;border-radius:999px;' +
+        'background:rgba(239,68,68,0.12);border:1px solid rgba(239,68,68,0.28);' +
+        'color:#fecaca;font-size:11px;font-weight:800;">' +
+        esc(city.name) + esc(ndrLabel) +
+        "</span>"
+      );
+    }).join("");
+
+    var overlay = document.createElement("div");
+    overlay.id = "sc-exclusion-modal";
+    overlay.style.cssText =
+      "position:fixed;inset:0;z-index:9999;background:rgba(2,6,23,0.78);" +
+      "backdrop-filter:blur(10px);display:flex;align-items:center;justify-content:center;" +
+      "padding:18px;";
+    overlay.innerHTML =
+      '<div style="width:min(720px,100%);background:#0d1525;border:1px solid rgba(168,85,247,0.28);' +
+      'border-radius:18px;box-shadow:0 24px 80px rgba(0,0,0,0.42);padding:22px;direction:' +
+      (getIsAr() ? "rtl" : "ltr") +
+      ';font-family:Cairo,sans-serif;">' +
+      '<div style="display:flex;align-items:flex-start;justify-content:space-between;gap:16px;margin-bottom:16px;">' +
+      '<div>' +
+      '<div style="font-size:18px;font-weight:900;color:#fff;margin-bottom:5px;">' +
+      s6Txt("Ad Set Exclusion List", "قائمة استبعاد المدن للإعلانات") +
+      "</div>" +
+      '<div style="font-size:12px;color:rgba(255,255,255,0.52);line-height:1.7;">' +
+      esc(reason || s6Txt("Cities with weak NDR are recommended for exclusion.", "المدن ذات NDR الضعيف يفضل استبعادها من الحملات.")) +
+      "</div>" +
+      "</div>" +
+      '<button id="sc-exclusion-close" style="width:34px;height:34px;border-radius:10px;border:1px solid rgba(255,255,255,0.08);' +
+      'background:rgba(255,255,255,0.05);color:rgba(255,255,255,0.72);font-size:18px;font-weight:900;cursor:pointer;">x</button>' +
+      "</div>" +
+      '<div style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:14px;">' +
+      platformBtn("plain", s6Txt("Plain", "قائمة عادية"), true) +
+      platformBtn("facebook", "Facebook", false) +
+      platformBtn("tiktok", "TikTok", false) +
+      platformBtn("snapchat", "Snapchat", false) +
+      "</div>" +
+      '<textarea id="sc-exclusion-output" readonly style="width:100%;height:180px;resize:vertical;box-sizing:border-box;' +
+      'background:#08111f;border:1px solid rgba(255,255,255,0.10);border-radius:14px;color:#e5e7eb;' +
+      'font-family:Consolas,monospace;font-size:13px;line-height:1.7;padding:14px;outline:none;direction:ltr;">' +
+      esc(platformTemplates.plain || "") +
+      "</textarea>" +
+      '<div style="display:flex;align-items:center;justify-content:space-between;gap:12px;margin-top:14px;flex-wrap:wrap;">' +
+      '<div style="display:flex;gap:6px;flex-wrap:wrap;max-width:480px;">' +
+      (preview || '<span style="color:rgba(255,255,255,0.42);font-size:12px;">' + s6Txt("No weak-NDR cities found.", "لا توجد مدن ضعيفة NDR.") + "</span>") +
+      "</div>" +
+      '<button id="sc-exclusion-copy" style="padding:10px 16px;border-radius:11px;border:1px solid rgba(20,184,166,0.35);' +
+      'background:rgba(20,184,166,0.15);color:#99f6e4;font-size:12px;font-weight:900;font-family:inherit;cursor:pointer;">' +
+      s6Txt("Copy List", "نسخ القائمة") +
+      "</button>" +
+      "</div>" +
+      "</div>";
+
+    document.body.appendChild(overlay);
+
+    var output = overlay.querySelector("#sc-exclusion-output");
+    overlay.querySelectorAll(".sc-exclusion-platform").forEach(function (btn) {
+      btn.addEventListener("click", function () {
+        var key = btn.dataset.platform || "plain";
+        output.value = platformTemplates[key] || "";
+        overlay.querySelectorAll(".sc-exclusion-platform").forEach(function (other) {
+          var active = other === btn;
+          other.style.borderColor = active ? "rgba(168,85,247,0.55)" : "rgba(255,255,255,0.08)";
+          other.style.background = active ? "rgba(168,85,247,0.18)" : "rgba(255,255,255,0.04)";
+          other.style.color = active ? "#f5f3ff" : "rgba(255,255,255,0.62)";
+        });
+      });
+    });
+
+    function closeModal() {
+      overlay.remove();
+    }
+
+    overlay.querySelector("#sc-exclusion-close").addEventListener("click", closeModal);
+    overlay.addEventListener("click", function (event) {
+      if (event.target === overlay) closeModal();
+    });
+    overlay.querySelector("#sc-exclusion-copy").addEventListener("click", function () {
+      var text = output.value || "";
+      if (navigator.clipboard && navigator.clipboard.writeText) {
+        navigator.clipboard.writeText(text).then(function () {
+          if (window.KhodUI && window.KhodUI.toast) {
+            window.KhodUI.toast(s6Txt("Exclusion list copied.", "تم نسخ قائمة الاستبعاد."), "success");
+          }
+        });
+      } else {
+        output.select();
+        document.execCommand("copy");
+      }
+    });
+  }
+
   var realCities =
     data && data.cod && Array.isArray(data.cod.cities) ? data.cod.cities : [];
   if (false) {
@@ -388,9 +513,7 @@ window.renderSectionCities = function (mountEl, data, ctx) {
   }
 
   function rateColor(rate) {
-    if (rate >= 70) return "#00e676";
-    if (rate >= 65) return "#f59e0b";
-    return "#ef4444";
+    return window.dashboardRateColor ? window.dashboardRateColor(rate) : (rate >= 40 ? "#22d3ee" : rate >= 30 ? "#00e676" : rate >= 20 ? "#f59e0b" : "#ef4444");
   }
 
   function shortProvName(name) {
@@ -517,6 +640,11 @@ window.renderSectionCities = function (mountEl, data, ctx) {
       'cursor:pointer;font-family:inherit;transition:all 0.18s;white-space:nowrap;">↺ ' +
       s6Txt("Reset", "إعادة ضبط") +
       "</button>" +
+      '<button id="sc-fb-exclude-export" style="padding:7px 12px;border-radius:9px;border:1px solid rgba(168,85,247,0.3);' +
+      "background:rgba(168,85,247,0.1);color:#e9d5ff;font-size:11px;font-weight:800;" +
+      'cursor:pointer;font-family:inherit;transition:all 0.18s;white-space:nowrap;">' +
+      s6Txt("Export Exclusions", "تصدير الاستبعاد") +
+      "</button>" +
       "</div>"
     );
   }
@@ -628,24 +756,7 @@ window.renderSectionCities = function (mountEl, data, ctx) {
   function mapHTML() {
     var themeAttr = document.documentElement.getAttribute("data-theme");
     var kbotTheme = window._kbotTheme;
-    var bodyClass = document.body.className;
-    var htmlClass = document.documentElement.className;
-    var bodyBg = window.getComputedStyle(document.body).backgroundColor;
-    console.log(
-      "[Cities][mapHTML] theme debug — data-theme:",
-      JSON.stringify(themeAttr),
-      "| _kbotTheme:",
-      JSON.stringify(kbotTheme),
-      "| body.className:",
-      JSON.stringify(bodyClass),
-      "| html.className:",
-      JSON.stringify(htmlClass),
-      "| body bg:",
-      bodyBg,
-    );
-    var lightMode = (themeAttr || kbotTheme) === "light";
-    console.log("[Cities][mapHTML] lightMode resolved to:", lightMode);
-    var mapStop1 = lightMode ? "#c7d9f5" : "#0d1f3c";
+    var lightMode = (themeAttr || kbotTheme) === "light";    var mapStop1 = lightMode ? "#c7d9f5" : "#0d1f3c";
     var mapStop2 = lightMode ? "#8fb3e8" : "#020408";
     var mapStroke = lightMode ? "#5a8fd4" : "rgba(168,85,247,0.5)";
     var mapFill = "url(#" + _bgId + ")"; // ← always use the gradient
@@ -917,7 +1028,9 @@ window.renderSectionCities = function (mountEl, data, ctx) {
       // T-07: Resolve NDR% — prefer aggregator cityStats, fall back to returnRate
       var cs = geoCity[c.name] || {};
       var ndrVal;
-      if (cs.count !== undefined && cs.deliveredOrders !== undefined) {
+      if (typeof cs.ndrPct === "number") {
+        ndrVal = cs.ndrPct;
+      } else if (cs.count !== undefined && cs.deliveredOrders !== undefined) {
         ndrVal =
           (cs.count || 0) > 0
             ? Math.round(((cs.deliveredOrders || 0) / (cs.count || 0)) * 1000) /
@@ -934,11 +1047,7 @@ window.renderSectionCities = function (mountEl, data, ctx) {
       var ndrColor =
         ndrVal === null
           ? "rgba(255,255,255,0.25)"
-          : ndrVal >= 75
-            ? "#00e676"
-            : ndrVal >= 55
-              ? "#f59e0b"
-              : "#ef4444";
+          : rateColor(ndrVal);
       var ndrDisplay = ndrVal === null ? "—" : ndrVal.toFixed(1) + "%";
 
       // T-16: Commission from aggregator cityStats
@@ -976,7 +1085,7 @@ window.renderSectionCities = function (mountEl, data, ctx) {
       function ndrBadge(val) {
         if (val === null)
           return '<span style="font-size:11px;font-weight:800;color:rgba(255,255,255,0.25);background:rgba(255,255,255,0.05);padding:2px 6px;border-radius:6px;">—</span>';
-        var nc = val >= 75 ? "#00e676" : val >= 55 ? "#f59e0b" : "#ef4444";
+        var nc = rateColor(val);
         return (
           '<span style="font-size:11px;font-weight:800;color:' +
           nc +
@@ -1027,6 +1136,15 @@ window.renderSectionCities = function (mountEl, data, ctx) {
         ' data-total-ndr="' +
         (rowTotalNdr !== null ? rowTotalNdr : "") +
         '"' +
+        ' data-delivered="' +
+        (deliveredVal !== null ? deliveredVal : "") +
+        '"' +
+        ' data-dr="' +
+        (c.drRate || 0) +
+        '"' +
+        ' data-commission="' +
+        commVal +
+        '"' +
         ' style="animation-delay:' +
         (120 + i * 40) +
         "ms;" +
@@ -1046,7 +1164,7 @@ window.renderSectionCities = function (mountEl, data, ctx) {
         '<span style="width:8px;height:8px;border-radius:50%;flex-shrink:0;background:' +
         c.color +
         '"></span>' +
-        '<span style="font-size:10px;color:rgba(255,255,255,0.2);font-weight:700;width:16px;text-align:center">' +
+        '<span class="sc-lb-rank" style="font-size:10px;color:rgba(255,255,255,0.2);font-weight:700;width:16px;text-align:center">' +
         (i + 1) +
         "</span>" +
         "</div>" +
@@ -1059,7 +1177,7 @@ window.renderSectionCities = function (mountEl, data, ctx) {
         deliveredDisplay +
         "</div>" +
         /* DR% (Active) + bar — uses drRate (active orders only) */
-        '<div style="display:flex;flex-direction:column;gap:3px">' +
+        '<div class="sc-lb-dr-cell" style="display:flex;flex-direction:column;gap:3px">' +
         '<span style="font-size:12px;font-weight:700;text-align:right;color:' +
         drColor2 +
         '">' +
@@ -1083,7 +1201,7 @@ window.renderSectionCities = function (mountEl, data, ctx) {
         ndrBadge(rowTotalNdr) +
         "</div>" +
         /* Commission */
-        '<div style="text-align:center;">' +
+        '<div class="sc-lb-commission-cell" style="text-align:center;">' +
         (commDisplay
           ? '<span style="font-size:11px;font-weight:700;color:#a855f7">' +
             commDisplay +
@@ -1160,12 +1278,12 @@ window.renderSectionCities = function (mountEl, data, ctx) {
       s6Txt("Commission", "عمولة") +
       "</div>" +
       "</div>" +
-      '<div id="sc-lb-body" class="dash-scroll" style="overflow-y:auto;flex:1;max-height:380px">' +
+      '<div id="sc-lb-body" class="dash-scroll" style="overflow-y:auto;flex:1;min-height:0;">' +
       rows +
       "</div>" +
       '<div style="margin-top:10px;padding-top:10px;border-top:1px solid rgba(255,255,255,0.05);' +
       'display:flex;gap:12px;justify-content:flex-end">' +
-      ["#00e676,NDR &gt;=75%", "#f59e0b,NDR 55-75%", "#ef4444,NDR &lt;55%"]
+      ["#22d3ee,NDR &gt;=40%", "#00e676,NDR 30-40%", "#f59e0b,NDR 20-30%", "#ef4444,NDR &lt;20%"]
         .map(function (s) {
           var parts = s.split(",");
           return (
@@ -1713,7 +1831,7 @@ window.renderSectionCities = function (mountEl, data, ctx) {
         var color;
         if (mode === "ndr") {
           /* NDR: green (safe) → red (danger) */
-          color = hexInterpolate("#ef4444", "#00e676", t);
+          color = rateColor(v);
         } else {
           /* Revenue: purple (low) → teal (high) */
           color = hexInterpolate("#7c3aed", "#14b8a6", t);
@@ -1739,10 +1857,10 @@ window.renderSectionCities = function (mountEl, data, ctx) {
           descEl.innerText =
             typeof s6Txt === "function"
               ? s6Txt(
-                  "Colors indicate Non-Delivery Rate performance: Green (Good) to Red (Critical).",
+                  "Colors indicate NDR performance: Cyan (>=40%), green (>=30%), amber (>=20%), red (<20%).",
                   "تشير الألوان إلى أداء معدل عدم التسليم: من الأخضر (جيد) إلى الأحمر (حرج).",
                 )
-              : "Colors indicate Non-Delivery Rate performance: Green (Good) to Red (Critical).";
+              : "Colors indicate NDR performance: Cyan (>=40%), green (>=30%), amber (>=20%), red (<20%).";
         } else if (mode === "revenue") {
           descEl.innerText =
             typeof s6Txt === "function"
@@ -1823,6 +1941,115 @@ window.renderSectionCities = function (mountEl, data, ctx) {
     }
   })();
 
+  var leaderboardSortState = { key: "", dir: "desc" };
+
+  function parseLeaderboardNumber(value) {
+    var raw = String(value == null ? "" : value).trim();
+    if (!raw || raw === "â€”" || raw === "—") return -Infinity;
+    var mult = /k$/i.test(raw) ? 1000 : 1;
+    var cleaned = raw.replace(/,/g, "").replace(/%/g, "").replace(/k$/i, "");
+    var num = parseFloat(cleaned);
+    return isNaN(num) ? -Infinity : num * mult;
+  }
+
+  function getLeaderboardSortValue(row, key) {
+    if (key === "orders") {
+      return parseLeaderboardNumber(
+        row.querySelector(".sc-lb-orders-cell") &&
+          row.querySelector(".sc-lb-orders-cell").textContent,
+      );
+    }
+    if (key === "ndr") {
+      return parseLeaderboardNumber(
+        row.querySelector(".sc-lb-ndr-cell") &&
+          row.querySelector(".sc-lb-ndr-cell").textContent,
+      );
+    }
+    if (key === "delivered") return parseLeaderboardNumber(row.dataset.delivered);
+    if (key === "dr") return parseLeaderboardNumber(row.dataset.dr);
+    if (key === "commission") return parseLeaderboardNumber(row.dataset.commission);
+    return 0;
+  }
+
+  function refreshLeaderboardSortIndicators() {
+    mountEl.querySelectorAll(".sc-lb-sort-indicator").forEach(function (el) {
+      el.remove();
+    });
+    mountEl.querySelectorAll("[data-lb-sort-key]").forEach(function (hdr) {
+      var indicator = document.createElement("span");
+      indicator.className = "sc-lb-sort-indicator";
+      indicator.setAttribute("aria-hidden", "true");
+      indicator.style.cssText =
+        "font-size:9px;color:rgba(255,255,255,0.28);margin-inline-start:4px;";
+      indicator.textContent =
+        leaderboardSortState.key === hdr.dataset.lbSortKey
+          ? leaderboardSortState.dir === "asc"
+            ? "↑"
+            : "↓"
+          : "↕";
+      hdr.appendChild(indicator);
+    });
+  }
+
+  function sortLeaderboardRows(key) {
+    var lbBody = mountEl.querySelector("#sc-lb-body");
+    if (!lbBody) return;
+    leaderboardSortState.dir =
+      leaderboardSortState.key === key && leaderboardSortState.dir === "desc"
+        ? "asc"
+        : "desc";
+    leaderboardSortState.key = key;
+
+    Array.from(lbBody.querySelectorAll(".sc-lb-row"))
+      .sort(function (a, b) {
+        var av = getLeaderboardSortValue(a, key);
+        var bv = getLeaderboardSortValue(b, key);
+        var diff =
+          leaderboardSortState.dir === "asc" ? av - bv : bv - av;
+        return diff || (a.dataset.city || "").localeCompare(b.dataset.city || "");
+      })
+      .forEach(function (row, idx) {
+        var rank = row.querySelector(".sc-lb-rank");
+        if (rank) rank.textContent = idx + 1;
+        lbBody.appendChild(row);
+      });
+
+    refreshLeaderboardSortIndicators();
+  }
+
+  (function initLeaderboardSorting() {
+    var lbBody = mountEl.querySelector("#sc-lb-body");
+    if (!lbBody || !lbBody.previousElementSibling) return;
+    var headers = lbBody.previousElementSibling.children;
+    [
+      ["orders", 1],
+      ["delivered", 2],
+      ["dr", 3],
+      ["ndr", 4],
+      ["commission", 5],
+    ].forEach(function (entry) {
+      var key = entry[0];
+      var hdr = headers[entry[1]];
+      if (!hdr) return;
+      hdr.dataset.lbSortKey = key;
+      hdr.setAttribute("role", "button");
+      hdr.setAttribute("tabindex", "0");
+      hdr.style.cursor = "pointer";
+      hdr.style.userSelect = "none";
+      hdr.style.textAlign = "center";
+      hdr.addEventListener("click", function () {
+        sortLeaderboardRows(key);
+      });
+      hdr.addEventListener("keydown", function (ev) {
+        if (ev.key === "Enter" || ev.key === " ") {
+          ev.preventDefault();
+          sortLeaderboardRows(key);
+        }
+      });
+    });
+    refreshLeaderboardSortIndicators();
+  })();
+
   /* Phase 5: Smooth map province fill animation on heatmap change */
   /* (CSS transition on .sc-dot-inner is in dashboard-styles.css — ensures smooth fill changes) */
   /* Enhance applyHeatMode to use requestAnimationFrame for smoother transitions */
@@ -1835,16 +2062,6 @@ window.renderSectionCities = function (mountEl, data, ctx) {
     var fbProduct = mountEl.querySelector("#sc-fb-product");
     var fbSearch = mountEl.querySelector("#sc-fb-search");
     var fbReset = mountEl.querySelector("#sc-fb-reset");
-    console.log("[Cities][wireFilterBar] fbProduct found:", !!fbProduct);
-    if (fbProduct) {
-      var opts = Array.from(fbProduct.options).map(function (o) {
-        return o.value;
-      });
-      console.log(
-        "[Cities][wireFilterBar] fbProduct options (" + opts.length + "):",
-        opts.slice(0, 10),
-      );
-    }
 
     function enhanceSelect(selectEl, activeColor, withSearch) {
       if (!selectEl) return;
@@ -2212,47 +2429,6 @@ window.renderSectionCities = function (mountEl, data, ctx) {
       var geoData = window.dashboardGeoData;
       var geoMap = geoData && geoData.geo && geoData.geo.geoProductMap;
 
-      /* ── DEBUG: product filter diagnostics ──────────────────────────────── */
-      if (productVal) {
-        console.log(
-          "[Cities][applyFilters] productVal:",
-          JSON.stringify(productVal),
-        );
-        console.log(
-          "[Cities][applyFilters] geoMap exists:",
-          !!geoMap,
-          "| city count:",
-          geoMap ? Object.keys(geoMap).length : 0,
-        );
-        if (geoMap) {
-          var allKeys = Object.keys(geoMap);
-          var matchCount = 0;
-          allKeys.forEach(function (k) {
-            if (
-              geoMap[k][productVal] &&
-              (geoMap[k][productVal].orders || 0) > 0
-            )
-              matchCount++;
-          });
-          console.log("[Cities][applyFilters] geoMap keys:", allKeys);
-          console.log(
-            "[Cities][applyFilters] provinces with this product:",
-            matchCount,
-            "/",
-            allKeys.length,
-          );
-        }
-        var rows = mountEl.querySelectorAll(".sc-lb-row");
-        console.log(
-          "[Cities][applyFilters] leaderboard rows:",
-          rows.length,
-          "| provnames:",
-          Array.from(rows).map(function (r) {
-            return r.dataset.provname;
-          }),
-        );
-      }
-      /* ─────────────────────────────────────────────────────────────────── */
 
       /* Filter leaderboard rows */
       var shownCount = 0,
@@ -2305,7 +2481,7 @@ window.renderSectionCities = function (mountEl, data, ctx) {
               prodOk = false;
             } else {
               var cell = cityEntry[productVal];
-              prodOk = !!(cell && (cell.orders || 0) > 0);
+              prodOk = !!(cell && ((cell.orders || 0) > 0 || (cell.delivered || 0) > 0));
             }
           }
         }
@@ -2324,25 +2500,6 @@ window.renderSectionCities = function (mountEl, data, ctx) {
         }
       });
 
-      if (productVal) {
-        console.log(
-          "[Cities][applyFilters] result — shown:",
-          shownCount,
-          "hidden:",
-          hiddenCount,
-        );
-        if (shownCount === 0 && hiddenCount === 0) {
-          console.warn(
-            "[Cities][applyFilters] NO .sc-lb-row elements found in mountEl — leaderboard may not be rendered yet or selector is wrong",
-          );
-          /* Try broader search */
-          var allRows = document.querySelectorAll(".sc-lb-row");
-          console.log(
-            "[Cities][applyFilters] .sc-lb-row in entire document:",
-            allRows.length,
-          );
-        }
-      }
 
       /* Sync province selection on map via existing mechanism */
       if (provVal && provVal !== selectedProvince) {
@@ -2383,11 +2540,7 @@ window.renderSectionCities = function (mountEl, data, ctx) {
               ndrRaw !== "" && ndrRaw !== undefined ? parseFloat(ndrRaw) : null;
             var nc0 =
               ndrNum !== null
-                ? ndrNum >= 75
-                  ? "#00e676"
-                  : ndrNum >= 55
-                    ? "#f59e0b"
-                    : "#ef4444"
+                ? rateColor(ndrNum)
                 : null;
             ndrCell.innerHTML = nc0
               ? '<span style="font-size:11px;font-weight:800;color:' +
@@ -2420,7 +2573,7 @@ window.renderSectionCities = function (mountEl, data, ctx) {
         var cell = cityEntry && cityEntry[productKey];
         var prodOrders = cell ? cell.orders || 0 : 0;
 
-        if (prodOrders === 0) {
+        if (!cell || (prodOrders === 0 && (cell.delivered || 0) === 0)) {
           /* Product not sold in this city - hide the row */
           row.style.display = "none";
           return;
@@ -2436,11 +2589,7 @@ window.renderSectionCities = function (mountEl, data, ctx) {
             cell.ndr !== undefined ? Math.round(cell.ndr * 1000) / 10 : null;
           var nc =
             ndr !== null
-              ? ndr >= 75
-                ? "#00e676"
-                : ndr >= 55
-                  ? "#f59e0b"
-                  : "#ef4444"
+              ? rateColor(ndr)
               : null;
           ndrCell.innerHTML = nc
             ? '<span style="font-size:11px;font-weight:800;color:' +
@@ -2458,30 +2607,9 @@ window.renderSectionCities = function (mountEl, data, ctx) {
     syncLeaderboardProductFilter = function (state) {
       var productKey =
         state && state.selectedProduct ? state.selectedProduct : "";
-      console.log(
-        "[Cities][syncLeaderboardProductFilter] called — productKey:",
-        JSON.stringify(productKey),
-        "| fbProduct exists:",
-        !!fbProduct,
-      );
       var changed = fbProduct && fbProduct.value !== productKey;
       if (changed) {
         fbProduct.value = productKey;
-        console.log(
-          "[Cities][syncLeaderboardProductFilter] fbProduct.value set to:",
-          JSON.stringify(fbProduct.value),
-        );
-        /* Verify the setter actually updated — the option must exist in the <select> */
-        if (fbProduct.value !== productKey) {
-          console.warn(
-            "[Cities][syncLeaderboardProductFilter] VALUE MISMATCH after set! fbProduct.value=",
-            JSON.stringify(fbProduct.value),
-            "— productKey not found as an <option> value. Available options:",
-            Array.from(fbProduct.options).map(function (o) {
-              return o.value;
-            }),
-          );
-        }
       }
       applyProductView(productKey);
       applyFilters();
@@ -2587,6 +2715,8 @@ window.renderSectionCities = function (mountEl, data, ctx) {
               : "NDR%";
       }
 
+      refreshLeaderboardSortIndicators();
+
       /* Update each row's orders and NDR cells */
       mountEl.querySelectorAll(".sc-lb-row").forEach(function (row) {
         var ordersCell = row.querySelector(".sc-lb-orders-cell");
@@ -2622,7 +2752,7 @@ window.renderSectionCities = function (mountEl, data, ctx) {
               '<span style="font-size:11px;font-weight:800;color:rgba(255,255,255,0.25);background:rgba(255,255,255,0.05);padding:2px 6px;border-radius:6px;">—</span>';
           } else {
             var nc =
-              ndrNum >= 75 ? "#00e676" : ndrNum >= 55 ? "#f59e0b" : "#ef4444";
+              rateColor(ndrNum);
             ndrCell.innerHTML =
               '<span style="font-size:11px;font-weight:800;color:' +
               nc +
@@ -2660,7 +2790,40 @@ window.renderSectionCities = function (mountEl, data, ctx) {
         fbReset.style.borderColor = "rgba(255,255,255,0.1)";
         fbReset.style.color = "rgba(255,255,255,0.38)";
       });
-      fbReset.addEventListener("click", function () {
+    var fbExcludeBtn = mountEl.querySelector("#sc-fb-exclude-export");
+    if (fbExcludeBtn) {
+      fbExcludeBtn.addEventListener("mouseover", function () {
+        fbExcludeBtn.style.borderColor = "#a855f7";
+        fbExcludeBtn.style.background = "rgba(168,85,247,0.2)";
+      });
+      fbExcludeBtn.addEventListener("mouseout", function () {
+        fbExcludeBtn.style.borderColor = "rgba(168,85,247,0.3)";
+        fbExcludeBtn.style.background = "rgba(168,85,247,0.1)";
+      });
+      fbExcludeBtn.addEventListener("click", function () {
+        var geoData = window.dashboardGeoData && window.dashboardGeoData.geo ? window.dashboardGeoData.geo : null;
+        var geoCity = geoData && geoData.cityStats ? geoData.cityStats : {};
+        var lowNdrCities = [];
+        ALL_CITIES.forEach(function(c) {
+          var cs = geoCity[c.name] || {};
+          var ndrVal;
+          if (typeof cs.ndrPct === "number") {
+            ndrVal = cs.ndrPct;
+          } else if (cs.count !== undefined && cs.deliveredOrders !== undefined) {
+            ndrVal = (cs.count || 0) > 0 ? ((cs.deliveredOrders || 0) / cs.count) * 100 : 0;
+          } else {
+            ndrVal = typeof c.ndrPct === "number" ? c.ndrPct : typeof c.returnRate === "number" ? c.returnRate : c.deliveryRate;
+          }
+          if (ndrVal !== null && ndrVal < 40) {
+            lowNdrCities.push({ name: c.name, ndr: ndrVal });
+          }
+        });
+        lowNdrCities.sort(function(a, b) { return a.ndr - b.ndr; });
+        openExclusionModal(lowNdrCities, s6Txt('Cities with Net Delivery Rate (NDR) below 40%', 'المدن التي يقل فيها معدل التسليم الصافي (NDR) عن 40%'));
+      });
+    }
+
+    fbReset.addEventListener("click", function () {
         if (fbProvince) {
           fbProvince.value = "";
           var pb = fbProvince._customBtn;
@@ -2786,7 +2949,7 @@ window.renderSectionCities = function (mountEl, data, ctx) {
     dots.forEach(function (dot) {
       var cn = dot.dataset.name;
       var cell = geoMap[cn] && geoMap[cn][productKey];
-      if (cell && (cell.orders || 0) > 0) ndrVals.push(cell.ndr * 100);
+      if (cell && ((cell.orders || 0) > 0 || (cell.delivered || 0) > 0)) ndrVals.push(cell.ndr * 100);
     });
     var minNdr = ndrVals.length ? Math.min.apply(null, ndrVals) : 0;
     var maxNdr = ndrVals.length ? Math.max.apply(null, ndrVals) : 100;
@@ -2797,7 +2960,7 @@ window.renderSectionCities = function (mountEl, data, ctx) {
       var cell = geoMap[cn] && geoMap[cn][productKey];
       var parent = dot.parentElement;
 
-      if (!cell || (cell.orders || 0) === 0) {
+      if (!cell || ((cell.orders || 0) === 0 && (cell.delivered || 0) === 0)) {
         /* Product not sold here — dim */
         dot.setAttribute("fill", "#64748b");
         dot.style.filter = "none";
@@ -2808,7 +2971,7 @@ window.renderSectionCities = function (mountEl, data, ctx) {
 
       var ndr = (cell.ndr || 0) * 100;
       var t = (ndr - minNdr) / range;
-      var color = hexInterpolate("#ef4444", "#00e676", t);
+      var color = rateColor(ndr);
       dot.setAttribute("fill", color);
       dot.style.filter = "drop-shadow(0 0 6px " + color + "99)";
       dot.style.opacity = "1";
@@ -2834,7 +2997,7 @@ window.renderSectionCities = function (mountEl, data, ctx) {
           var cs = cityStatsG && cityStatsG[cn];
           if (!cs || cs.provinceId !== prov.id) return;
           var cell = geoMap[cn][productKey];
-          if (cell && cell.orders > 0) {
+          if (cell && ((cell.orders || 0) > 0 || (cell.delivered || 0) > 0)) {
             sum += cell.ndr || 0;
             cnt++;
           }
@@ -2849,7 +3012,7 @@ window.renderSectionCities = function (mountEl, data, ctx) {
       var opacity = 0.12 + t2 * 0.45;
       blob.style.opacity = opacity;
       /* tint the gradient stop colour */
-      blob.style.fill = hexInterpolate("#ef4444", "#00e676", t2);
+      blob.style.fill = rateColor(avgNdr * 100);
     });
   }
 
@@ -2858,12 +3021,6 @@ window.renderSectionCities = function (mountEl, data, ctx) {
 
   function _onFilterBusChange(state) {
     var fp = state.selectedProduct || null;
-    console.log(
-      "[Cities][_onFilterBusChange] state.selectedProduct:",
-      JSON.stringify(fp),
-      "| _prevFocusProduct:",
-      JSON.stringify(_prevFocusProduct),
-    );
     if (fp !== _prevFocusProduct) {
       _prevFocusProduct = fp;
       applyProductFocusMode(fp);

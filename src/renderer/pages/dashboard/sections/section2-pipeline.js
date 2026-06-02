@@ -154,8 +154,9 @@ window.renderSection2 = function (mountEl, data, ctx) {
     if (insights && insights.length) return insights;
     var activeStages = stages.filter(function (s) { return ['awaiting','confirmed','processing','waiting','shipping'].indexOf(s.id) !== -1; });
     var biggest = activeStages.slice().sort(function (a, b) { return (b.count || 0) - (a.count || 0); })[0];
+    var deliveryColor = window.dashboardRateColor ? window.dashboardRateColor(metrics.deliveryRate || 0) : ((metrics.deliveryRate || 0) >= 40 ? '#22d3ee' : (metrics.deliveryRate || 0) >= 30 ? '#00e676' : (metrics.deliveryRate || 0) >= 20 ? '#f59e0b' : '#ef4444');
     return [
-      { color: '#00e676', title: s2Txt('Delivery Rate', 'معدل التسليم'),       body: Number(metrics.deliveredCount || 0).toLocaleString('en-US') + s2Txt(' out of ', ' طلب من أصل ') + Number(metrics.totalOrders || 0).toLocaleString('en-US') + s2Txt(' orders', ''), highlight: pctLabel(metrics.deliveryRate) },
+      { color: deliveryColor, title: s2Txt('Delivery Rate', 'معدل التسليم'),       body: Number(metrics.deliveredCount || 0).toLocaleString('en-US') + s2Txt(' out of ', ' طلب من أصل ') + Number(metrics.totalOrders || 0).toLocaleString('en-US') + s2Txt(' orders', ''), highlight: pctLabel(metrics.deliveryRate) },
       { color: '#ef4444', title: s2Txt('Failure Rate', 'معدل الفشل'),          body: Number(metrics.failedCount || 0).toLocaleString('en-US') + s2Txt(' failed or canceled orders', ' طلب فاشل أو ملغى'),                                                          highlight: pctLabel(metrics.failureRate) },
       { color: biggest ? biggest.color : '#f59e0b', title: s2Txt('Largest Active Stage', 'أكبر مرحلة نشطة'), body: biggest ? biggest.label + s2Txt(' has ', ' فيها ') + Number(biggest.count || 0).toLocaleString('en-US') + s2Txt(' orders', ' طلب') : s2Txt('No active stages', 'لا توجد مراحل نشطة'), highlight: biggest ? biggest.pct : null },
       { color: '#a855f7', title: s2Txt('Account Filter', 'نوع الحساب المعروض'), body: s2Txt('Metrics calculated for the account selected in top bar', 'الأرقام محسوبة من الحساب المحدد في الشريط العلوي'), highlight: null }
@@ -350,7 +351,7 @@ window.renderSection2 = function (mountEl, data, ctx) {
         '<div class="s2-lower" style="padding:0 40px;display:flex;flex-direction:column;gap:24px;">' +
           '<div class="s2-metrics-grid" style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:16px;">' +
             metricCardHtml('bag',      '#3b82f6', s2Txt('Total Orders', 'إجمالي الطلبات'),       metrics.totalOrders,  s2Txt('across all stages', 'في جميع المراحل'),    false, 's2-m0', 300) +
-            metricCardHtml('trendUp',  '#00e676', s2Txt('Final Delivery Rate', 'معدل التسليم النهائي'),  metrics.deliveryRate, Number(metrics.deliveredCount || 0).toLocaleString('en-US') + s2Txt(' delivered orders', ' طلب تم تسليمها'), true, 's2-m1', 300) +
+            metricCardHtml('trendUp',  (window.dashboardRateColor ? window.dashboardRateColor(metrics.deliveryRate || 0) : ((metrics.deliveryRate || 0) >= 40 ? '#22d3ee' : (metrics.deliveryRate || 0) >= 30 ? '#00e676' : (metrics.deliveryRate || 0) >= 20 ? '#f59e0b' : '#ef4444')), s2Txt('Final Delivery Rate', 'معدل التسليم النهائي'),  metrics.deliveryRate, Number(metrics.deliveredCount || 0).toLocaleString('en-US') + s2Txt(' delivered orders', ' طلب تم تسليمها'), true, 's2-m1', 300) +
             metricCardHtml('xCircle',  '#ef4444', s2Txt('Overall Failure Rate', 'معدل الفشل الإجمالي'),  metrics.failureRate,  Number(metrics.failedCount    || 0).toLocaleString('en-US') + s2Txt(' orders', ' طلب'),            true, 's2-m2', 300) +
           '</div>' +
 

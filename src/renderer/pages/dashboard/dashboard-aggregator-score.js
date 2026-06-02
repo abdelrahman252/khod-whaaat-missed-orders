@@ -1,23 +1,23 @@
-/* ══════════════════════════════════════════════════════════════════════════════
+﻿/* â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•
    dashboard-aggregator-score.js  (T-14)
-   Pure scoring functions — no side effects, no DOM, no global state.
-   All return a rounded integer 0–100.
+   Pure scoring functions â€” no side effects, no DOM, no global state.
+   All return a rounded integer 0â€“100.
 
    Exposed on window:
      computeRiskScore(stats)
      computeScalingScore(stats, nationalAverages)
      computeProfitabilityScore(stats, nationalAverages)
      computePipelineHealth(stats)
-   ══════════════════════════════════════════════════════════════════════════════ */
+   â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â• */
 (function () {
   'use strict';
 
-  /* ── computeRiskScore(stats) → 0–100 (100 = most dangerous) ─────────────────
+  /* â”€â”€ computeRiskScore(stats) â†’ 0â€“100 (100 = most dangerous) â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
      Composite:
-       50% — NDR component   (NDR 50% → score 100)
-       30% — COD component   (high COD% × high COD NDR)
-       20% — Gap component   (unpaid COD gap / total due)
-  ─────────────────────────────────────────────────────────────────────────────── */
+              50% - NDR component   (0 at >=40%, 100 at <20%)
+       30% â€” COD component   (high COD% Ã— high COD NDR)
+       20% â€” Gap component   (unpaid COD gap / total due)
+  â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€ */
   window.computeRiskScore = function (stats) {
     if (!stats) return 0;
 
@@ -25,9 +25,11 @@
       ? Number(stats.ndrPct) / 100          // already a percentage
       : Number(stats.ndrPct) || 0;          // already a fraction
     if (ndr > 1) ndr = ndr / 100;
-    var ndrComponent = Math.min(100, Math.max(0, (1 - ndr) * 150));
+    var ndrComponent = ndr >= 0.40
+      ? 0
+      : (ndr < 0.20 ? 100 : Math.round(((0.40 - ndr) / 0.20) * 100));
 
-    // COD component: codPct (fraction) × codNdr (fraction) × 150
+    // COD component: codPct (fraction) Ã— codNdr (fraction) Ã— 150
     var codPct = Number(stats.codPct) || 0;
     if (codPct > 1) codPct = codPct / 100;
     // codNdr: derive from codDeliveredCount / codCount if not stored directly
@@ -38,7 +40,10 @@
     } else if (stats.codCount > 0) {
       codNdr = ndr;
     }
-    var codComponent = Math.min(100, codPct * Math.max(0, 1 - codNdr) * 150);
+    var codNdrRisk = codNdr >= 0.40
+      ? 0
+      : (codNdr < 0.20 ? 100 : Math.round(((0.40 - codNdr) / 0.20) * 100));
+    var codComponent = Math.min(100, codPct * codNdrRisk);
 
     // Gap component: gap / due (fraction of uncollected revenue)
     var due = Number(stats.due) || 0;
@@ -49,31 +54,31 @@
     return Math.round(Math.min(100, Math.max(0, riskScore)));
   };
 
-  /* ── computeScalingScore(stats, nationalAverages) → 0–100 (100 = best to scale)
+  /* â”€â”€ computeScalingScore(stats, nationalAverages) â†’ 0â€“100 (100 = best to scale)
      Composite:
-       50% — DR ratio vs national average (capped at 2×)
-       20% — Volume score (capped at 200 orders)
-       20% — Prepaid adoption bonus
-       10% — Consistency (inverse of NDR stddev if available)
-  ─────────────────────────────────────────────────────────────────────────────── */
+       50% â€” DR ratio vs national average (capped at 2Ã—)
+       20% â€” Volume score (capped at 200 orders)
+       20% â€” Prepaid adoption bonus
+       10% â€” Consistency (inverse of NDR stddev if available)
+  â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€ */
   window.computeScalingScore = function (stats, nationalAverages) {
     if (!stats) return 0;
     var nat = nationalAverages || {};
 
     var drPct = Number(stats.drPct) || 0;
     if (drPct > 1) drPct = drPct / 100;
-    var nationalDr = Number(nat.dr) || 0.60;        // fallback to 60% if unknown
+    var nationalDr = Number(nat.dr) || 0.30;        // fallback to healthy baseline if unknown
     if (nationalDr > 1) nationalDr = nationalDr / 100;
 
-    // DR ratio: capped at 2× national average → maps to 0–50
+    // DR ratio: capped at 2Ã— national average â†’ maps to 0â€“50
     var drRatio   = nationalDr > 0 ? Math.min(2, drPct / nationalDr) : 0;
     var drScore   = drRatio * 50;
 
-    // Volume score: 0–20 (saturates at 200 orders)
+    // Volume score: 0â€“20 (saturates at 200 orders)
     var count       = Number(stats.count) || Number(stats.orders) || 0;
     var volumeScore = Math.min(1, count / 200) * 20;
 
-    // Prepaid bonus: 0–20 (higher prepaid adoption = easier to scale)
+    // Prepaid bonus: 0â€“20 (higher prepaid adoption = easier to scale)
     var prepaidPct = Number(stats.prepaidPct) || 0;
     if (prepaidPct > 1) prepaidPct = prepaidPct / 100;
     var prepaidBonus = prepaidPct * 20;
@@ -86,12 +91,12 @@
     return Math.round(Math.min(100, Math.max(0, scalingScore)));
   };
 
-  /* ── computeProfitabilityScore(stats, nationalAverages) → 0–100 ──────────────
+  /* â”€â”€ computeProfitabilityScore(stats, nationalAverages) â†’ 0â€“100 â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
      Composite:
-       60% — Commission ratio vs expected (earned / (count × avgCommission))
-       40% — Revenue efficiency (earnedCommission / totalRevenue)
-     Both sub-scores normalised to 0–100 before weighting.
-  ─────────────────────────────────────────────────────────────────────────────── */
+       60% â€” Commission ratio vs expected (earned / (count Ã— avgCommission))
+       40% â€” Revenue efficiency (earnedCommission / totalRevenue)
+     Both sub-scores normalised to 0â€“100 before weighting.
+  â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€ */
   window.computeProfitabilityScore = function (stats, nationalAverages) {
     if (!stats) return 0;
     var nat = nationalAverages || {};
@@ -103,23 +108,23 @@
 
     // Commission ratio: how much was earned vs what could have been earned if all delivered at average
     var commissionRatio  = Math.min(2, earnedComm / Math.max(1, count * avgComm));
-    var commissionScore  = commissionRatio * 50;   // 0–100, then ×60% weight
+    var commissionScore  = commissionRatio * 50;   // 0â€“100, then Ã—60% weight
 
     // Revenue efficiency: what fraction of total potential revenue became earned commission
     var revenueEfficiency = totalRevenue > 0
       ? Math.min(1, earnedComm / totalRevenue)
       : 0;
-    var revenueScore = revenueEfficiency * 100;    // 0–100, then ×40% weight
+    var revenueScore = revenueEfficiency * 100;    // 0â€“100, then Ã—40% weight
 
     var profScore = (commissionScore * 0.6) + (revenueScore * 0.4);
     return Math.round(Math.min(100, Math.max(0, profScore)));
   };
 
-  /* ── computePipelineHealth(stats) → 0–100 ────────────────────────────────────
+  /* â”€â”€ computePipelineHealth(stats) â†’ 0â€“100 â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
      Measures the quality of the active order pipeline.
      Good orders (delivered + confirmed + shipping + processing) contribute positively.
-     Bad orders (canceled × 2 + failed × 1.5) reduce the score.
-  ─────────────────────────────────────────────────────────────────────────────── */
+     Bad orders (canceled Ã— 2 + failed Ã— 1.5) reduce the score.
+  â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€ */
   window.computePipelineHealth = function (stats) {
     if (!stats) return 0;
 

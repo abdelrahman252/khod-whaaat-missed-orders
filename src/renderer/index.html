@@ -16,21 +16,41 @@
     <link rel="stylesheet" href="pages/dashboard/dashboard-styles.css" />
     <link rel="stylesheet" href="pages/ai-intelligence/ai-intelligence.css" />
     <style>
+      /* ── Preloader Reset ── */
+      html, body {
+        margin: 0;
+        padding: 0;
+        width: 100%;
+        height: 100%;
+        overflow: hidden;
+        background: #0b0f1a;
+      }
       /* ── Preloader ── */
       #preloader {
         position: fixed;
         top: 0;
         left: 0;
-        right: 0;
-        bottom: 0;
+        width: 100vw;
+        height: 100vh;
         background: #0b0f1a;
         z-index: 99999;
+        display: flex;
+        align-items: center;
+        justify-content: center;
       }
       .preloader-center {
-        position: absolute;
-        top: 50%;
-        left: 50%;
-        transform: translate(-50%, -50%);
+        width: min(360px, calc(100vw - 48px));
+        min-height: 190px;
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        justify-content: center;
+        gap: 18px;
+        text-align: center;
+        padding: 12px;
+      }
+      .preloader-mark {
+        position: relative;
         width: 120px;
         height: 120px;
       }
@@ -64,6 +84,25 @@
         font-size: 16px;
         letter-spacing: 2px;
       }
+      .preloader-copy {
+        display: flex;
+        flex-direction: column;
+        gap: 7px;
+        max-width: 320px;
+        font-family: 'Tajawal', 'Segoe UI', sans-serif;
+      }
+      .preloader-title {
+        color: #ffffff;
+        font-size: 15px;
+        font-weight: 800;
+        line-height: 1.35;
+      }
+      .preloader-body {
+        color: rgba(226, 232, 240, 0.72);
+        font-size: 12px;
+        font-weight: 600;
+        line-height: 1.55;
+      }
       @keyframes preloader-spin {
         to {
           transform: rotate(360deg);
@@ -86,6 +125,12 @@
       }
       [data-theme="light"] .logo {
         color: #1e2535;
+      }
+      [data-theme="light"] .preloader-title {
+        color: #111827;
+      }
+      [data-theme="light"] .preloader-body {
+        color: #64748b;
       }
 
       /* ── Titlebar overrides ── */
@@ -307,6 +352,39 @@
         to   { transform: rotate(360deg); }
       }
 
+      /* ── Copy License button ── */
+      .titlebar-btn-copy {
+        display: none;
+        align-items: center;
+        justify-content: center;
+        width: 26px;
+        height: 26px;
+        border: 1px solid var(--border);
+        border-radius: 6px;
+        background: rgba(255, 255, 255, 0.03);
+        color: var(--text2);
+        cursor: pointer;
+        transition: background 0.15s, border-color 0.15s, color 0.15s;
+        -webkit-app-region: no-drag;
+        flex-shrink: 0;
+        margin: 0 4px;
+        padding: 0;
+      }
+      .titlebar-btn-copy:hover {
+        background: rgba(124, 106, 247, 0.15);
+        border-color: rgba(124, 106, 247, 0.5);
+        color: #a89cf7;
+      }
+      .titlebar-btn-copy:active {
+        background: rgba(124, 106, 247, 0.25);
+      }
+      .titlebar-btn-copy svg {
+        transition: transform 0.15s ease;
+      }
+      .titlebar-btn-copy:hover svg {
+        transform: scale(1.08);
+      }
+
       /* ── Theme toggle (sun/moon switch) ── */
       .tb-theme-switch {
         font-size: 14px;
@@ -405,9 +483,15 @@
   <body>
     <div id="preloader">
       <div class="preloader-center">
-        <div class="ring"></div>
-        <div class="glow"></div>
-        <div class="logo">MO</div>
+        <div class="preloader-mark">
+          <div class="ring"></div>
+          <div class="glow"></div>
+          <div class="logo">MO</div>
+        </div>
+        <div class="preloader-copy" role="status" aria-live="polite">
+          <div class="preloader-title" id="preloader-title">Preparing workspace...</div>
+          <div class="preloader-body" id="preloader-body">Loading your saved account, permissions, and app settings.</div>
+        </div>
       </div>
     </div>
 
@@ -430,6 +514,19 @@
             <div id="top-bar-accounts" style="display:none;font-size:10px;font-weight:700;letter-spacing:.06em;text-transform:uppercase;background:rgba(124,106,247,.15);border:1px solid rgba(124,106,247,.35);color:#a89cf7;border-radius:99px;padding:2px 8px"></div>
           </div>
         </div>
+        <div class="titlebar-divider"></div>
+        <button
+          id="btn-copy-license"
+          class="titlebar-btn-copy"
+          aria-label="Copy License Key"
+          data-tooltip="Copy License Key"
+          style="display:none;"
+        >
+          <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+            <rect x="9" y="9" width="13" height="13" rx="2" ry="2"></rect>
+            <path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"></path>
+          </svg>
+        </button>
       </div>
       <!-- Toggles -->
       <div class="titlebar-divider"></div>
@@ -513,69 +610,7 @@
     <script src="pages/setup.js"></script>
     <script src="pages/run.js?v=sidebar-fix-20260523"></script>
     <script src="pages/results.js"></script>
-    <!-- Chart.js -->
-    <script src="pages/analytics/chart.umd.min.js"></script>
     <!-- SheetJS (XLSX export for Analytics) — served locally, no network request -->
-    <script src="../../node_modules/xlsx/dist/xlsx.full.min.js"></script>
-    <!-- Locales -->
-    <script src="locales/ar/analytics.js"></script>
-    <script src="locales/en/analytics.js"></script>
-    <script src="locales/ar/operations.js"></script>
-    <script src="locales/en/operations.js"></script>
-    <script src="page-i18n.js"></script>
-    <script src="pages/premium-preview.js"></script>
-    <!-- Analytics modules (load in dependency order) -->
-    <script src="pages/analytics/analytics-charts.js"></script>
-    <script src="pages/analytics/analytics-kpis.js"></script>
-    <script src="pages/analytics/analytics-table.js"></script>
-    <script src="pages/analytics/analytics-insights.js"></script>
-    <script src="pages/analytics/analytics.js"></script>
-    <!-- Operations modules -->
-    <script src="pages/operations/operations-utils.js"></script>
-    <script src="pages/operations/operations-monitor.js"></script>
-    <script src="pages/operations/operations-history.js"></script>
-    <script src="pages/operations/operations-presets.js"></script>
-    <script src="pages/operations/operations-insights.js"></script>
-    <script src="pages/operations/operations.js"></script>
-    <!-- Dashboard -->
-    <script src="pages/dashboard/locales/ar/dashboard-locale.js"></script>
-    <script src="pages/dashboard/locales/en/dashboard-locale.js"></script>
-    <script src="pages/dashboard/dashboard-i18n.js"></script>
-    <script src="pages/dashboard/dashboard-aggregator.js"></script>
-    <script src="pages/dashboard/dashboard-aggregator-score.js"></script>
-    <script src="pages/dashboard/dashboard-aggregator-geo.js"></script>
-    <script src="pages/dashboard/dashboard-insight-engine.js"></script>
-    <script src="pages/dashboard/dashboard-filter-bus.js"></script>
-    <script src="pages/dashboard/dashboard-shared.js"></script>
-    <script src="pages/dashboard/dashboard-ai-context.js"></script>
-    <script src="pages/dashboard/dashboard-ai-ui.js"></script>
-    <script src="pages/ai-intelligence/ai-intelligence-data.js"></script>
-    <script src="pages/ai-intelligence/engine/intent-detector.js"></script>
-    <script src="pages/ai-intelligence/engine/analytics-engine.js"></script>
-    <script src="pages/ai-intelligence/engine/context-compressor.js"></script>
-    <script src="pages/ai-intelligence/engine/session-memory.js"></script>
-    <script src="pages/ai-intelligence/engine/local-reasoning-engine.js"></script>
-    <script src="pages/ai-intelligence/engine/scenario-database.js"></script>
-    <script src="pages/ai-intelligence/engine/business-orchestrator.js"></script>
-    <script src="pages/dashboard/sections/section-khod-ai.js"></script>
-    <script src="pages/ai-intelligence/ai-intelligence.js"></script>
-    <script src="pages/dashboard/sections/section1-overview.js"></script>
-    <script src="pages/dashboard/sections/section2-pipeline.js"></script>
-    <script src="pages/dashboard/sections/section3-orders.js"></script>
-    <script src="pages/dashboard/sections/section4-cod.js"></script>
-    <script src="pages/dashboard/sections/section5-products.js"></script>
-    <script src="pages/dashboard/sections/section6-commission.js"></script>
-    <script src="pages/dashboard/sections/section-marketing-connections.js"></script>
-    <script src="pages/dashboard/sections/section7-calculator.js"></script>
-    <script src="pages/dashboard/sections/section8-master.js"></script>
-    <script src="pages/dashboard/sections/section-cities.js"></script>
-    <script src="pages/dashboard/sections/section-city-drawer.js"></script>
-    <script src="pages/dashboard/sections/section-product-matrix.js"></script>
-    <script src="pages/dashboard/sections/section-prepaid.js"></script>
-    <script src="pages/dashboard/sections/section-insight-strip.js"></script>
-    <script src="pages/dashboard/sections/section9-product-forecast.js"></script>
-    <script src="pages/dashboard/dashboard-shell.js"></script>
-    <script src="pages/dashboard/dashboard.js"></script>
     <script src="tooltip.js"></script>
     <script src="app.js"></script>
     <script>
@@ -637,13 +672,7 @@
     // ════════════════════════════════════════════════════════════════
     let _updateState = 'idle'; // idle | checking | available | downloading | downloaded | error
 
-    function _updLog(level, ...args) {
-      const ts = new Date().toISOString();
-      const prefix = `[AutoUpdate][${ts}]`;
-      if (level === 'error') console.error(prefix, ...args);
-      else if (level === 'warn')  console.warn(prefix, ...args);
-      else                        console.log(prefix, ...args);
-    }
+    function _updLog() {}
 
     function showUpdateToast(title, sub, btnLabel, showProgress) {
       _updLog('info', `showUpdateToast → title="${title}" btn="${btnLabel}" progress=${showProgress}`);

@@ -23,12 +23,12 @@
   // Configurable thresholds for Saudi COD e-commerce market.
   // Exposed via window.getDashboardThresholds() for use by other modules.
   var THRESHOLDS = {
-    NDR_DANGER:                  0.45,   // NDR < 45% = dangerous
-    NDR_SAFE:                    0.75,   // NDR >= 75% = safe / scalable
-    NDR_NATIONAL:                0.60,   // Saudi market average (configurable)
-    DR_EXCELLENT:                0.75,   // DR > 75% = excellent
-    DR_GOOD:                     0.65,   // DR 65-75% = good
-    DR_POOR:                     0.55,   // DR < 55% = needs attention
+    NDR_DANGER:                  0.20,   // NDR < 20% = dangerous
+    NDR_SAFE:                    0.40,   // NDR >= 40% = excellent / scalable
+    NDR_NATIONAL:                0.30,   // Healthy baseline (configurable)
+    DR_EXCELLENT:                0.40,   // DR >= 40% = excellent
+    DR_GOOD:                     0.30,   // DR 30-40% = good
+    DR_POOR:                     0.20,   // DR < 20% = needs attention
     SCALING_MIN_ORDERS:          30,     // Minimum orders to calculate scaling score
     INSIGHT_MIN_SAMPLE:          15,     // Minimum orders for insight to fire
     PREPAID_ADVANTAGE_THRESHOLD: 0.15,   // If prepaidNdr - codNdr > 15pp, recommend prepaid
@@ -70,15 +70,26 @@
     return 'other';
   }
 
+  var _dateKeyCache = new Map();
+
   function normalizeDateKey(value) {
     if (!value) return '';
+    var cacheKey = typeof value + ':' + String(value);
+    if (_dateKeyCache.has(cacheKey)) return _dateKeyCache.get(cacheKey);
+    var normalized = '';
     if (typeof value === 'string') {
-      if (/^\d{4}-\d{2}-\d{2}/.test(value)) return value.slice(0, 10);
-      var parsed = new Date(value);
-      return isNaN(parsed.getTime()) ? value.trim() : parsed.toISOString().slice(0, 10);
+      if (/^\d{4}-\d{2}-\d{2}/.test(value)) normalized = value.slice(0, 10);
+      else {
+        var parsed = new Date(value);
+        normalized = isNaN(parsed.getTime()) ? value.trim() : parsed.toISOString().slice(0, 10);
+      }
+    } else {
+      var d = new Date(value);
+      normalized = isNaN(d.getTime()) ? '' : d.toISOString().slice(0, 10);
     }
-    var d = new Date(value);
-    return isNaN(d.getTime()) ? '' : d.toISOString().slice(0, 10);
+    if (_dateKeyCache.size > 5000) _dateKeyCache.clear();
+    _dateKeyCache.set(cacheKey, normalized);
+    return normalized;
   }
 
   function isRowCreatedInPeriod(row, period) {
@@ -170,6 +181,58 @@
       fmt(to, { month: 'short', day: 'numeric', year: 'numeric' });
   }
 
+  function parsePeriodDate(value) {
+    if (!value || !/^\d{4}-\d{2}-\d{2}$/.test(String(value))) return null;
+    var parts = String(value).split('-').map(Number);
+    var d = new Date(parts[0], parts[1] - 1, parts[2]);
+    return isNaN(d.getTime()) ? null : d;
+  }
+
+  function isoDate(d) {
+    return d.getFullYear() + '-' +
+      String(d.getMonth() + 1).padStart(2, '0') + '-' +
+      String(d.getDate()).padStart(2, '0');
+  }
+
+  function lastDayOfMonth(year, monthIndex) {
+    return new Date(year, monthIndex + 1, 0).getDate();
+  }
+
+  function isFullCalendarMonth(from, to) {
+    return from && to &&
+      from.getFullYear() === to.getFullYear() &&
+      from.getMonth() === to.getMonth() &&
+      from.getDate() === 1 &&
+      to.getDate() === lastDayOfMonth(to.getFullYear(), to.getMonth());
+  }
+
+  function shiftDateByMonths(d, months) {
+    var targetYear = d.getFullYear();
+    var targetMonth = d.getMonth() + months;
+    var targetDay = Math.min(d.getDate(), lastDayOfMonth(targetYear, targetMonth));
+    return new Date(targetYear, targetMonth, targetDay);
+  }
+
+  function previousMonthPeriod(period) {
+    if (!period || !period.dateFrom || !period.dateTo) return null;
+    var from = parsePeriodDate(period.dateFrom);
+    var to = parsePeriodDate(period.dateTo);
+    if (!from || !to) return null;
+    if (isFullCalendarMonth(from, to)) {
+      var prevMonthStart = new Date(from.getFullYear(), from.getMonth() - 1, 1);
+      return {
+        preset: 'previousMonth',
+        dateFrom: isoDate(prevMonthStart),
+        dateTo: isoDate(new Date(prevMonthStart.getFullYear(), prevMonthStart.getMonth() + 1, 0))
+      };
+    }
+    return {
+      preset: 'previousMonth',
+      dateFrom: isoDate(shiftDateByMonths(from, -1)),
+      dateTo: isoDate(shiftDateByMonths(to, -1))
+    };
+  }
+
   function monthMeta(snapshotMonth) {
     var parts = (snapshotMonth || '').split('-');
     var year = parseInt(parts[0], 10);
@@ -191,7 +254,7 @@
 
   function accountLabel(acc, fallback) {
     if (!acc) return fallback || dt('shell.account');
-    return acc.easyEmail || acc.email || acc.khodEmail || acc.label || acc.easyStore || acc.storeName || acc.name || fallback || dt('shell.account');
+    return acc.memberName || acc.easyEmail || acc.email || acc.khodEmail || acc.easyStore || acc.storeName || acc.label || acc.name || fallback || dt('shell.account');
   }
 
   function latestTimestamp(accounts, activeId) {
@@ -242,6 +305,73 @@
   function calcDelta(nowVal, prevVal) {
     if (prevVal === 0) return nowVal > 0 ? 100 : 0;
     return parseFloat((((nowVal - prevVal) / prevVal) * 100).toFixed(1));
+  }
+
+  function convertDashboardCurrency(value, from, to, egpRate) {
+    var amount = Number(value || 0);
+    var source = String(from || 'SAR').toUpperCase();
+    var target = String(to || 'SAR').toUpperCase();
+    var egp = Number(egpRate || 52) || 52;
+    if (source === target) return amount;
+    var sar = amount;
+    if (source === 'USD') sar = amount * 3.75;
+    else if (source === 'EGP') sar = (amount / egp) * 3.75;
+    if (target === 'SAR') return sar;
+    if (target === 'USD') return sar / 3.75;
+    if (target === 'EGP') return (sar / 3.75) * egp;
+    return amount;
+  }
+
+  function overviewMetricSummary(rows, period, mode) {
+    rows = Array.isArray(rows) ? rows : [];
+    var totalPriceLookup = buildTotalPriceLookup(rows);
+    var summary = {
+      earnedCommission: 0,
+      incomingCommission: 0,
+      lostCommission: 0,
+      totalOrders: 0,
+      totalSales: 0,
+      totalDeliveredSales: 0,
+      overallAov: 0,
+      deliveredAov: 0,
+      deliveredCount: 0
+    };
+
+    rows.forEach(function (row) {
+      var bucket = getStatusBucket(row && (row.orderStatus || row.status));
+      var inCreatedPeriod = isRowCreatedInPeriod(row, period);
+      var isDeliveredInPeriod = isDeliveredRowInPeriod(row, period, mode || 'updatedAt');
+      var commissionVal = Number(row && (row.marketerCommission || row.commission) || 0);
+      var priceVal = Number(row && row.totalPrice || 0);
+
+      if ((inCreatedPeriod || isDeliveredInPeriod) && hasMissingTotalPrice(row)) {
+        var priceLookupInfo = totalPriceLookup[amountLookupKey(row)];
+        priceVal = priceLookupInfo && priceLookupInfo.amount > 0 ? priceLookupInfo.amount : 0;
+      }
+
+      if (inCreatedPeriod) {
+        summary.totalOrders++;
+        summary.totalSales += priceVal;
+      }
+
+      if (isDeliveredInPeriod) {
+        summary.deliveredCount++;
+        summary.totalDeliveredSales += priceVal;
+        summary.earnedCommission += commissionVal;
+      } else if (bucket === 'failed' && inCreatedPeriod) {
+        summary.lostCommission += commissionVal;
+      } else if (bucket !== 'delivered' && bucket !== 'failed' && inCreatedPeriod) {
+        summary.incomingCommission += commissionVal;
+      }
+    });
+
+    summary.overallAov = summary.totalOrders > 0
+      ? parseFloat((summary.totalSales / summary.totalOrders).toFixed(2))
+      : 0;
+    summary.deliveredAov = summary.deliveredCount > 0
+      ? parseFloat((summary.totalDeliveredSales / summary.deliveredCount).toFixed(2))
+      : 0;
+    return summary;
   }
 
   function percentOf(part, total) {
@@ -535,7 +665,9 @@
 
     return ids.map(function (id) {
       var snap = accounts[id] || {};
-      var label = accountLabel(byId[id], id);
+      var sourceAccount = byId[id] || {};
+      var label = accountLabel(sourceAccount, id);
+      var email = sourceAccount.khodEmail || sourceAccount.easyEmail || sourceAccount.email || '';
       var snapshot = Array.isArray(snap.snapshot) ? snap.snapshot : [];
       var periodRows = period && period.dateFrom && period.dateTo
         ? snapshot.filter(function (row) { return isRowCreatedInPeriod(row, period); })
@@ -545,7 +677,8 @@
         value: id,
         label: label,
         name: label,
-        email: byId[id] ? (byId[id].khodEmail || byId[id].easyEmail || '') : '',
+        memberName: sourceAccount.memberName || '',
+        email: email,
         hasSnapshot: snapshot.length > 0,
         orderCount: periodRows.length,
         rawOrderCount: snapshot.length,
@@ -585,6 +718,7 @@
 
   window.runDashboardAggregator = function (callback) {
     var previewActive = window.KhodPremiumPreview && window.KhodPremiumPreview.isActive('dashboard');
+    var requestedDeliveredDateMode = deliveredDateMode();
     if (!previewActive && (!window.api || typeof window.api.getDashboardSnapshot !== 'function')) {
       console.warn('[Dashboard] getDashboardSnapshot is not available.');
       callback(null);
@@ -602,6 +736,9 @@
     if (ttlValid && !_aggregatorCacheHash) {
       // Old cache without hash — invalidate to force rebuild
       _aggregatorCache = null;
+    } else if (ttlValid && _aggregatorCache && _aggregatorCache.meta && _aggregatorCache.meta.deliveredDateMode !== requestedDeliveredDateMode) {
+      _aggregatorCache = null;
+      _aggregatorCacheHash = '';
     } else if (ttlValid) {
       callback(_aggregatorCache);
       return;
@@ -660,17 +797,22 @@
         if (activeId !== ALL_ACCOUNTS && accInfo.id !== activeId) return;
         var snap = accounts[accInfo.id] || {};
         if (!Array.isArray(snap.snapshot)) return;
-        rows = rows.concat(snap.snapshot.map(function (row) {
-          return Object.assign({}, row, {
+        snap.snapshot.forEach(function (row) {
+          rows.push(Object.assign({}, row, {
             accountId: accInfo.id,
             accountEmail: accInfo.email || accInfo.label,
             accountLabel: accInfo.label
-          });
-        }));
+          }));
+        });
       });
 
-      var activeDeliveredDateMode = deliveredDateMode();
-      rows = filterRowsByPeriod(rows, period, activeDeliveredDateMode);
+      var activeDeliveredDateMode = requestedDeliveredDateMode;
+      var allRowsForAccount = rows;
+      var previousPeriod = previousMonthPeriod(period);
+      var previousRows = previousPeriod
+        ? filterRowsByPeriod(allRowsForAccount, previousPeriod, activeDeliveredDateMode)
+        : [];
+      rows = filterRowsByPeriod(allRowsForAccount, period, activeDeliveredDateMode);
 
       var snapshotMonth = chooseSnapshotMonth(accounts, activeId);
       var lastUpdatedAt = latestTimestamp(accounts, activeId);
@@ -680,6 +822,8 @@
         snapshotMonth: snapshotMonth,
         monthLabel: period ? formatDateRangeLabel(period) : monthMeta(snapshotMonth).label,
         period: period,
+        previousPeriod: previousPeriod,
+        previousRows: previousRows,
         periodLabel: period ? formatDateRangeLabel(period) : monthMeta(snapshotMonth).label,
         deliveredDateMode: activeDeliveredDateMode,
         lastUpdatedAt: lastUpdatedAt,
@@ -693,7 +837,7 @@
       var accountHash = window.dashboardAccountsList.map(function (acc) {
         return (acc.id || '') + ':' + (acc.orderCount || 0) + ':' + (acc.lastUpdatedAt || '');
       }).join('|');
-      var rowHash = hashRows(rows) + '|' + accountHash + '|' + (period ? (period.preset + ':' + period.dateFrom + ':' + period.dateTo) : '');
+      var rowHash = hashRows(rows) + '|' + accountHash + '|' + activeDeliveredDateMode + '|' + (period ? (period.preset + ':' + period.dateFrom + ':' + period.dateTo) : '');
       if (_aggregatorCache && rowHash === _aggregatorCacheHash) {
         callback(_aggregatorCache);
         return;
@@ -854,7 +998,6 @@
       if (dateKey && !dailyStats[dateKey]) {
         dailyStats[dateKey] = emptyDayBucket();
         dayKeys.push(dateKey);
-        dayKeys.sort();
       }
       if (dateKey) {
         if (isDeliveredInPeriod) {
@@ -882,7 +1025,7 @@
       if (cityName) {
         if (!cityStats[cityName]) {
           cityStats[cityName] = {
-            due: 0, collected: 0, gap: 0, count: 0,
+            due: 0, collected: 0, gap: 0, count: 0, ndrBaseOrders: 0,
             deliveredOrders: 0, drBaseOrders: 0, drDeliveredOrders: 0,
             canceledCount: 0, shippingCount: 0, confirmedCount: 0, processingCount: 0,
             earnedCommission: 0, incomingCommission: 0, lostCommission: 0,
@@ -890,6 +1033,7 @@
             prepaidCount: 0, codCount: 0,
             prepaidDeliveredCount: 0, codDeliveredCount: 0,
             prepaidCanceledCount: 0, codCanceledCount: 0,
+            prepaidNdrBaseOrders: 0, codNdrBaseOrders: 0,
             prepaidDrBaseOrders: 0, prepaidDrDeliveredOrders: 0,
             codDrBaseOrders: 0, codDrDeliveredOrders: 0,
             deliveryDays: [],
@@ -902,9 +1046,15 @@
 
         if (inCreatedPeriod) {
           cs.count++;
+          cs.ndrBaseOrders++;
           cs.totalRevenue += priceVal;
-          if (rowIsPrepaid) cs.prepaidCount++;
-          else cs.codCount++;
+          if (rowIsPrepaid) {
+            cs.prepaidCount++;
+            cs.prepaidNdrBaseOrders++;
+          } else {
+            cs.codCount++;
+            cs.codNdrBaseOrders++;
+          }
         }
 
         if (isDeliveredInPeriod) {
@@ -963,8 +1113,9 @@
               sku: row.sku || '',
               name: cityProductName || row.sku || raw('منتج غير معروف'),
               orders: 0, delivered: 0, canceled: 0, commission: 0, revenue: 0,
-              activeOrders: 0,
+              activeOrders: 0, ndrBaseOrders: 0,
               prepaidCount: 0, codCount: 0,
+              prepaidNdrBaseOrders: 0, codNdrBaseOrders: 0,
               prepaidDelivered: 0, prepaidCanceled: 0,
               codDelivered: 0, codCanceled: 0
             };
@@ -973,9 +1124,15 @@
 
           if (inCreatedPeriod) {
             cp.orders++;
+            cp.ndrBaseOrders++;
             cp.revenue += priceVal;
-            if (rowIsPrepaid) cp.prepaidCount++;
-            else cp.codCount++;
+            if (rowIsPrepaid) {
+              cp.prepaidCount++;
+              cp.prepaidNdrBaseOrders++;
+            } else {
+              cp.codCount++;
+              cp.codNdrBaseOrders++;
+            }
           }
 
           if (isDeliveredInPeriod) {
@@ -1012,7 +1169,7 @@
           productStats[productKey] = {
             sku: row.sku || '',
             name: productName || row.sku || raw('منتج غير معروف'),
-            qty: 0, deliveredQty: 0, revenue: 0, commission: 0,
+            qty: 0, deliveredQty: 0, revenue: 0, commission: 0, deliveredSales: 0,
             deliveredCount: 0, placedCount: 0,
             canceledCount: 0, failedCount: 0, confirmedCount: 0,
             shippingCount: 0, processingCount: 0,
@@ -1045,6 +1202,7 @@
         if (isDeliveredInPeriod) {
           productStats[productKey].deliveredQty += rowQty;
           productStats[productKey].commission += commissionVal;
+          productStats[productKey].deliveredSales += priceVal;
           productStats[productKey].deliveredCount++;
         }
 
@@ -1089,8 +1247,18 @@
           }
         }
         var piecesKey = String(rowQty);
-        if (inCreatedPeriod) {
-          productStats[productKey].piecesMap[piecesKey] = (productStats[productKey].piecesMap[piecesKey] || 0) + 1;
+        if (inCreatedPeriod || isDeliveredInPeriod) {
+          var _pieceEntry = productStats[productKey].piecesMap[piecesKey];
+          if (!_pieceEntry || typeof _pieceEntry !== 'object') {
+            _pieceEntry = { count: typeof _pieceEntry === 'number' ? _pieceEntry : 0, delivered: 0 };
+          }
+          if (inCreatedPeriod) {
+            _pieceEntry.count++;
+          }
+          if (isDeliveredInPeriod) {
+            _pieceEntry.delivered++;
+          }
+          productStats[productKey].piecesMap[piecesKey] = _pieceEntry;
           if (cityKey) {
             if (!productStats[productKey].quantityCityMap[piecesKey]) {
               productStats[productKey].quantityCityMap[piecesKey] = {};
@@ -1099,7 +1267,9 @@
             if (!_qcEntry || typeof _qcEntry !== 'object') {
               _qcEntry = { count: typeof _qcEntry === 'number' ? _qcEntry : 0, delivered: 0 };
             }
-            _qcEntry.count++;
+            if (inCreatedPeriod) {
+              _qcEntry.count++;
+            }
             if (isDeliveredInPeriod) {
               _qcEntry.delivered++;
             }
@@ -1109,6 +1279,8 @@
       }
     });
 
+
+    dayKeys.sort();
 
     var earnedSpark = [], incomingSpark = [], lostSpark = [], ordersSpark = [], gapSpark = [];
     var cumEarned = 0, cumIncoming = 0, cumLost = 0, cumOrders = 0, cumGap = 0;
@@ -1159,7 +1331,8 @@
     var sortedCities = Object.keys(cityStats).map(function (name) {
       var stat = cityStats[name];
       // T-09/T-10: Compute derived rates from extended fields
-      var ndrPctCity = netDeliveryRatePct(stat.deliveredOrders, stat.count);
+      var cityNdrBase = stat.ndrBaseOrders || stat.count;
+      var ndrPctCity = netDeliveryRatePct(stat.deliveredOrders, cityNdrBase);
       var drPctCity = stat.drBaseOrders > 0
         ? parseFloat(((stat.deliveredOrders / stat.drBaseOrders) * 100).toFixed(1))
         : 0;
@@ -1175,10 +1348,17 @@
       var avgDeliveryDays = stat.deliveryDays.length
         ? parseFloat((stat.deliveryDays.reduce(function (sum, value) { return sum + value; }, 0) / stat.deliveryDays.length).toFixed(1))
         : null;
+      stat.ndrPct = ndrPctCity;
+      stat.drPct = drPctCity;
+      stat.prepaidPct = prepaidPctCity;
+      stat.codPct = codPctCity;
+      stat.avgOrderValue = avgOrderValue;
+      stat.avgDeliveryDays = avgDeliveryDays;
+      stat.deliveryDurationOrders = stat.deliveryDays.length;
       return {
         // Existing fields
         name: name, due: stat.due, collected: stat.collected, gap: stat.gap, sar: stat.gap,
-        count: stat.count, deliveredOrders: stat.deliveredOrders, drBaseOrders: stat.drBaseOrders,
+        count: stat.count, ndrBaseOrders: cityNdrBase, deliveredOrders: stat.deliveredOrders, drBaseOrders: stat.drBaseOrders,
         drDeliveredOrders: stat.drDeliveredOrders,
         pct: drPctCity,
         // T-06: Province
@@ -1197,6 +1377,7 @@
         prepaidCount: stat.prepaidCount, codCount: stat.codCount,
         prepaidDeliveredCount: stat.prepaidDeliveredCount, codDeliveredCount: stat.codDeliveredCount,
         prepaidCanceledCount: stat.prepaidCanceledCount, codCanceledCount: stat.codCanceledCount,
+        prepaidNdrBaseOrders: stat.prepaidNdrBaseOrders, codNdrBaseOrders: stat.codNdrBaseOrders,
         prepaidDrBaseOrders: stat.prepaidDrBaseOrders, codDrBaseOrders: stat.codDrBaseOrders,
         prepaidDrDeliveredOrders: stat.prepaidDrDeliveredOrders, codDrDeliveredOrders: stat.codDrDeliveredOrders,
         prepaidPct: prepaidPctCity, codPct: codPctCity,
@@ -1261,6 +1442,9 @@
 
       var ndrPct = netDeliveryRatePct(p.deliveredCount, p.placedCount);
       var deliveryPct = parseFloat((p.deliveredCount / total * 100).toFixed(1));
+      var productDeliveredAov = p.deliveredCount > 0
+        ? parseFloat((p.deliveredSales / p.deliveredCount).toFixed(2))
+        : 0;
 
       var activeTotal = p.deliveredCount + p.processingCount + p.confirmedCount + p.shippingCount + (p.realFailedCount || 0);
       var drPct = activeTotal > 0 ? parseFloat((p.deliveredCount / activeTotal * 100).toFixed(1)) : 0;
@@ -1286,7 +1470,17 @@
         .slice(0, 5);
 
       var piecesBreakdown = Object.keys(p.piecesMap)
-        .map(function (k) { return { qty: k, count: p.piecesMap[k] }; })
+        .map(function (k) {
+          var entry = p.piecesMap[k];
+          var qtyCount = typeof entry === 'object' ? entry.count || 0 : entry;
+          var qtyDelivered = typeof entry === 'object' ? entry.delivered || 0 : 0;
+          return {
+            qty: k,
+            count: qtyCount,
+            delivered: qtyDelivered,
+            ndr: netDeliveryRatePct(qtyDelivered, qtyCount)
+          };
+        })
         .sort(function (a, b) { return Number(a.qty) - Number(b.qty); });
 
       var quantityCityBreakdown = Object.keys(p.quantityCityMap)
@@ -1329,6 +1523,8 @@
         qty: p.qty,
         revenue: p.revenue,
         commission: p.commission,
+        deliveredSales: p.deliveredSales,
+        deliveredAov: productDeliveredAov,
         deliveredCount: p.deliveredCount,
         deliveryRate: p.placedCount > 0 ? parseFloat(((p.deliveredCount / p.placedCount) * 100).toFixed(1)) : 0,
         drRate: activeTotal > 0 ? parseFloat(((p.deliveredCount / activeTotal) * 100).toFixed(1)) : 0,
@@ -1352,25 +1548,6 @@
     // FIX: sort descending — highest deliveredCount first; commission as tiebreaker (b - a = desc)
     }).sort(function (a, b) {
       return (b.deliveredCount - a.deliveredCount) || (b.commission - a.commission);
-    });
-
-    // DEBUG: verify all counters are correct for top 3 products
-    console.log('[Dashboard][products] Counter check for top 3:');
-    rankedProducts.slice(0, 3).forEach(function (p, i) {
-      console.log('[#' + (i + 1) + '] ' + p.name, {
-        placed: p.placedCount,
-        delivered: p.deliveredCount,
-        canceled: p.canceledCount,
-        confirmed: p.confirmedCount,
-        shipping: p.shippingCount,
-        processing: p.processingCount,
-        waiting: p.waitingCount,
-        pending: p.pendingCount,
-        confirmationPct: p.confirmationPct,
-        cancelPct: p.cancelPct,
-        ndrPct: p.ndrPct,
-        deliveryPct: p.deliveryPct
-      });
     });
 
     var productsWithEmojis = rankedProducts.map(function (p, idx) {
@@ -1439,6 +1616,15 @@
     var roiEgpRate  = isFinite(roiEgpRateRaw) && roiEgpRateRaw > 0 ? roiEgpRateRaw : 52;
     var failureRate   = placedCount > 0 ? percentOf(failedCount, placedCount) : 0;
     var activePipelineCount = pendingCount + confirmedCount + processingCount + waitingCount + shippingCount;
+    var previousOverview = overviewMetricSummary(
+      meta.previousRows || [],
+      meta.previousPeriod || null,
+      meta.deliveredDateMode || 'updatedAt'
+    );
+    var deliveredSalesInRoiCurrency = convertDashboardCurrency(totalDeliveredSales, 'SAR', roiCurrency, roiEgpRate);
+    var previousDeliveredSalesInRoiCurrency = convertDashboardCurrency(previousOverview.totalDeliveredSales, 'SAR', roiCurrency, roiEgpRate);
+    var netRoas = roiAdSpend > 0 ? parseFloat((deliveredSalesInRoiCurrency / roiAdSpend).toFixed(4)) : 0;
+    var previousNetRoas = roiAdSpend > 0 ? parseFloat((previousDeliveredSalesInRoiCurrency / roiAdSpend).toFixed(4)) : 0;
     // Row scopes are intentionally distinct: intake totals use creation date,
     // while delivery outcomes use the date on which delivery happened.
     var createdOrders = filterCreatedOrders(displayRows, meta.period);
@@ -1455,14 +1641,15 @@
     return {
       meta: meta,
       overview: {
-        earnedCommission:   { value: earnedCommission,   delta: calcDelta(secondHalfEarned,    firstHalfEarned),    unit: 'SAR',         color: 'green'  },
-        incomingCommission: { value: incomingCommission, delta: calcDelta(secondHalfIncoming,  firstHalfIncoming),  unit: 'SAR',         color: 'orange' },
-        lostCommission:     { value: lostCommission,     delta: calcDelta(secondHalfLost,      firstHalfLost),      unit: 'SAR',         color: 'red'    },
-        totalOrders:        { value: placedCount,         delta: calcDelta(secondHalfOrders,    firstHalfOrders),    unit: raw('طلب'),    color: 'blue'   },
-        totalSales:          { value: totalSales,          delta: 0,                            unit: 'SAR',         color: 'green'  },
-        overallAov:          { value: overallAov,          delta: 0,                            unit: 'SAR',         color: 'blue'   },
-        totalDeliveredSales: { value: totalDeliveredSales, delta: 0,                            unit: 'SAR',         color: 'green'  },
-        deliveredAov:        { value: deliveredAov,        delta: 0,                            unit: 'SAR',         color: 'blue'   },
+        earnedCommission:   { value: earnedCommission,   delta: calcDelta(earnedCommission, previousOverview.earnedCommission),        unit: 'SAR',         color: 'green'  },
+        incomingCommission: { value: incomingCommission, delta: calcDelta(incomingCommission, previousOverview.incomingCommission),    unit: 'SAR',         color: 'orange' },
+        lostCommission:     { value: lostCommission,     delta: calcDelta(lostCommission, previousOverview.lostCommission),            unit: 'SAR',         color: 'red'    },
+        totalOrders:        { value: placedCount,         delta: calcDelta(placedCount, previousOverview.totalOrders),                  unit: raw('طلب'),    color: 'blue'   },
+        totalSales:          { value: totalSales,          delta: calcDelta(totalSales, previousOverview.totalSales),                   unit: 'SAR',         color: 'green'  },
+        overallAov:          { value: overallAov,          delta: calcDelta(overallAov, previousOverview.overallAov),                   unit: 'SAR',         color: 'blue'   },
+        totalDeliveredSales: { value: totalDeliveredSales, delta: calcDelta(totalDeliveredSales, previousOverview.totalDeliveredSales), unit: 'SAR',         color: 'green'  },
+        deliveredAov:        { value: deliveredAov,        delta: calcDelta(deliveredAov, previousOverview.deliveredAov),               unit: 'SAR',         color: 'blue'   },
+        netRoas:             { value: netRoas,             delta: calcDelta(netRoas, previousNetRoas),                                  unit: 'x',           color: 'purple' },
         sparklines: { earned: earnedSpark, incoming: incomingSpark, lost: lostSpark, orders: ordersSpark },
         health: {
           earned:   { pct: healthEarnedPct,   sar: earnedCommission   },
@@ -1541,7 +1728,8 @@
       roi: {
         adSpend: roiAdSpend, currency: roiCurrency, egpRate: roiEgpRate, sarRate: 3.75,
         totalOrders: placedCount, ndrPct: ndrPct, avgCommission: avgCommission,
-        deliveredCount: deliveredCount,
+        deliveredCount: deliveredCount, totalDeliveredSales: totalDeliveredSales,
+        netRoas: netRoas,
         avgCPA: placedCount > 0 ? parseFloat((roiAdSpend / placedCount).toFixed(2)) : 0
       },
 

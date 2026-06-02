@@ -87,6 +87,10 @@
     var dashData = { _loaded: false, meta: { accountOptions: window.dashboardAccountsList || [] } };
     var dashVersion = 0;
     var marketingStatusLoads = {};
+    var autoMarketingSyncTimer = null;
+    var lastAutoMarketingSyncKey = '';
+    var resolvePendingAutoMarketingSync = null;
+    var dashboardRefreshSeq = 0;
 
     function esc(value) {
       if (window.KhodUI && typeof window.KhodUI.esc === 'function') return window.KhodUI.esc(value);
@@ -107,7 +111,7 @@
         return;
       }
       var title = state.title || (window._t ? window._t('dashboard.fetching_title') : 'Updating dashboard...');
-      var body = state.body || (window._t ? window._t('dashboard.fetching_body') : 'Fetching live Khod data. This may take a few minutes. Keep the app open.');
+      var body = state.body || (window._t ? window._t('dashboard.fetching_body') : 'Fetching orders, refreshing product data, and matching ad spend across accounts. This can take a few minutes; keep the app open.');
       overlay.innerHTML =
         '<div class="dashboard-update-panel" role="status">' +
           '<span class="dash-preloader-spinner" aria-hidden="true"></span>' +
@@ -123,23 +127,120 @@
 
     function ensureMarketingStatusLoaded(data) {
       var store = window.DashboardMarketingState;
-      if (!store || typeof store.get !== 'function' || typeof store.load !== 'function') return;
+      if (!store || typeof store.get !== 'function' || typeof store.load !== 'function') return Promise.resolve(null);
       var meta = data && data.meta ? data.meta : {};
       var accountId = meta.activeAccountId || (window.getActiveAccountId ? window.getActiveAccountId() : '__all__');
       accountId = String(accountId || '__all__');
-      if (!accountId) return;
+      if (!accountId) return Promise.resolve(null);
 
       var current = store.get(accountId);
-      if (current && current.loading) return;
-      if (marketingStatusLoads[accountId]) return;
+      if (current && current.loading && marketingStatusLoads[accountId]) return marketingStatusLoads[accountId];
+      if (marketingStatusLoads[accountId]) return marketingStatusLoads[accountId];
+      if (current && (current.summary || current.status !== 'disconnected' || current.error || current.offline || current.reconnectRequired)) {
+        return Promise.resolve(current);
+      }
 
-      marketingStatusLoads[accountId] = true;
-      store.load(accountId).catch(function () { return null; }).then(function () {
-        marketingStatusLoads[accountId] = false;
+      marketingStatusLoads[accountId] = store.load(accountId).catch(function () { return null; }).then(function (status) {
+        marketingStatusLoads[accountId] = null;
+        return status;
+      });
+      return marketingStatusLoads[accountId];
+    }
+
+    function activeDashboardAccountId() {
+      var activeId = window.getActiveAccountId ? window.getActiveAccountId() : '__all__';
+      return String(activeId || '__all__');
+    }
+
+    function marketingSyncPayload(period, accountId) {
+      period = period || (window.DashboardPeriodState && window.DashboardPeriodState.get()) || {};
+      var roi = window.DashboardRoiState && typeof window.DashboardRoiState.get === 'function'
+        ? window.DashboardRoiState.get(accountId, dashData && dashData.roi)
+        : {};
+      return {
+        dateFrom: period.from || period.dateFrom || period.start || '',
+        dateTo: period.to || period.dateTo || period.end || '',
+        targetCurrency: 'SAR',
+        egpRate: Number(roi.egpRate) || 52
+      };
+    }
+
+    function setDashboardLoading() {
+      dashData._loaded = false;
+      dashData._loading = true;
+      dashData._version = ++dashVersion;
+      dashData.meta = dashData.meta || {};
+      dashData.meta.activeAccountId = activeDashboardAccountId();
+      if (typeof window.refreshDashboardShell === 'function') {
+        window.refreshDashboardShell(shellMount, dashData);
+      }
+    }
+
+    function syncMarketingSpend(period) {
+      var store = window.DashboardMarketingState;
+      if (!store || typeof store.sync !== 'function') return Promise.resolve(null);
+      var accountId = activeDashboardAccountId();
+      var payload = marketingSyncPayload(period, accountId);
+      if (!payload.dateFrom || !payload.dateTo) return Promise.resolve(null);
+      var syncKey = accountId + '|' + payload.dateFrom + '|' + payload.dateTo + '|' + payload.egpRate;
+      clearTimeout(autoMarketingSyncTimer);
+      if (resolvePendingAutoMarketingSync) {
+        resolvePendingAutoMarketingSync(null);
+        resolvePendingAutoMarketingSync = null;
+      }
+      return new Promise(function (resolve) {
+        resolvePendingAutoMarketingSync = resolve;
+        autoMarketingSyncTimer = setTimeout(function () {
+          var currentKey = syncKey;
+          lastAutoMarketingSyncKey = currentKey;
+          var loadFirst = Promise.resolve(null);
+          if (typeof store.get === 'function' && typeof store.load === 'function') {
+            var current = store.get(accountId);
+            var hasKnownMarketingState = !!(
+              current &&
+              (current.summary ||
+                current.status !== 'disconnected' ||
+                current.error ||
+                current.offline ||
+                current.reconnectRequired ||
+                current.linkedAccountCount)
+            );
+            if (!hasKnownMarketingState) loadFirst = store.load(accountId).catch(function () { return null; });
+          }
+          loadFirst.then(function () {
+            if (lastAutoMarketingSyncKey !== currentKey) return null;
+            return store.sync(accountId, payload);
+          }).then(function (result) {
+            if (resolvePendingAutoMarketingSync === resolve) resolvePendingAutoMarketingSync = null;
+            resolve(result);
+          }).catch(function (error) {
+            console.warn('[Dashboard] Automatic marketing spend sync failed:', error);
+            if (resolvePendingAutoMarketingSync === resolve) resolvePendingAutoMarketingSync = null;
+            resolve(null);
+          });
+        }, 350);
       });
     }
 
-    function runAggregator(showLoader) {
+    function ensureMarketingReady(data, options) {
+      options = options || {};
+      return ensureMarketingStatusLoaded(data).then(function (status) {
+        if (!options.syncMarketing) return status;
+        var meta = data && data.meta ? data.meta : {};
+        return syncMarketingSpend(meta.period).then(function (syncStatus) {
+          return syncStatus || status;
+        });
+      });
+    }
+
+    function runAggregator(showLoader, options) {
+      options = options || {};
+      var readyResolve = null;
+      var readyPromise = new Promise(function (resolve) { readyResolve = resolve; });
+      if (document.getElementById('preloader') && !window._dashboardInitialReady) {
+        window._dashboardInitialReady = readyPromise;
+      }
+
       if (showLoader) {
         dashData._loaded = false;
         dashData._loading = true;
@@ -154,10 +255,12 @@
       if (typeof window.runDashboardAggregator !== 'function') {
         resetObject(dashData, emptyDashboardData());
         dashData._version = ++dashVersion;
+        dashData._loading = false;
         if (typeof window.refreshDashboardShell === 'function') {
           window.refreshDashboardShell(shellMount, dashData);
         }
-        return;
+        if (readyResolve) readyResolve(dashData);
+        return readyPromise;
       }
 
       window.runDashboardAggregator(function (result) {
@@ -168,16 +271,28 @@
         }
         dashData._version = ++dashVersion;
         window.dashboardGeoData = dashData;
-        dashData._loading = false;
-        if (typeof window.refreshDashboardShell === 'function') {
-          window.refreshDashboardShell(shellMount, dashData);
-        }
-        ensureMarketingStatusLoaded(dashData);
+        dashData._loading = true;
+        ensureMarketingReady(dashData, options).then(function () {
+          dashData._loading = false;
+          dashData._version = ++dashVersion;
+          window.dashboardGeoData = dashData;
+          if (typeof window.refreshDashboardShell === 'function') {
+            window.refreshDashboardShell(shellMount, dashData);
+          }
+          if (readyResolve) readyResolve(dashData);
+        });
       });
+      return readyPromise;
     }
 
     function handlePeriodChange() {
-      runAggregator(true);
+      var period = window.DashboardPeriodState && window.DashboardPeriodState.get();
+      var refreshSeq = ++dashboardRefreshSeq;
+      setDashboardLoading();
+      syncMarketingSpend(period).then(function () {
+        if (refreshSeq !== dashboardRefreshSeq) return;
+        runAggregator(true);
+      });
     }
 
     function handleDeliveredDateModeChange() {
@@ -187,7 +302,12 @@
     window.renderDashboardShell(shellMount, dashData, {
       onAccountChange: function (accountId) {
         if (window.setActiveAccountId) window.setActiveAccountId(accountId);
-        runAggregator(true);
+        var refreshSeq = ++dashboardRefreshSeq;
+        setDashboardLoading();
+        syncMarketingSpend(window.DashboardPeriodState && window.DashboardPeriodState.get()).then(function () {
+          if (refreshSeq !== dashboardRefreshSeq) return;
+          runAggregator(true);
+        });
       },
       onPeriodChange: handlePeriodChange,
       onDeliveredDateModeChange: handleDeliveredDateModeChange,
@@ -198,13 +318,18 @@
         else ids = (window.dashboardAccountsList || [])
           .filter(function (acc) { return acc && acc.id && acc.id !== '__all__'; })
           .map(function (acc) { return acc.id; });
+        if (!ids.length && Array.isArray(window._kbotAccounts)) {
+          ids = window._kbotAccounts
+            .filter(function (acc) { return acc && acc.id; })
+            .map(function (acc) { return acc.id; });
+        }
         if (typeof window._onRunForDashboard === 'function') {
           window._onRunForDashboard(ids, period || (window.DashboardPeriodState && window.DashboardPeriodState.get()), { stayOnDashboard: true });
         }
       }
     });
 
-    runAggregator(false);
+    runAggregator(false, { syncMarketing: true });
     if (window.KhodPremiumPreview) window.KhodPremiumPreview.mount(el, 'dashboard');
   };
 })();

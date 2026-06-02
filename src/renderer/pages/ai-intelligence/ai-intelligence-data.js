@@ -66,7 +66,11 @@
       riskLevel: opts.riskLevel || "medium",
       confidence: opts.confidence || "medium",
       evidence: (opts.evidence || []).filter(Boolean).slice(0, 4),
-      explanation: opts.explanation || explanation(),
+      explanation: normalizeExplanation(opts.explanation, {
+        why: opts.expectedBenefit || opts.title,
+        signals: opts.evidence || [],
+        confidence: opts.confidence || "medium",
+      }),
       primaryActionLabel: opts.primaryActionLabel || tr("aii.action.review", null, "Review"),
       action: opts.action || action("NAVIGATE", tr("aii.action.review", null, "Review"), { section: "master" }),
       status: opts.status || "new",
@@ -85,7 +89,11 @@
       assumptions: (opts.assumptions || []).filter(Boolean).slice(0, 4),
       influencingSignals: (opts.influencingSignals || []).filter(Boolean).slice(0, 4),
       confidence: opts.confidence || "limited",
-      explanation: opts.explanation || explanation(null, opts.influencingSignals, opts.recommendedFollowUp, opts.confidence, opts.limitations),
+      explanation: normalizeExplanation(opts.explanation, {
+        why: opts.valueLabel || opts.title,
+        signals: opts.influencingSignals || [],
+        confidence: opts.confidence || "limited",
+      }),
       recommendedFollowUp: opts.recommendedFollowUp || tr("aii.forecast.followUp", null, "Review recent product and city performance."),
     };
   }
@@ -96,11 +104,18 @@
       id: opts.id || "alert-" + escId(opts.title || "alert"),
       title: opts.title || tr("aii.alert.title", null, "Important alert"),
       urgency: opts.urgency || "medium",
+      severity: opts.urgency || opts.severity || "medium",
+      riskLevel: opts.urgency || opts.riskLevel || "medium",
+      confidence: opts.confidence || "medium",
       impactedArea: opts.impactedArea || "dashboard",
       reason: opts.reason || "",
       evidence: (opts.evidence || []).filter(Boolean).slice(0, 4),
       resolutionPath: opts.resolutionPath || tr("aii.action.review", null, "Review"),
-      explanation: opts.explanation || explanation(opts.reason, opts.evidence, opts.resolutionPath, opts.confidence || "medium"),
+      explanation: normalizeExplanation(opts.explanation, {
+        why: opts.reason || opts.title,
+        signals: opts.evidence || [],
+        confidence: opts.confidence || "medium",
+      }),
     };
   }
 
@@ -172,7 +187,7 @@
     var scaleCity = cities.slice().sort(function (a, b) { return b.scalingScore - a.scalingScore; })[0];
 
     if (worstProduct) {
-      var weakNdr = worstProduct.ndrPct < 55;
+      var weakNdr = worstProduct.ndrPct < 20;
       var title = weakNdr
         ? tr("aii.insight.weakProduct", { product: worstProduct.name }, "Weak delivery product")
         : tr("aii.insight.productWatch", { product: worstProduct.name }, "Product needs review");
@@ -242,7 +257,7 @@
         title: tr("aii.recommend.scaleProduct", null, "Test controlled scaling"),
         actionType: "scale_product",
         expectedBenefit: tr("aii.benefit.scaleWinner", null, "Grow the strongest commission source without losing control."),
-        riskLevel: Number(topProduct.ndrPct || 0) >= 65 ? "low" : "medium",
+        riskLevel: Number(topProduct.ndrPct || 0) >= 40 ? "low" : "medium",
         confidence: "medium",
         evidence: scaleSignals,
         explanation: explanation(tr("aii.explain.scaleProductWhy", { product: topProduct.name }, topProduct.name + " has the strongest commission signal."), scaleSignals, tr("aii.next.scaleProduct", null, "Review product quality and test controlled scaling."), "medium"),
@@ -437,9 +452,9 @@
     return {
       message: src.message || "",
       insights: (Array.isArray(src.insights) ? src.insights : []).map(normalizeInsight),
-      recommendations: Array.isArray(src.recommendations) ? src.recommendations : [],
-      forecasts: Array.isArray(src.forecasts) ? src.forecasts : [],
-      alerts: Array.isArray(src.alerts) ? src.alerts : [],
+      recommendations: (Array.isArray(src.recommendations) ? src.recommendations : []).map(function (item) { return recommendation(item); }),
+      forecasts: (Array.isArray(src.forecasts) ? src.forecasts : []).map(function (item) { return forecast(item); }),
+      alerts: (Array.isArray(src.alerts) ? src.alerts : []).map(function (item) { return alert(item); }),
       actions: Array.isArray(src.actions) ? src.actions : [],
     };
   }

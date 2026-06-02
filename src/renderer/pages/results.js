@@ -59,6 +59,30 @@ window.renderResults = function (data, dateFrom, dateTo, onRunAgain, onHome) {
         color: var(--text2);
         white-space: nowrap;
       }
+      .orders-preview-table { border-collapse: collapse; width: 100%; }
+      .orders-preview-table th,
+      .orders-preview-table td {
+        padding: 7px 10px;
+        text-align: left;
+        border-bottom: 1px solid var(--border);
+        font-size: 12px;
+        overflow: hidden;
+        text-overflow: ellipsis;
+        white-space: nowrap;
+      }
+      .orders-preview-table th {
+        font-weight: 700;
+        font-size: 11px;
+        text-transform: uppercase;
+        letter-spacing: .04em;
+        color: var(--text2);
+        background: rgba(255,255,255,0.03);
+        position: sticky;
+        top: 0;
+        z-index: 1;
+      }
+      .orders-preview-table tbody tr:hover { background: rgba(79,142,247,0.05); }
+      .orders-preview-table tbody tr:last-child td { border-bottom: none; }
     `;
     document.head.appendChild(style);
   }
@@ -158,8 +182,8 @@ window.renderResults = function (data, dateFrom, dateTo, onRunAgain, onHome) {
         <td style="color:var(--text2)">${i + 1}</td>
         <td style="direction:rtl">${row.name || "—"}</td>
         <td style="font-family:monospace;color:var(--danger);direction:ltr">${row.rawPhone || "—"}</td>
-        <td style="max-width:200px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;direction:rtl" title="${(row.productName || "").replace(/"/g,"")}">${row.productName || "—"}</td>
-        <td style="font-size:11px">${reasonLabels[reasonKey] || reasonKey || "—"}</td>
+        <td style="min-width:300px;white-space:normal;line-height:1.55;direction:rtl;word-break:normal;overflow-wrap:anywhere" title="${(row.productName || "").replace(/"/g,"")}">${row.productName || "—"}</td>
+        <td style="min-width:180px;font-size:11px;white-space:normal;line-height:1.45">${reasonLabels[reasonKey] || reasonKey || "—"}</td>
         <td style="text-align:center">${row.uncertain ? `<span title="${t("results.phone_rescued_verify")}" style="color:var(--warning)">⚠️</span>` : ""}</td>
       </tr>`;
     }, "skipped");
@@ -172,7 +196,15 @@ window.renderResults = function (data, dateFrom, dateTo, onRunAgain, onHome) {
           <div style="font-size:11px;color:var(--text2)">${t("results.skipped_followup")}</div>
         </div>
         <div class="dash-section-body no-pad" style="overflow-x:auto">
-          <table class="orders-preview-table" style="font-size:12px">
+          <table class="orders-preview-table" style="font-size:12px;width:100%;min-width:980px;table-layout:fixed;border-collapse:collapse">
+            <colgroup>
+              <col style="width:38px">
+              <col style="width:28%">
+              <col style="width:130px">
+              <col style="width:34%">
+              <col style="width:24%">
+              <col style="width:32px">
+            </colgroup>
             <thead><tr>
               <th>#</th>
               <th>${t("results.customer_name_col")}</th>
@@ -193,25 +225,65 @@ window.renderResults = function (data, dateFrom, dateTo, onRunAgain, onHome) {
     if (!orderRows || orderRows.length === 0) return "";
     const t = window._t;
     const ordersCountFn = t("results.orders_count");
-    const paged = buildPagedItems(orderRows, (o, i, attrs) => `<tr ${attrs}>
-      <td style="color:var(--text2);font-size:11px">${i + 1}</td>
-      <td style="font-weight:600;direction:rtl">${o.name || "—"}</td>
-      <td style="font-family:monospace;color:var(--accent);font-weight:700;font-size:13px">${o.phone || "—"}</td>
-      <td style="max-width:200px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;direction:rtl" title="${(o.productName||"").replace(/"/g,"")}">${o.productName || "—"}</td>
-      <td style="text-align:right;font-weight:700">${o.qty || 1}</td>
-      <td style="text-align:right;color:var(--success)">${o.unitPrice || "—"}</td>
-      <td style=" color:var(--text2)">${o.city || "—"}</td>
-    </tr>`, "orders");
+
+    // Generate a unique ID for this table's search scope
+    const tableUid = `orders-tbl-${Date.now()}-${Math.random().toString(36).slice(2,6)}`;
+
+    function renderOrderRows(rows) {
+      if (!rows || rows.length === 0) {
+        return `<tr><td colspan="7" style="text-align:center;padding:14px;color:var(--text2);font-size:12px">${t("results.no_orders_found") || "No orders match your search"}</td></tr>`;
+      }
+      return rows.map((o, i) => `<tr>
+        <td style="color:var(--text2);font-size:11px;text-align:center;width:38px">${i + 1}</td>
+        <td style="font-weight:600;direction:rtl;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${o.name || "—"}</td>
+        <td style="font-family:monospace;color:var(--accent);font-weight:700;font-size:13px;white-space:nowrap">${o.phone || "—"}</td>
+        <td style="overflow:hidden;text-overflow:ellipsis;white-space:nowrap;direction:rtl" title="${(o.productName||"").replace(/"/g,"")}">${o.productName || "—"}</td>
+        <td style="text-align:right;font-weight:700;width:44px">${o.qty || 1}</td>
+        <td style="text-align:right;color:var(--success);white-space:nowrap;width:72px">${o.unitPrice || "—"}</td>
+        <td style="color:var(--text2);overflow:hidden;text-overflow:ellipsis;white-space:nowrap;width:90px">${o.city || "—"}</td>
+      </tr>`).join("");
+    }
+
+    // Inject search filter function once
+    if (!window._resOrderSearch) {
+      window._resOrderSearch = function(uid, query) {
+        const allRows = window._resOrderRows && window._resOrderRows[uid];
+        if (!allRows) return;
+        const q = (query || "").trim().toLowerCase();
+        const filtered = q ? allRows.filter(o =>
+          (o.name || "").toLowerCase().includes(q) ||
+          (o.phone || "").toLowerCase().includes(q) ||
+          (o.productName || "").toLowerCase().includes(q)
+        ) : allRows;
+        const tbody = document.getElementById(`${uid}-tbody`);
+        if (tbody) tbody.innerHTML = renderOrderRows(filtered);
+      };
+    }
+    if (!window._resOrderRows) window._resOrderRows = {};
+    window._resOrderRows[tableUid] = orderRows;
+
     return `
       <div class="dash-section">
         <div class="dash-section-header">
           <div class="dash-section-title"><span>📋</span> ${label || t("results.all_orders_label")} <span style="font-size:11px;font-weight:400;color:var(--text2);margin-left:6px">${typeof ordersCountFn === "function" ? ordersCountFn(orderRows.length) : ordersCountFn}</span></div>
           <div style="font-size:11px;color:var(--text2)">${t("run.click_to_copy")}</div>
         </div>
+        <div style="padding:8px 12px;border-bottom:1px solid var(--border);background:rgba(0,0,0,0.04)">
+          <input type="text" placeholder="${t('results.search_orders_placeholder') || 'Search by name, phone or product…'}" style="width:100%;box-sizing:border-box;background:var(--bg);border:1px solid var(--border);border-radius:var(--radius-sm);padding:6px 10px;font-size:12px;color:var(--text);outline:none" oninput="window._resOrderSearch('${tableUid}',this.value)">
+        </div>
         <div class="dash-section-body no-pad" style="overflow-x:auto">
-          <table class="orders-preview-table">
+          <table class="orders-preview-table" style="width:100%;table-layout:fixed;border-collapse:collapse">
+            <colgroup>
+              <col style="width:38px">
+              <col style="width:auto">
+              <col style="width:130px">
+              <col style="width:auto">
+              <col style="width:44px">
+              <col style="width:72px">
+              <col style="width:90px">
+            </colgroup>
             <thead><tr>
-              <th>#</th>
+              <th style="width:38px">#</th>
               <th>${t("results.customer_name_col")}</th>
               <th>${t("results.phone_col")}</th>
               <th>${t("results.product_col")}</th>
@@ -219,11 +291,10 @@ window.renderResults = function (data, dateFrom, dateTo, onRunAgain, onHome) {
               <th style="text-align:right">${t("results.price_col")}</th>
               <th>${t("results.city_col")}</th>
             </tr></thead>
-            <tbody>
-              ${paged.itemsHtml}
+            <tbody id="${tableUid}-tbody">
+              ${renderOrderRows(orderRows)}
             </tbody>
           </table>
-          ${paged.pagerHtml}
         </div>
       </div>
     `;
@@ -261,14 +332,18 @@ window.renderResults = function (data, dateFrom, dateTo, onRunAgain, onHome) {
       const t = window._t;
       if (failedOrders.errorRows && failedOrders.errorRows.length > 0) {
         return `<div style="overflow-x:auto">
-          <table class="orders-preview-table" style="font-size:12px">
+          <table class="orders-preview-table" style="font-size:12px;width:100%;table-layout:fixed;border-collapse:collapse">
+            <colgroup>
+              <col style="width:44px"><col style="width:80px"><col style="width:auto">
+              <col style="width:120px"><col style="width:auto">
+            </colgroup>
             <thead><tr>${[t("results.row_col"),t("results.sku"),t("results.product_col"),t("results.phone_col"),t("results.error_col")].map(h=>`<th>${h}</th>`).join("")}</tr></thead>
             <tbody>${failedOrders.errorRows.map(row=>`<tr>
-              <td style="color:var(--text2)">${row.row||"—"}</td>
-              <td style="font-family:monospace;color:var(--accent)">${row.sku||"—"}</td>
-              <td style="max-width:140px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${row.product||"—"}</td>
-              <td style="font-family:monospace">${row.phone||"—"}</td>
-              <td style="color:var(--danger);font-weight:600">${row.error||"—"}</td>
+              <td style="color:var(--text2);text-align:center">${row.row||"—"}</td>
+              <td style="font-family:monospace;color:var(--accent);overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${row.sku||"—"}</td>
+              <td style="overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${row.product||"—"}</td>
+              <td style="font-family:monospace;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${row.phone||"—"}</td>
+              <td style="color:var(--danger);font-weight:600;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${row.error||"—"}</td>
             </tr>`).join("")}</tbody>
           </table></div>`;
       }
@@ -374,7 +449,10 @@ window.renderResults = function (data, dateFrom, dateTo, onRunAgain, onHome) {
               <div style="font-size:11px;color:var(--text2)">${(()=>{const fn=t("results.accounts_click");return typeof fn==="function"?fn(accountResults.length):fn;})()}</div>
             </div>
             <div class="dash-section-body no-pad">
-              <table class="orders-preview-table">
+              <table class="orders-preview-table" style="width:100%;table-layout:fixed;border-collapse:collapse">
+                <colgroup>
+                  <col style="width:auto"><col style="width:70px"><col style="width:70px"><col style="width:80px">
+                </colgroup>
                 <thead><tr>
                   <th>${t("results.account_col")}</th>
                   <th style="text-align:right">${t("results.orders_col")}</th>
@@ -577,7 +655,10 @@ window.renderResults = function (data, dateFrom, dateTo, onRunAgain, onHome) {
                 <div style="font-size:11px;color:var(--text2)">${t("run.click_to_copy")}</div>
               </div>
               <div class="dash-section-body no-pad" style="overflow-x:auto">
-                <table class="orders-preview-table" style="font-size:12px">
+                <table class="orders-preview-table" style="font-size:12px;width:100%;table-layout:fixed;border-collapse:collapse">
+                  <colgroup>
+                    <col style="width:auto"><col style="width:80px"><col style="width:60px">
+                  </colgroup>
                   <thead><tr>
                     <th>${t("results.product_col")}</th>
                     <th style="text-align:right">${t("results.orders_col")}</th>
@@ -813,18 +894,22 @@ window.renderResults = function (data, dateFrom, dateTo, onRunAgain, onHome) {
 
   const errorRowsHtml = failedOrders.errorRows && failedOrders.errorRows.length > 0
     ? `<div style="overflow-x:auto">
-        <table class="orders-preview-table" style="font-size:12px">
+        <table class="orders-preview-table" style="font-size:12px;width:100%;table-layout:fixed;border-collapse:collapse">
+          <colgroup>
+            <col style="width:44px"><col style="width:80px"><col style="width:auto">
+            <col style="width:120px"><col style="width:auto">
+          </colgroup>
           <thead><tr>
             ${[t("results.row"), t("results.sku"), t("results.product_col"), t("results.phone"), t("results.error")]
               .map(h => `<th>${h}</th>`).join("")}
           </tr></thead>
           <tbody>
             ${failedOrders.errorRows.map(r => `<tr>
-              <td style="color:var(--text2)">${r.row || "—"}</td>
-              <td style="font-family:monospace;color:var(--accent)">${r.sku || "—"}</td>
-              <td style="max-width:160px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${r.product || "—"}</td>
-              <td style="font-family:monospace">${r.phone || "—"}</td>
-              <td style="color:var(--danger);font-weight:600">${r.error || "—"}</td>
+              <td style="color:var(--text2);text-align:center">${r.row || "—"}</td>
+              <td style="font-family:monospace;color:var(--accent);overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${r.sku || "—"}</td>
+              <td style="overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${r.product || "—"}</td>
+              <td style="font-family:monospace;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${r.phone || "—"}</td>
+              <td style="color:var(--danger);font-weight:600;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${r.error || "—"}</td>
             </tr>`).join("")}
           </tbody>
         </table>
@@ -970,7 +1055,10 @@ window.renderResults = function (data, dateFrom, dateTo, onRunAgain, onHome) {
               <div style="font-size:11px;color:var(--text2)">${t("run.click_cells_copy")}</div>
             </div>
             <div class="dash-section-body no-pad" style="overflow-x:auto">
-              <table class="orders-preview-table" style="font-size:12px">
+              <table class="orders-preview-table" style="font-size:12px;width:100%;table-layout:fixed;border-collapse:collapse">
+                <colgroup>
+                  <col style="width:auto"><col style="width:80px"><col style="width:80px">
+                </colgroup>
                 <thead><tr>
                   <th>${t("results.product_col")}</th>
                   <th style="text-align:right">${t("results.orders_col")}</th>

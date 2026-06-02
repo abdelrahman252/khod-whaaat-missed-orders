@@ -25,6 +25,18 @@ window.renderSection4 = function (mountEl, data, ctx) {
       ? ctx.formatSAR
       : (n) => Number(n).toLocaleString("en-US");
 
+  function rateColor(value) {
+    return window.dashboardRateColor
+      ? window.dashboardRateColor(value)
+      : value >= 40
+        ? "#22d3ee"
+        : value >= 30
+          ? "#00e676"
+          : value >= 20
+            ? "#f59e0b"
+            : "#ef4444";
+  }
+
   // Mock data (mirrors components/section4/data.js) used until aggregator wired
   const DEFAULTS = {
     totalDue: 0,
@@ -101,9 +113,9 @@ window.renderSection4 = function (mountEl, data, ctx) {
     var gap = d.gapSar || d.remaining || 0;
     var gapPct = parseFloat((100 - rate).toFixed(1));
 
-    if (rate >= 80) {
+    if (rate >= 40) {
       insights.push({
-        color: "#00e676",
+        color: rateColor(rate),
         iconType: "trendingUp",
         title: s4Txt("Excellent DR", "DR ممتاز"),
         body:
@@ -114,9 +126,9 @@ window.renderSection4 = function (mountEl, data, ctx) {
             "% — أداء تسليم ممتاز جداً",
           ),
       });
-    } else if (rate >= 60) {
+    } else if (rate >= 30) {
       insights.push({
-        color: "#f59e0b",
+        color: rateColor(rate),
         iconType: "trendingUp",
         title: s4Txt("Good DR", "DR جيد"),
         body:
@@ -126,7 +138,7 @@ window.renderSection4 = function (mountEl, data, ctx) {
       });
     } else {
       insights.push({
-        color: "#ef4444",
+        color: rateColor(rate),
         iconType: "alertCircle",
         title: s4Txt("Low DR", "DR منخفض"),
         body:
@@ -417,6 +429,7 @@ window.renderSection4 = function (mountEl, data, ctx) {
     const blueLen = DC / 2;
     const greenLen = deliveredShare * (DC / 2);
     const redLen = activeShare * (DC / 2);
+    const drColor = rateColor(D.drPct);
 
     function chipHtml(label, value, pct, color, side, unit) {
       var align =
@@ -434,7 +447,7 @@ window.renderSection4 = function (mountEl, data, ctx) {
         pct =
           D.drDeliveredOrders.toLocaleString("en-US") +
           s4Txt(" orders", " طلب");
-      } else if (color === "#3b82f6") {
+      } else if (label === "DR") {
         label = "DR";
         value = D.drPct;
         pct =
@@ -473,10 +486,10 @@ window.renderSection4 = function (mountEl, data, ctx) {
                       stroke="rgba(255,255,255,0.04)" stroke-width="${DSTROKE}"/>
               <!-- Blue arc (Right half) -->
               <circle cx="${DCX}" cy="${DCY}" r="${DR}" fill="none"
-                      stroke="#3b82f6" stroke-width="${DSTROKE}"
+                      stroke="${drColor}" stroke-width="${DSTROKE}"
                       stroke-dasharray="${blueLen} ${DC}" stroke-dashoffset="0"
                       transform="rotate(-90 ${DCX} ${DCY})"
-                      style="filter:drop-shadow(0 0 12px rgba(59,130,246,0.5));"/>
+                      style="filter:drop-shadow(0 0 12px ${drColor}99);"/>
               <!-- Red arc (Bottom left) -->
               <circle cx="${DCX}" cy="${DCY}" r="${DR}" fill="none"
                       stroke="#f43f5e" stroke-width="${DSTROKE}"
@@ -502,7 +515,7 @@ window.renderSection4 = function (mountEl, data, ctx) {
         
         <div style="width:100%;display:grid;grid-template-columns:repeat(3,1fr);gap:12px;margin-top:24px;text-align:center">
            ${chipHtml("Collected", D.collectedSar, "", "#00e676", "left", "SAR")}
-           ${chipHtml("DR", D.drPct, "", "#3b82f6", "center", "%")}
+           ${chipHtml("DR", D.drPct, "", drColor, "center", "%")}
            ${chipHtml("Gap", D.gapSar, "", "#f43f5e", "right", "SAR")}
         </div>
       </div>`;
@@ -788,8 +801,9 @@ window.renderSection4 = function (mountEl, data, ctx) {
   // ── City Breakdown HTML ──────────────────────────────────────────────────
   function cityBreakdownHTML() {
     const citiesRows = D.cities
-      .map(
-        (c, i) => `
+      .map((c, i) => {
+        var cityRateColor = rateColor(c.pct || 0);
+        return `
       <div style="
           display:grid;grid-template-columns:1.4fr 1fr 1.1fr 0.9fr 1fr;
           align-items:center;padding:12px 14px;font-size:13px;gap:6px;
@@ -812,12 +826,12 @@ window.renderSection4 = function (mountEl, data, ctx) {
           ${c.collected.toLocaleString("en-US")}
         </div>
         <div style="color:#ef4444;text-align:right;font-weight:700">${c.gap.toLocaleString("en-US")}</div>
-        <div style="color:#00e676;text-align:right;font-weight:700;
-                    text-shadow:0 0 8px rgba(0,230,118,0.3)">
+        <div style="color:${cityRateColor};text-align:right;font-weight:700;
+                    text-shadow:0 0 8px ${cityRateColor}55">
           ${c.pct.toFixed(1)}%
         </div>
-      </div>`,
-      )
+      </div>`;
+      })
       .join("");
 
     const maxDue = Math.max(...D.cities.map((c) => parseFloat(c.due || 0)), 1);
@@ -827,12 +841,13 @@ window.renderSection4 = function (mountEl, data, ctx) {
         const r = 3 + (dueVal / maxDue) * 6; // min 3, max 9
         const cx = parseFloat(c.x || 150);
         const cy = parseFloat(c.y || 150);
+        const cRateColor = rateColor(c.pct || 0);
         return `
         <g class="s4-city-dot" data-name="${tx(c.name)}" data-due="${c.due}" data-coll="${c.collected}" data-pct="${c.pct}" style="cursor:pointer; outline: none; pointer-events:all;">
-          <circle cx="${cx}" cy="${cy}" r="${r * 2.5}" fill="#14b8a6" opacity="0.15"
+          <circle cx="${cx}" cy="${cy}" r="${r * 2.5}" fill="${cRateColor}" opacity="0.15"
                   style="filter:blur(4px); pointer-events:none;"/>
-          <circle cx="${cx}" cy="${cy}" r="${r}" fill="#14b8a6" stroke="#fff" stroke-width="1"
-                  style="filter:drop-shadow(0 0 5px #14b8a6); pointer-events:none;"/>
+          <circle cx="${cx}" cy="${cy}" r="${r}" fill="${cRateColor}" stroke="#fff" stroke-width="1"
+                  style="filter:drop-shadow(0 0 5px ${cRateColor}); pointer-events:none;"/>
           <!-- Invisible larger circle for easier hover -->
           <circle cx="${cx}" cy="${cy}" r="${Math.max(15, r * 2.5)}" fill="transparent" />
         </g>`;
@@ -843,43 +858,6 @@ window.renderSection4 = function (mountEl, data, ctx) {
         window._kbotTheme) === "light";
     const _s4MapUid = Date.now();
     const _s4BgId = "s4mapfill_" + _s4MapUid;
-    // DEBUG
-    const _s4ThemeAttr = document.documentElement.getAttribute("data-theme");
-    const _s4KbotTheme = window._kbotTheme;
-    const _s4BodyBg = window.getComputedStyle(document.body).backgroundColor;
-    console.log(
-      "[S4][cityBreakdownHTML] data-theme:",
-      JSON.stringify(_s4ThemeAttr),
-      "| _kbotTheme:",
-      JSON.stringify(_s4KbotTheme),
-      "| lightMode:",
-      lightMode,
-      "| body bg:",
-      _s4BodyBg,
-      "| _s4BgId:",
-      _s4BgId,
-    );
-    console.log(
-      "[S4][cityBreakdownHTML] mapStop1:",
-      lightMode ? "#eef4ff" : "#0d1628",
-      "| mapStop2:",
-      lightMode ? "#dbeafe" : "#060d1a",
-      "| mapStop3:",
-      lightMode ? "#e8f0fb" : "#020508",
-    );
-
-    // Also check if old gradient IDs are still in DOM
-    const _oldGrad = document.getElementById("s4mapfill");
-    console.log(
-      "[S4][cityBreakdownHTML] old #s4mapfill still in DOM:",
-      !!_oldGrad,
-      _oldGrad ? _oldGrad.outerHTML.slice(0, 120) : "none",
-    );
-    console.log(
-      "[S4][cityBreakdownHTML] new gradient ID:",
-      _s4BgId,
-      "— will be injected now",
-    );
     const mapStop1 = lightMode ? "#eef4ff" : "#0f1e3d";
     const mapStop2 = lightMode ? "#dbeafe" : "#0a1528";
     const mapStop3 = lightMode ? "#e8f0fb" : "#060e1c";
@@ -1566,7 +1544,7 @@ window.renderSection4 = function (mountEl, data, ctx) {
             ${statCardHTML({
               id: "s4-rate",
               variant: "icon",
-              color: "#a855f7",
+              color: rateColor(D.drPct),
               iconType: "shieldCheck",
               label: "DR",
               value: D.drPct,
@@ -1579,7 +1557,7 @@ window.renderSection4 = function (mountEl, data, ctx) {
             ${statCardHTML({
               id: "s4-ndr",
               variant: "icon",
-              color: "#22d3ee",
+              color: rateColor(D.ndrPct),
               iconType: "trendingUp",
               label: "NDR",
               value: D.ndrPct,

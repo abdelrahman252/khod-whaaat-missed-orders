@@ -66,15 +66,11 @@
   /* colour helpers */
   function ndrColor(ndr) {
     /* ndr is a percentage value 0-100 */
-    if (ndr >= 75)  return '#00e676';
-    if (ndr >= 55)  return '#f59e0b';
-    return '#ef4444';
+    return window.dashboardRateColor ? window.dashboardRateColor(ndr) : (ndr >= 40 ? '#22d3ee' : ndr >= 30 ? '#00e676' : ndr >= 20 ? '#f59e0b' : '#ef4444');
   }
 
   function drColor(dr) {
-    if (dr > 70) return '#00e676';
-    if (dr > 55) return '#f59e0b';
-    return '#ef4444';
+    return window.dashboardRateColor ? window.dashboardRateColor(dr) : (dr >= 40 ? '#22d3ee' : dr >= 30 ? '#00e676' : dr >= 20 ? '#f59e0b' : '#ef4444');
   }
 
   function badge(score, type) {
@@ -162,7 +158,7 @@
       : (cityData.drBaseOrders > 0
           ? parseFloat(((cityData.deliveredOrders / cityData.drBaseOrders) * 100).toFixed(1))
           : 0);
-    var ndrPct = (typeof cityData.ndrPct === 'number' && cityData.ndrPct > 0)
+    var ndrPct = (typeof cityData.ndrPct === 'number')
       ? cityData.ndrPct
       : (orders > 0
           ? parseFloat(((cityData.deliveredOrders / orders) * 100).toFixed(1))
@@ -215,7 +211,7 @@
         canceled:   d.canceled   || 0,
         commission: d.commission || 0,
         activeOrders: d.activeOrders || 0,
-        ndrPct:     (d.orders || 0) > 0 ? ((d.delivered || 0) / (d.orders || 0) * 100) : 0,
+        ndrPct:     (d.ndrBaseOrders || d.orders || 0) > 0 ? ((d.delivered || 0) / (d.ndrBaseOrders || d.orders || 0) * 100) : 0,
         drPct:      (d.activeOrders || 0) > 0 ? ((d.delivered || 0) / (d.activeOrders || 0) * 100) : 0
       };
     });
@@ -333,10 +329,12 @@
     var codCanceled     = cityData.codCanceledCount     || 0;
 
     /* Prefer explicit codNdr / prepaidNdr if stored */
+    var prepaidNdrBase = cityData.prepaidNdrBaseOrders || prepaidCount;
+    var codNdrBase = cityData.codNdrBaseOrders || codCount;
     var prepaidNdr = typeof cityData.prepaidNdr === 'number' ? cityData.prepaidNdr
-      : (prepaidCount > 0 ? (prepaidDel / prepaidCount * 100) : 0);
+      : (prepaidNdrBase > 0 ? (prepaidDel / prepaidNdrBase * 100) : 0);
     var codNdr     = typeof cityData.codNdr === 'number' ? cityData.codNdr
-      : (codCount > 0 ? (codDel / codCount * 100) : (cityData.ndrPct || 0));
+      : (codNdrBase > 0 ? (codDel / codNdrBase * 100) : (cityData.ndrPct || 0));
 
     var delta      = prepaidNdr - codNdr;
     var prepaidPct = prepaidCount / total * 100;

@@ -12,7 +12,8 @@
       productSpend: {},
       currency: null
     },
-    lastStrategicQuestion: null
+    lastStrategicQuestion: null,
+    assistantWorkflow: null
   };
 
   function update(parsedIntent) {
@@ -51,6 +52,10 @@
     memory.knownInputs[key] = value;
   }
 
+  function setWorkflow(workflow) {
+    memory.assistantWorkflow = workflow || null;
+  }
+
   function clear() {
     memory = {
       currentProduct: null,
@@ -63,7 +68,8 @@
         productSpend: {},
         currency: null
       },
-      lastStrategicQuestion: null
+      lastStrategicQuestion: null,
+      assistantWorkflow: null
     };
   }
 
@@ -73,6 +79,7 @@
     setPending,
     clearPending,
     rememberInput,
+    setWorkflow,
     clear
   };
 

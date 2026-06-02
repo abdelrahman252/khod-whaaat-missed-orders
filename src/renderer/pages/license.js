@@ -74,9 +74,19 @@ window.renderLicense = function (onUnlocked) {
           color:#fff;font-size:15px;font-weight:700;
           box-shadow:0 4px 20px rgba(124,106,247,0.4);
           transition:opacity 0.2s,transform 0.15s;
-          margin-bottom:20px;
+          margin-bottom:10px;
         " onmouseover="this.style.opacity='.88'" onmouseout="this.style.opacity='1'">
           ${t("license.btn_activate")}
+        </button>
+
+        <button id="lic-support-btn" type="button" style="
+          width:100%;padding:12px;border-radius:10px;cursor:pointer;
+          background:transparent;border:1px solid var(--border);
+          color:var(--text2);font-size:13px;font-weight:800;
+          transition:border-color 0.2s,color 0.2s;
+          margin-bottom:18px;
+        ">
+          ${t("license.btn_support") !== "license.btn_support" ? t("license.btn_support") : ((window._kbotLang || "en") === "ar" ? "تواصل مع الدعم" : "Contact Support")}
         </button>
 
         <div style="font-size:11px;color:var(--text2);line-height:1.7">
@@ -105,6 +115,7 @@ window.renderLicense = function (onUnlocked) {
 
   const input = document.getElementById("lic-input");
   const btn   = document.getElementById("lic-btn");
+  const supportBtn = document.getElementById("lic-support-btn");
   const errEl = document.getElementById("lic-error");
 
   function showError(msg) {
@@ -118,6 +129,11 @@ window.renderLicense = function (onUnlocked) {
 
   input.addEventListener("input", clearError);
   input.addEventListener("keydown", (e) => { if (e.key === "Enter") btn.click(); });
+  supportBtn?.addEventListener("click", () => {
+    if (window.api && typeof window.api.openExternalUrl === "function") {
+      window.api.openExternalUrl("https://khod-whaaat-portal.vercel.app/").catch(() => {});
+    }
+  });
 
   btn.addEventListener("click", async () => {
     const key = input.value.trim();

@@ -496,7 +496,6 @@ async function khodExportFullMonth(context, page, requestedFrom, requestedTo) {
       "--lang=en-US",
       "--accept-lang=en-US,en",
       // ── Speed-up flags (safe, no anti-bot impact) ──
-      "--no-startup-window",           // skip the Chrome startup grace period
       "--disable-ipc-flooding-protection", // faster IPC between renderer/browser process
       "--disable-features=TranslateUI,InterestFeedContentSuggestions", // skip feature init
     ],

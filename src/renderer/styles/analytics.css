@@ -7,12 +7,13 @@
   color: var(--text);
   font-family: 'Inter', -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif !important;
   padding: 24px !important;
-  min-height: 100% !important;
+  min-height: max-content !important;
   display: flex !important;
   flex-direction: column !important;
   gap: 20px !important;
   -webkit-font-smoothing: antialiased;
   min-width: 0 !important;
+  flex: 0 0 auto !important;
 }
 @media (max-width: 1050px) {
   .analytics-page {
@@ -1676,6 +1677,18 @@
   backdrop-filter: blur(12px) !important;
   -webkit-backdrop-filter: blur(12px) !important;
   user-select: none;
+}
+
+.analytics-account-select-wrap .custom-select-value,
+#explorer-account-filter-wrap .custom-select-value {
+  display: flex;
+  min-width: 0;
+  white-space: normal;
+}
+
+.analytics-account-select-wrap .custom-select-trigger,
+#explorer-account-filter-wrap .custom-select-trigger {
+  min-height: 42px;
 }
 
 .custom-select-trigger:hover {

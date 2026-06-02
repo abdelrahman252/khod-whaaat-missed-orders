@@ -228,7 +228,7 @@
         ndr: ndr,
         deliveryRate: Math.min(90, ndr + 8),
         mainIssues: [
-          ndr < 55 ? "Low NDR in high-volume segments" : "CPA and margin pressure",
+          ndr < 20 ? "Low NDR in high-volume segments" : "CPA and margin pressure",
           idx % 5 === 0 ? "Weak city delivery quality" : "Unstable product performance"
         ]
       },

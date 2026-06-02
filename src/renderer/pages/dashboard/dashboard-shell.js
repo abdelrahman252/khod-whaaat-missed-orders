@@ -53,6 +53,18 @@
     return window.dashboardI18n ? window.dashboardI18n.t(key, params) : key;
   }
 
+  function trText(key, fallback, params) {
+    var value = tr(key, params);
+    return value && value !== key ? value : fallback;
+  }
+
+  function esc(value) {
+    if (window.KhodUI && typeof window.KhodUI.esc === 'function') return window.KhodUI.esc(value);
+    return String(value == null ? '' : value).replace(/[&<>"']/g, function (ch) {
+      return ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[ch];
+    });
+  }
+
   function isRtl() {
     return !window.dashboardI18n || window.dashboardI18n.isRtl();
   }
@@ -65,8 +77,23 @@
     return NAV_ITEMS.find(function (item) { return item.id === id; }) || NAV_ITEMS[0];
   }
 
+  function isDashboardPreviewMode() {
+    return window.KhodPremiumPreview && window.KhodPremiumPreview.isActive('dashboard');
+  }
+
+  function sectionAllowed(sectionId) {
+    return !(isDashboardPreviewMode() && sectionId === 'khodAi');
+  }
+
+  function normalizeSection(sectionId) {
+    return sectionAllowed(sectionId) ? sectionId : 'master';
+  }
+
   function buildSidebar(activeId) {
-    var navHTML = NAV_ITEMS.map(function (item) {
+    activeId = normalizeSection(activeId);
+    var navHTML = NAV_ITEMS.filter(function (item) {
+      return sectionAllowed(item.id);
+    }).map(function (item) {
       var active = item.id === activeId;
       var labelText = navLabel(item);
       return '<button type="button" class="dash-nav-btn ' + (active ? 'is-active' : '') + '" data-section="' + item.id + '" aria-label="' + labelText + '" aria-current="' + (active ? 'page' : 'false') + '" data-tooltip="' + labelText + '">' +
@@ -89,6 +116,7 @@
   }
 
   function buildTopbar(activeSection) {
+    activeSection = normalizeSection(activeSection);
     var title = navLabel(navItemById(activeSection));
     return '<div id="dash-global-topbar" class="dash-global-topbar" dir="' + (isRtl() ? 'rtl' : 'ltr') + '">' +
       '<div class="dash-topbar-cluster">' +
@@ -109,11 +137,34 @@
         '<span class="dash-title-dot"></span>' +
       '</div>' +
       '<div class="dash-topbar-cluster dash-chip">' +
+        '<button type="button" id="dashboard-tour-btn" class="khod-tour-quick-guide" title="' + tr('tour.common.quickGuide') + '" data-tooltip="' + tr('tour.common.quickGuide') + '"><span class="khod-tour-guide-mark">?</span><span>' + tr('tour.common.quickGuide') + '</span></button>' +
         '<span class="dash-live-dot"></span>' +
         '<span class="dash-last-update-label">' + tr('shell.lastUpdate') + '</span>' +
         '<span id="dashboard-last-updated" data-tooltip="' + tr('shell.lastUpdate') + '" class="dash-last-updated">--</span>' +
       '</div>' +
     '</div>';
+  }
+
+  function bindDashboardTour(shellEl, data, ctx) {
+    if (!window.KhodGuidedTour || !shellEl) return;
+    var opts = {
+      root: shellEl,
+      navigate: function (sectionId) {
+        switchSection(shellEl, sectionId, data, ctx, true);
+      }
+    };
+    var btn = shellEl.querySelector('#dashboard-tour-btn');
+    if (btn && !btn._tourReady) {
+      btn._tourReady = true;
+      btn.addEventListener('click', function () {
+        window.KhodGuidedTour.start('dashboard', opts);
+      });
+    }
+    setTimeout(function () {
+      if (document.body.contains(shellEl)) {
+        window.KhodGuidedTour.mountPagePrompt('dashboard', opts);
+      }
+    }, 700);
   }
 
   function periodOptions() {
@@ -259,12 +310,31 @@
 
   function loaderHTML(sectionId) {
     var label = navLabel(navItemById(sectionId || 'master'));
+    var steps = [
+      trText('shell.loadingStep.privateData', 'Preparing private data'),
+      trText('shell.loadingStep.orders', 'Organizing orders'),
+      trText('shell.loadingStep.pipeline', 'Building order pipeline'),
+      trText('shell.loadingStep.cities', 'Mapping cities'),
+      trText('shell.loadingStep.products', 'Reading product signals'),
+      trText('shell.loadingStep.cod', 'Checking COD collection'),
+      trText('shell.loadingStep.accountCalculator', 'Preparing account calculator'),
+      trText('shell.loadingStep.productCalculator', 'Preparing product calculator'),
+      trText('shell.loadingStep.marketing', 'Matching marketing spend'),
+      trText('shell.loadingStep.buyLines', 'Reading buy-line signals'),
+      trText('shell.loadingStep.ai', 'Scanning dashboard insights')
+    ];
+    var stepHtml = steps.map(function (step, idx) {
+      return '<span style="--dash-loader-delay:' + (idx * 1.6).toFixed(1) + 's">' + esc(step) + '</span>';
+    }).join('');
     return '<div class="dash-section-preloader" data-dashboard-preloader="true" role="status" aria-live="polite">' +
       '<div class="dash-preloader-head">' +
         '<span class="dash-preloader-spinner" aria-hidden="true"></span>' +
-        '<div>' +
-          '<div class="dash-preloader-title">' + tr('shell.loading') + '</div>' +
-          '<div class="dash-preloader-section">' + label + '</div>' +
+        '<div class="dash-preloader-copy">' +
+          '<div class="dash-preloader-title">' + esc(tr('shell.loading')) + '</div>' +
+          '<div class="dash-preloader-section">' +
+            '<span class="dash-preloader-cycle" aria-hidden="true">' + stepHtml + '</span>' +
+            '<span class="dash-preloader-target">' + esc(trText('shell.loadingFor', 'for')) + ' ' + esc(label) + '</span>' +
+          '</div>' +
         '</div>' +
       '</div>' +
       '<div class="dash-preloader-grid" aria-hidden="true">' +
@@ -391,7 +461,8 @@
       return [
         acc.id || acc.value || '',
         acc.orderCount || 0,
-        acc.label || acc.name || acc.email || acc.khodEmail || ''
+        acc.memberName || acc.easyEmail || acc.email || acc.khodEmail || acc.easyStore || acc.storeName || acc.label || acc.name || '',
+        acc.email || acc.khodEmail || acc.easyEmail || ''
       ].join(':');
     }).join('|');
     var activePeriod = window.DashboardPeriodState ? window.DashboardPeriodState.get() : null;
@@ -403,16 +474,34 @@
 
     var options = rawOptions.map(function (acc) {
       var count = Number(acc.orderCount || 0);
-      var displayStr = acc.easyEmail || acc.email || acc.khodEmail || acc.label || acc.name || acc.id;
+      var primary = acc.memberName || acc.label || acc.name || acc.easyStore || acc.storeName || acc.easyEmail || acc.email || acc.khodEmail || acc.id;
+      var email = acc.email || acc.khodEmail || acc.easyEmail || '';
+      var displayStr = primary;
+      var countText = count ? '  ' + (window.dashboardI18n ? window.dashboardI18n.number(count) : count.toLocaleString('en-US')) + ' ' + tr(count === 1 ? 'shell.ordersSuffix' : 'shell.orderCountSuffix') : '';
       return {
         value: acc.id || acc.value,
-        label: (window.dashboardI18n ? window.dashboardI18n.raw(displayStr) : displayStr) + (count ? '  ' + (window.dashboardI18n ? window.dashboardI18n.number(count) : count.toLocaleString('en-US')) + ' ' + tr(count === 1 ? 'shell.ordersSuffix' : 'shell.orderCountSuffix') : '')
+        label: (window.dashboardI18n ? window.dashboardI18n.raw(displayStr) : displayStr) + countText,
+        subLabel: email && email !== primary ? email : ''
       };
     });
     window.renderCustomSelect(wrap, options, current, function (value) {
       shellEl._topbarSelectKey = null; // force re-render after change
       if (typeof opts.onAccountChange === 'function') opts.onAccountChange(value);
     }, { searchable: true, maxHeight: '280px', ariaLabel: tr('shell.account') });
+  }
+
+  function updateFirstRunGuidance(shellEl, data) {
+    var guidance = shellEl && shellEl.querySelector('#dashboard-first-run-guidance');
+    if (!guidance) return;
+    var show = !!(data && data.meta && data.meta.hasData === false) && !isDashboardPreviewMode();
+    guidance.style.display = show ? 'flex' : 'none';
+    var btn = guidance.querySelector('#dashboard-first-run-btn');
+    if (btn && !btn._dashFirstRunReady) {
+      btn._dashFirstRunReady = true;
+      btn.addEventListener('click', function () {
+        if (typeof goToSetup === 'function') goToSetup('run');
+      });
+    }
   }
 
   function applyInnerCollapse(shellEl, collapsed) {
@@ -640,8 +729,10 @@
   }
 
   function switchSection(shellEl, sectionId, data, ctx, skipDelay) {
+    sectionId = normalizeSection(sectionId);
     setSidebarActive(shellEl, sectionId);
     updateTopbar(shellEl, data, ctx.options);
+    updateFirstRunGuidance(shellEl, data);
 
     var pane = shellEl.querySelector('#dash-section-pane');
     if (!pane) return;
@@ -669,11 +760,6 @@
         pane.innerHTML = loaderHTML(sectionId);
         return;
       }
-      if (data.meta && data.meta.hasData === false && sectionId !== 'marketing') {
-        pane.innerHTML = emptyState(data);
-        return;
-      }
-
       var fn = window[SECTION_FN[sectionId]];
       if (typeof fn !== 'function') {
         // Section registered but not yet loaded.
@@ -707,7 +793,7 @@
     }
     options = options || {};
     mountEl._dashboardOptions = options;
-    var activeSection = mountEl._dashboardActiveSection || window._dashboardInitialSection || 'master';
+    var activeSection = normalizeSection(mountEl._dashboardActiveSection || window._dashboardInitialSection || 'master');
     window._dashboardInitialSection = null;
     var innerCollapsed = false;
     var ctx = {
@@ -726,10 +812,18 @@
       buildSidebar(activeSection) +
       '<div class="dash-main">' +
         buildTopbar(activeSection) +
-        '<div id="dash-section-pane" class="dash-scroll dash-content" style="flex:1;display:flex;flex-direction:column;min-width:0;overflow-y:auto;overflow-x:hidden;"></div>' +
+        '<div id="dashboard-first-run-guidance" class="dashboard-first-run-guidance" style="display:none;margin:12px 16px 0;padding:14px 16px;border:1px solid var(--dash-border, var(--border));border-radius:12px;background:var(--dash-card, var(--bg2));align-items:center;justify-content:space-between;gap:14px;box-shadow:0 10px 28px rgba(0,0,0,.10);">' +
+          '<div style="min-width:0;">' +
+            '<div style="font-size:13px;font-weight:800;color:var(--dash-text, var(--text));margin-bottom:3px;">' + trText('shell.firstRunTitle', 'Dashboard is ready') + '</div>' +
+            '<div style="font-size:12px;color:var(--dash-muted, var(--text2));line-height:1.5;">' + trText('shell.firstRunBody', 'Run the bot or update the dashboard to start filling every section with live account data. Until then, the dashboard stays visible with zero-value metrics.') + '</div>' +
+          '</div>' +
+          '<button type="button" class="dash-update-btn" id="dashboard-first-run-btn" style="white-space:nowrap;">' + icon('play', 'currentColor') + '<span>' + trText('shell.firstRunAction', 'Go to Run') + '</span></button>' +
+        '</div>' +
+        '<div id="dash-section-pane" class="dash-scroll dash-content" style="flex:1 1 0;display:flex;flex-direction:column;min-width:0;min-height:0;overflow-y:auto;overflow-x:hidden;"></div>' +
       '</div>';
 
     updateTopbar(mountEl, data, options);
+    updateFirstRunGuidance(mountEl, data);
     if (window.dashboardI18n) window.dashboardI18n.apply(mountEl);
     if (window.KhodUI) window.KhodUI.enhance(mountEl);
 
@@ -801,13 +895,14 @@
     };
     handleResize();
     switchSection(mountEl, activeSection, data, ctx);
+    bindDashboardTour(mountEl, data, ctx);
     if (!(window.KhodPremiumPreview && window.KhodPremiumPreview.isActive('dashboard')) && typeof window.mountDashboardAI === 'function') window.mountDashboardAI(mountEl, data, ctx);
   };
 
   window.refreshDashboardShell = function (mountEl, data) {
     if (!mountEl) return;
     applyResponsiveState(mountEl);
-    var active = mountEl._dashboardActiveSection || 'master';
+    var active = normalizeSection(mountEl._dashboardActiveSection || 'master');
     var ctx = {
       options: mountEl._dashboardOptions || {},
       onNavigate: function (id) { switchSection(mountEl, id, data, ctx); },
@@ -816,6 +911,8 @@
       i18n: window.dashboardI18n || null
     };
     switchSection(mountEl, active, data, ctx);
+    bindDashboardTour(mountEl, data, ctx);
+    updateFirstRunGuidance(mountEl, data);
     if (window.dashboardI18n) window.dashboardI18n.apply(mountEl);
     if (window.KhodUI) window.KhodUI.enhance(mountEl);
     if (!(window.KhodPremiumPreview && window.KhodPremiumPreview.isActive('dashboard')) && typeof window.mountDashboardAI === 'function') window.mountDashboardAI(mountEl, data, ctx);
