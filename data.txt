@@ -1,0 +1,80 @@
+deeratech-shop@outlook.sa
+KnaM)5B5TINSHnFZ
+deeratech-shop@outlook.sa
+23568910
+
+abdelrahman-ahmed-kh
+
+Bot run failed
+No store name (easyStore) configured in settings!
+
+Ah, I see it now. In RTL, CSS end flips physically to the left, so my Arabic override was literally pushing it the wrong way. Tiny annoying CSS trap. I’ll flip the RTL rule to use logical start, which is physically right in Arabic.
+
+
+#page-dashboard[dir="ltr"] [style*="direction:rtl"] {
+    direction: ltr !important;
+}
+
+
+safqetawferk@gmail.com
+safqetawferk98++&&
+
+
+abdelrhmantaager@gmail.com
+hasagi+25
+
+pcmsac
+
+
+
+[KhodAI-Debug] ask() called with: why am i losing ? and how can i fix it ? and wht is the best to do to get better
+
+
+safqetawferk
+safqetawferk98++&&
+
+zaza_-_02@hotmail.com
+gfgh422414
+
+
+
+
+Spend
+Total ad cost per campaign/channel. This is the base for everything else.
+
+Impressions
+How many times ads were shown. Useful for reach and awareness.
+
+Clicks
+How many people clicked the ad.
+
+CTR
+Click-through rate: clicks / impressions.
+Shows whether the creative/audience/message is attracting attention.
+
+Conversions
+The meaningful action: order placed, lead submitted, WhatsApp click, signup, etc.
+
+Conversion Rate
+conversions / clicks.
+Shows how well traffic turns into actual results.
+
+Cost Per Conversion / CPA
+spend / conversions.
+One of the most important performance metrics.
+
+Revenue
+Total sales/order value attributed to the campaign.
+
+ROAS
+Return on ad spend: revenue / spend.
+For example, ROAS 4 means every $1 spent returned $4.
+
+CAC or New Customer Cost
+Cost to acquire a new customer specifically, not just any conversion. Very important if repeat customers are mixed with new ones.
+
+
+
+
+
+

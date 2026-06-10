@@ -1,0 +1,68 @@
+# ── Dependencies ──────────────────────────────────────────
+node_modules/
+
+# ── Build output ──────────────────────────────────────────
+dist/
+build/
+
+# ── Env / secrets (never commit these) ────────────────────
+.env
+.env.*
+!.env.example
+
+# ── Electron build artifacts ───────────────────────────────
+*.dmg
+*.exe
+*.AppImage
+*.deb
+*.rpm
+*.snap
+*.blockmap
+
+# ── macOS / Windows junk ───────────────────────────────────
+.DS_Store
+Thumbs.db
+desktop.ini
+
+# ── Logs & temp ───────────────────────────────────────────
+*.log
+*.tmp
+*.bak
+logs/
+npm-debug.log*
+
+# ── Codex / AI tooling ────────────────────────────────────
+.codex-tmp/
+.codex-backups/
+
+# ── Local dev tools ───────────────────────────────────────
+keygen-tool/
+
+# ── Folders that exist locally but should NOT be in the repo ──
+admin-panel/
+web-portal/
+supabase/
+scripts/
+assets/
+data
+*.plist
+*.md
+*.docx
+*.xlsx
+*.png
+*.jpg
+*.jpeg
+*.ico
+*.icns
+*.zip
+
+# ── Clone folders ─────────────────────────────────────────
+taager clone from khod whaat/
+khod clone/
+*clone*/
+
+# ── Misc local files ──────────────────────────────────────
+.npmrc
+README
+README.*
+src/*.zip
