@@ -591,7 +591,10 @@
         sourceBreakdown.push(Object.assign({ platform: status.platform }, row));
       });
       (Array.isArray(source.campaignBreakdown) ? source.campaignBreakdown : []).forEach(function (row) {
-        campaignBreakdown.push(Object.assign({ platform: status.platform }, row));
+        campaignBreakdown.push(Object.assign({}, row, {
+          platform: status.platform,
+          dashboardAccountId: row && row.dashboardAccountId || (id !== '__all__' ? id : '')
+        }));
       });
       summary.platformBreakdown.push({
         platform: status.platform,

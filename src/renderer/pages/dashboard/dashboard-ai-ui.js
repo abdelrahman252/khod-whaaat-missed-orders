@@ -665,11 +665,11 @@
   }
 
   function campaignPromptChoices(context) {
-    var base = "Use only the provided Campaign Intelligence context. Use SKU-matched campaign spend and KHOD orders, delivery, commission, and profit metrics. ";
+    var base = "Use only the provided Campaign Intelligence context. Use shared-attribution campaign spend and KHOD orders, delivery, commission, and profit metrics. ";
     return [
       {
         displayText: "What should I scale?",
-        prompt: base + "Identify the SKU-confirmed Product Actions that are safest to scale. Explain the evidence and give controlled budget steps.",
+        prompt: base + "Identify the clearly attributed Product Actions that are safest to scale. Explain the evidence and give controlled budget steps.",
         scope: "campaigns",
         context: context
       },
@@ -768,7 +768,7 @@
     return {
       currentPage: "campaigns",
       intent: "campaign_actions",
-      sourceOfTruth: "Product decisions use SKU-matched campaign spend and KHOD orders, delivery, commission, and profit metrics.",
+      sourceOfTruth: "Product decisions use shared campaign-name attribution and KHOD orders, delivery, commission, and profit metrics.",
       mediaBuying: request.context || {},
       localSummary: {
         message: "Campaign Intelligence is ready.",
@@ -793,7 +793,7 @@
     if (!selected.length && desired) selected = groups.slice(0, 6);
     if (!selected.length) {
       return {
-        message: "No SKU-confirmed Product Actions are available for this campaign view yet.",
+        message: "No clearly attributed Product Actions are available for this campaign view yet.",
         actions: []
       };
     }

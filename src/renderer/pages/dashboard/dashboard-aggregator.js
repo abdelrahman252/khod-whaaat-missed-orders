@@ -676,6 +676,7 @@
         name: label,
         memberName: sourceAccount.memberName || '',
         email: email,
+        khodCountry: sourceAccount.khodCountry || snap.khodCountry || '',
         hasSnapshot: snapshot.length > 0,
         orderCount: periodRows.length,
         rawOrderCount: snapshot.length,
@@ -805,7 +806,8 @@
           rows.push(Object.assign({}, row, {
             accountId: accInfo.id,
             accountEmail: accInfo.email || accInfo.label,
-            accountLabel: accInfo.label
+            accountLabel: accInfo.label,
+            khodCountry: row.khodCountry || accInfo.khodCountry || ''
           }));
         });
       });
@@ -1198,7 +1200,18 @@
             shippingCount: 0, processingCount: 0,
             waitingCount: 0, pendingCount: 0,
             realFailedCount: 0,
-            cityMap: {}, piecesMap: {}, quantityCityMap: {}
+            cityMap: {}, piecesMap: {}, quantityCityMap: {},
+            accounts: {}, countries: {}, scopes: {}
+          };
+        }
+        var productAccountId = String(row.accountId || '').trim();
+        var productCountry = String(row.khodCountry || row.country || '').trim().toLowerCase();
+        if (productAccountId) productStats[productKey].accounts[productAccountId] = true;
+        if (productCountry) productStats[productKey].countries[productCountry] = true;
+        if (productAccountId || productCountry) {
+          productStats[productKey].scopes[productAccountId + '|' + productCountry] = {
+            accountId: productAccountId,
+            khodCountry: productCountry
           };
         }
         var rowQty = Number(row.qty || 1);
@@ -1456,9 +1469,9 @@
     var nationalPrepaidPct = placedCount > 0
       ? parseFloat((totalPrepaidCount / placedCount).toFixed(4))
       : 0;
-    var avgCommission = deliveredCount > 0
-      ? parseFloat((earnedCommission / deliveredCount).toFixed(2))
-      : 0;
+    var avgCommission = parseFloat(
+      window.KhodFinancialMetrics.averageCommission(earnedCommission, deliveredCount).toFixed(2)
+    );
 
     var nationalAverages = {
       ndr: nationalNdr,
@@ -1589,6 +1602,9 @@
         key: key,
         sku: p.sku,
         name: p.name,
+        accountIds: Object.keys(p.accounts || {}),
+        countries: Object.keys(p.countries || {}),
+        scopes: Object.keys(p.scopes || {}).map(function (scopeKey) { return p.scopes[scopeKey]; }),
         units: p.deliveredCount,
         pieces: p.deliveredQty,
         placedCount: p.placedCount,

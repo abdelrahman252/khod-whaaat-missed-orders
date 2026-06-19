@@ -1355,6 +1355,7 @@ const FEATURE_SCRIPT_GROUPS = {
   ai: {
     styles: ["pages/ai-intelligence/ai-intelligence.css"],
     ordered: [
+      ["pages/dashboard/dashboard-financial-metrics.js"],
       [
         "pages/ai-intelligence/ai-intelligence-data.js",
         "pages/dashboard/dashboard-campaign-decision.js",
@@ -1374,6 +1375,10 @@ const FEATURE_SCRIPT_GROUPS = {
   dashboard: {
     styles: ["styles/analytics.css", "pages/dashboard/dashboard-styles.css", "pages/ai-intelligence/ai-intelligence.css"],
     ordered: [
+      [
+        "pages/dashboard/dashboard-financial-metrics.js",
+        "pages/dashboard/dashboard-product-attribution.js",
+      ],
       [
         "pages/guided-tour.js",
         "pages/premium-preview.js",

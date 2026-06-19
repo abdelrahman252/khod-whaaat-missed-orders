@@ -80,8 +80,8 @@ window.renderSection6 = function (mountEl, data, ctx) {
 
   function topBarHtml() {
     var averageSubtitle = s6Txt(
-      'Average commission earned during the last ' + activePeriod + ' days',
-      'متوسط العمولة المحققة خلال آخر ' + activePeriod + ' يوم'
+      'Delivered commission totals and daily average for the last ' + activePeriod + ' days',
+      'إجمالي العمولة المسلمة ومتوسطها اليومي خلال آخر ' + activePeriod + ' يوم'
     );
     return `
       <style>.s6-status-chip span[style*="font-size:9px"]{display:none!important}</style>

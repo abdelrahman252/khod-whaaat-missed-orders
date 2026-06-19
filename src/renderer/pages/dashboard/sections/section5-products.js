@@ -260,8 +260,6 @@
     let PRODUCTS_RAW = PRODUCTS_DEFAULT;
     let STAT_CARDS = STAT_CARDS_DEFAULT;
     let INSIGHTS = INSIGHTS_DEFAULT;
-    let PRODUCT_MATCH_KEYS_CACHE = null;
-    let PRODUCT_MATCH_KEYS_CACHE_LEN = -1;
     const productAccountId =
       data && data.meta && data.meta.activeAccountId
         ? data.meta.activeAccountId
@@ -476,72 +474,6 @@
         .trim();
     }
 
-    function validSku(product) {
-      var sku = textKey((product && product.sku) || "");
-      return sku && sku !== "n a" && sku !== "na" ? sku : "";
-    }
-
-    function hasTerm(text, term) {
-      return !!term && (" " + text + " ").indexOf(" " + term + " ") !== -1;
-    }
-
-    function productTokens(name) {
-      var stop = {
-        ad: true,
-        ads: true,
-        campaign: true,
-        tiktok: true,
-        tik: true,
-        tok: true,
-        snapchat: true,
-        snap: true,
-        sc: true,
-        facebook: true,
-        fb: true,
-        meta: true,
-        ksa: true,
-        saudi: true,
-        sale: true,
-        offer: true,
-        new: true,
-        test: true,
-        flying: true,
-        original: true,
-        product: true,
-        "Ù…Ù†ØªØ¬": true,
-        "Ø¹Ø±Ø¶": true,
-        "Ø¬Ø¯ÙŠØ¯": true,
-        "Ø§ØµÙ„ÙŠ": true,
-        "Ø¬Ù‡Ø§Ø²": true,
-        "Ø¨Ø¹Ø¯": true,
-        "ØªØ¹Ù…Ù„": true,
-        "ÙŠØ¹Ù…Ù„": true,
-        "Ø¹Ø¯Ø¯": true,
-        "Ù‚Ø·Ø¹Ù‡": true,
-        "Ø­Ø¨Ù‡": true,
-      };
-      return textKey(name)
-        .split(" ")
-        .filter(function (token) {
-          return (
-            token.length >= 3 &&
-            !stop[token] &&
-            !/^x\d+$/i.test(token) &&
-            !/^\d+$/.test(token)
-          );
-        });
-    }
-
-    function productPhrases(tokens) {
-      var phrases = [];
-      for (var size = 2; size <= Math.min(3, tokens.length); size++) {
-        for (var start = 0; start <= tokens.length - size; start++) {
-          phrases.push(tokens.slice(start, start + size).join(" "));
-        }
-      }
-      return phrases;
-    }
-
     function campaignSpendToSar(row) {
       var amount = Number(
         (row && row.rawSpend) || (row && row.convertedSpend) || 0,
@@ -554,108 +486,24 @@
       return amount;
     }
 
-    function getProductMatchKeys() {
-      if (
-        PRODUCT_MATCH_KEYS_CACHE &&
-        PRODUCT_MATCH_KEYS_CACHE_LEN === PRODUCTS_RAW.length
-      ) {
-        return PRODUCT_MATCH_KEYS_CACHE;
-      }
-      PRODUCT_MATCH_KEYS_CACHE_LEN = PRODUCTS_RAW.length;
-      PRODUCT_MATCH_KEYS_CACHE = PRODUCTS_RAW.map(function (product, idx) {
-        var tokens = productTokens(product.name || "");
-        return {
-          idx: idx,
-          sku: validSku(product),
-          tokens: tokens,
-          phrases: productPhrases(tokens),
+    function buildCampaignAssignments(campaignRows) {
+      var attribution = window.KhodProductAttribution;
+      var index = attribution.createProductIndex(PRODUCTS_RAW);
+      var result = attribution.attributeCampaignRows(campaignRows || [], index, {
+        accountId: productAccountId !== "__all__" ? productAccountId : "",
+        getSpend: campaignSpendToSar,
+      });
+      var assignments = {};
+      Object.keys(result.assignments).forEach(function (idx) {
+        var assignment = result.assignments[idx];
+        assignments[idx] = {
+          spendSar: assignment.spend,
+          methods: assignment.methods,
+          details: assignment.details,
+          rowCount: assignment.rowCount,
         };
       });
-      return PRODUCT_MATCH_KEYS_CACHE;
-    }
-
-    function buildCampaignAssignments(campaignRows) {
-      var productMatchKeys = getProductMatchKeys();
-      var tokenOwners = {};
-      var phraseOwners = {};
-      productMatchKeys.forEach(function (product) {
-        product.tokens.forEach(function (token) {
-          tokenOwners[token] = (tokenOwners[token] || 0) + 1;
-        });
-        product.phrases.forEach(function (phrase) {
-          phraseOwners[phrase] = (phraseOwners[phrase] || 0) + 1;
-        });
-      });
-      function nameMatchScore(campaignText, product) {
-        var hits = product.tokens.filter(function (token) {
-          return hasTerm(campaignText, token);
-        });
-        var phraseHits = product.phrases.filter(function (phrase) {
-          return hasTerm(campaignText, phrase);
-        });
-        var uniqueWordHit = hits.some(function (token) {
-          return token.length >= 4 && tokenOwners[token] === 1;
-        });
-        var uniquePhraseHit = phraseHits.some(function (phrase) {
-          return phraseOwners[phrase] === 1;
-        });
-        if (
-          hits.length < Math.min(2, product.tokens.length) &&
-          !uniqueWordHit &&
-          !uniquePhraseHit
-        )
-          return 0;
-        var score = hits.reduce(function (total, token) {
-          return total + token.length + (tokenOwners[token] === 1 ? 6 : 0);
-        }, 0);
-        return (
-          score +
-          phraseHits.reduce(function (total, phrase) {
-            return (
-              total + phrase.length + (phraseOwners[phrase] === 1 ? 12 : 0)
-            );
-          }, 0)
-        );
-      }
-      var assignments = {};
-      (campaignRows || []).forEach(function (row) {
-        var campaignText = textKey((row && row.campaign) || "");
-        if (!campaignText) return;
-        var skuCandidates = productMatchKeys
-          .filter(function (product) {
-            return product.sku && hasTerm(campaignText, product.sku);
-          })
-          .sort(function (a, b) {
-            return b.sku.length - a.sku.length;
-          });
-        var best = skuCandidates.length
-          ? { idx: skuCandidates[0].idx, method: "sku" }
-          : null;
-        if (!best) {
-          var bestName = null;
-          var secondScore = 0;
-          for (var n = 0; n < productMatchKeys.length; n++) {
-            var score = nameMatchScore(campaignText, productMatchKeys[n]);
-            if (score <= 0) continue;
-            if (!bestName || score > bestName.score) {
-              secondScore = bestName ? bestName.score : secondScore;
-              bestName = { idx: productMatchKeys[n].idx, score: score };
-            } else if (score > secondScore) {
-              secondScore = score;
-            }
-          }
-          if (bestName && bestName.score > secondScore) {
-            best = { idx: bestName.idx, method: "name" };
-          }
-        }
-        if (!best) return;
-        if (!assignments[best.idx])
-          assignments[best.idx] = { spendSar: 0, methods: {}, rowCount: 0 };
-        assignments[best.idx].spendSar += campaignSpendToSar(row);
-        assignments[best.idx].methods[best.method] = true;
-        assignments[best.idx].rowCount++;
-      });
-      return assignments;
+      return { assignments: assignments, summary: result.summary };
     }
 
     function applyProductFinancials() {
@@ -670,9 +518,10 @@
           ? marketingSummary.campaignBreakdown
           : [];
       var hasSyncedProductSpend = !!(campaignRows && campaignRows.length);
-      var campaignAssignments = hasSyncedProductSpend
+      var campaignAssignmentResult = hasSyncedProductSpend
         ? buildCampaignAssignments(campaignRows)
-        : {};
+        : { assignments: {}, summary: null };
+      var campaignAssignments = campaignAssignmentResult.assignments;
       PRODUCTS_RAW.forEach(function (p, idx) {
         var placed = Number(p.placedCount) || 0;
         var synced = campaignAssignments[idx];
@@ -685,6 +534,7 @@
               : "name"
           : "";
         p.syncMatchedRows = synced ? synced.rowCount : 0;
+        p.syncMatchDetails = synced ? Object.keys(synced.details || {}) : [];
         p.allocatedAdSpend = hasSyncedProductSpend
           ? synced
             ? sarToSelectedCurrency(Number(synced.spendSar.toFixed(2)))
@@ -694,8 +544,10 @@
             : 0;
         p.cpa = placed > 0 ? p.allocatedAdSpend / placed : 0;
         var delivered = Number(p.deliveredCount) || 0;
-        var avgCommissionSar =
-          delivered > 0 ? (Number(p.commission) || 0) / delivered : 0;
+        var avgCommissionSar = window.KhodFinancialMetrics.averageCommission(
+          p.commission,
+          delivered
+        );
         p.averageCommission = sarToSelectedCurrency(avgCommissionSar);
         var breakEvenSar = avgCommissionSar * ((Number(p.ndrPct) || 0) / 100);
         p.breakEvenCpa = sarToSelectedCurrency(breakEvenSar);

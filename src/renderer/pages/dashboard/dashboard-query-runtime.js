@@ -221,6 +221,28 @@
     }).map(function (account) { return account.id; });
   }
 
+  function campaignRowsForQuery(data) {
+    var accountId = data && data.meta && data.meta.activeAccountId || "__all__";
+    var state = window.DashboardMarketingState && typeof window.DashboardMarketingState.get === "function"
+      ? window.DashboardMarketingState.get(accountId)
+      : null;
+    var rows = state && state.summary && Array.isArray(state.summary.campaignBreakdown)
+      ? state.summary.campaignBreakdown
+      : [];
+    return rows.map(function (row) {
+      var scoped = Object.assign({
+        dashboardAccountId: row && row.dashboardAccountId || (accountId !== "__all__" ? accountId : "")
+      }, row);
+      scoped.attributionSpendSar = window.KhodCampaignIntelligence &&
+        typeof window.KhodCampaignIntelligence.campaignSpendToSar === "function"
+        ? window.KhodCampaignIntelligence.campaignSpendToSar(scoped, scoped.currency)
+        : Number(scoped.convertedSpend != null ? scoped.convertedSpend : scoped.rawSpend || 0);
+      return scoped;
+    }).filter(function (row) {
+      return Number(row.attributionSpendSar || 0) > 0;
+    });
+  }
+
   function sortedOrderRows(rows) {
     if (!window.DashboardOrdersQueryCore || typeof window.DashboardOrdersQueryCore.pageRows !== "function") {
       return (rows || []).slice();
@@ -342,10 +364,12 @@
       if (!flags.shadow && !flags.products) return data;
       return query("products", {
         kind: "products",
+        attributionVersion: window.KhodProductAttribution && window.KhodProductAttribution.VERSION || 0,
         activeAccountId: data.meta && data.meta.activeAccountId || "__all__",
         accountIds: accountIdsFromData(data),
         period: data.meta && data.meta.period || {},
         products: data.products || {},
+        campaignRows: campaignRowsForQuery(data),
       }).then(function (result) {
         if (!result || !result.ok) {
           if (flags.products) console.warn("[DashboardQuery] products backend query failed; using legacy data", result);
@@ -399,9 +423,12 @@
       var legacyIntel = buildCampaignIntelForRollout(data);
       return query("campaigns", {
         kind: "campaigns",
+        attributionVersion: window.KhodProductAttribution && window.KhodProductAttribution.VERSION || 0,
         activeAccountId: data.meta && data.meta.activeAccountId || "__all__",
         accountIds: accountIdsFromData(data),
         period: data.meta && data.meta.period || {},
+        products: data.products || {},
+        campaignRows: campaignRowsForQuery(data),
         campaignIntel: legacyIntel || {},
       }).then(function (result) {
         if (!result || !result.ok) {

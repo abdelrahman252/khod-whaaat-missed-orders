@@ -2217,7 +2217,10 @@ function getCachedMarketingStatus(accountId, platform) {
   if (accountId === "__all__") {
     const individualStatuses = Object.keys(accounts)
       .filter((id) => id !== "__all__" && id !== "__connection__")
-      .map((id) => accounts[id]?.marketing?.[platform])
+      .map((id) => {
+        const status = accounts[id]?.marketing?.[platform];
+        return status ? Object.assign({}, status, { dashboardAccountId: id }) : null;
+      })
       .filter(Boolean);
 
     if (individualStatuses.length === 0) return null;
@@ -2242,7 +2245,11 @@ function getCachedMarketingStatus(accountId, platform) {
       summary.campaignCount += Number(source.campaignCount || 0);
       summary.rowCount += Number(source.rowCount || 0);
       summary.sourceBreakdown = summary.sourceBreakdown.concat(Array.isArray(source.sourceBreakdown) ? source.sourceBreakdown : []);
-      summary.campaignBreakdown = summary.campaignBreakdown.concat(Array.isArray(source.campaignBreakdown) ? source.campaignBreakdown : []);
+      summary.campaignBreakdown = summary.campaignBreakdown.concat(
+        (Array.isArray(source.campaignBreakdown) ? source.campaignBreakdown : []).map((row) =>
+          Object.assign({}, row, { dashboardAccountId: row?.dashboardAccountId || s.dashboardAccountId || "" })
+        )
+      );
       return summary;
     }, {
       adSpend: 0,

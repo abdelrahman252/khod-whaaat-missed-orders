@@ -368,7 +368,18 @@
 
     var totalOrders = metricValue(overview.totalOrders);
     var earnedCommission = metricValue(overview.earnedCommission || roi.earnedCommission);
-    var avgCommission = Number(roi.avgCommission || (products.length ? products.reduce(function (sum, p) { return sum + Number(p.commission || 0); }, 0) / Math.max(1, products.length) : 0));
+    var productCommissionTotals = products.reduce(function (totals, product) {
+      var delivered = Number(product.deliveredCount || product.units || product.delivered || 0);
+      if (delivered > 0) totals.commission += Number(product.commission || 0);
+      totals.delivered += delivered;
+      return totals;
+    }, { commission: 0, delivered: 0 });
+    var avgCommission = roi.avgCommission != null
+      ? Number(roi.avgCommission || 0)
+      : window.KhodFinancialMetrics.averageCommission(
+        productCommissionTotals.commission,
+        productCommissionTotals.delivered
+      );
     forecasts.push(forecast({
       id: "forecast-sales",
       title: tr("aii.forecast.sales.title", null, "Short-term sales forecast"),

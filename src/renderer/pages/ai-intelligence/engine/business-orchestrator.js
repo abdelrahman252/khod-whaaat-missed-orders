@@ -341,7 +341,7 @@
     var ndr = pct(product.ndrPct || product.deliveryPct || (orders ? delivered / orders : 0));
     var cancel = pct(product.cancelPct || 0);
     var cpa = spend && spend.amount && orders ? spend.amount / orders : null;
-    var avgCommissionSar = delivered > 0 ? commission / Math.max(1, delivered) : 0;
+    var avgCommissionSar = window.KhodFinancialMetrics.averageCommission(commission, delivered);
     var breakEvenSar = breakEvenCpaSar(avgCommissionSar, ndr);
     var breakEvenCurrency = spend && spend.currency || data && data.roi && data.roi.currency || "SAR";
     var breakEven = sarToCurrency(breakEvenSar, breakEvenCurrency, data);

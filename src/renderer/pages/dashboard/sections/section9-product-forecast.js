@@ -34,17 +34,14 @@ window.renderSectionProductForecast = function (mountEl, data, ctx) {
   function p9Num(v) { return Number(v || 0).toLocaleString(isAr ? 'ar-EG-u-nu-latn' : 'en-US'); }
 
   var simulations = pd.map(function (p) {
-    var orders    = p.placedCount || p.totalPieces || 1;
-    var delivered = p.deliveredCount || p.units || 0;
+    var orders    = Number(p.placedCount || 0);
+    var delivered = Number(p.deliveredCount || 0);
     var realNdr   = orders > 0 ? (delivered / orders) : 0;
-    var realComm  = delivered > 0 ? (p.commission / delivered) : 0;
+    var realComm  = window.KhodFinancialMetrics.averageCommission(p.commission, delivered);
     var realDeliveredSales = Number(p.deliveredSales || p.totalDeliveredSales || 0);
     var realDeliveredAov = p.deliveredAov !== undefined
       ? Number(p.deliveredAov || 0)
       : (delivered > 0 ? realDeliveredSales / delivered : 0);
-    if (realNdr  === 0) realNdr  = 0.30;
-    if (realComm === 0) realComm = 35;
-
     var pId = p.key || p.sku || p.name;
     var savedPSpend = localStorage.getItem('kbot_s9_spend_' + pId);
     var realAdSpend = savedPSpend != null ? parseFloat(savedPSpend) : 0;
@@ -68,6 +65,20 @@ window.renderSectionProductForecast = function (mountEl, data, ctx) {
       isModified:    false
     };
   });
+
+  function averageCommissionDisplay(sim) {
+    if (!sim.isModified && sim.realDelivered <= 0) {
+      return p9Txt('No delivered orders', 'لا توجد طلبات مسلمة');
+    }
+    return toDisplay(sim.avgCommission).toFixed(2) + ' ' + viewCurrency;
+  }
+
+  function realAverageCommissionDisplay(sim) {
+    if (sim.realDelivered <= 0) {
+      return p9Txt('No delivered orders', 'لا توجد طلبات مسلمة');
+    }
+    return toDisplay(sim.realCommission).toFixed(2) + ' ' + viewCurrency;
+  }
 
   var selectedIdx  = Math.max(0, simulations.findIndex(function (sim) {
     return String(sim.id) === String(mountEl._s9SelectedProductId || '');
@@ -150,6 +161,8 @@ window.renderSectionProductForecast = function (mountEl, data, ctx) {
   function formatPct(v) { return Math.round(v * 100) + '%'; }
 
   function matchMethodLabel(sim) {
+    if (sim && sim.syncMatchDetails && sim.syncMatchDetails.indexOf('sku_glued') !== -1) return p9Txt('Marketing spend matched by glued SKU', 'تمت مطابقة إنفاق التسويق بواسطة SKU ملتصق');
+    if (sim && sim.syncMatchDetails && sim.syncMatchDetails.indexOf('sku_separated') !== -1) return p9Txt('Marketing spend matched by separated SKU', 'تمت مطابقة إنفاق التسويق بواسطة SKU منفصل');
     if (sim && sim.syncMatchMethod === 'sku') return p9Txt('Marketing spend matched by SKU', 'تمت مطابقة إنفاق التسويق بواسطة SKU');
     if (sim && sim.syncMatchMethod === 'sku+name') return p9Txt('Marketing spend matched by SKU and normalized name', 'تمت مطابقة إنفاق التسويق بواسطة SKU والاسم الموحد');
     if (sim && sim.syncMatchMethod === 'name') return p9Txt('Marketing spend matched by normalized name fallback', 'تمت مطابقة إنفاق التسويق بالاسم الموحد كخيار احتياطي');
@@ -192,39 +205,6 @@ window.renderSectionProductForecast = function (mountEl, data, ctx) {
       .replace(/'/g, '&#39;');
   }
 
-  function validSku(product) {
-    var sku = textKey(product && product.sku || '');
-    return sku && sku !== 'n a' && sku !== 'na' ? sku : '';
-  }
-
-  function hasTerm(text, term) {
-    return !!term && (' ' + text + ' ').indexOf(' ' + term + ' ') !== -1;
-  }
-
-  function productTokens(name) {
-    var stop = {
-      ad: true, ads: true, campaign: true, tiktok: true, tik: true, tok: true,
-      snapchat: true, snap: true, sc: true, facebook: true, fb: true, meta: true,
-      ksa: true, saudi: true, sale: true, offer: true, new: true, test: true,
-      flying: true, original: true, product: true,
-      'منتج': true, 'عرض': true, 'جديد': true, 'اصلي': true, 'جهاز': true,
-      'بعد': true, 'تعمل': true, 'يعمل': true, 'عدد': true, 'قطعه': true, 'حبه': true
-    };
-    return textKey(name).split(' ').filter(function (token) {
-      return token.length >= 3 && !stop[token] && !/^x\d+$/i.test(token) && !/^\d+$/.test(token);
-    });
-  }
-
-  function productPhrases(tokens) {
-    var phrases = [];
-    for (var size = 2; size <= Math.min(3, tokens.length); size++) {
-      for (var start = 0; start <= tokens.length - size; start++) {
-        phrases.push(tokens.slice(start, start + size).join(' '));
-      }
-    }
-    return phrases;
-  }
-
   function campaignSpendToSar(row) {
     var amount = Number(row && row.rawSpend || 0);
     var currency = String(row && row.currency || 'SAR').toUpperCase();
@@ -235,68 +215,16 @@ window.renderSectionProductForecast = function (mountEl, data, ctx) {
     return amount;
   }
 
-  var productMatchKeys = pd.map(function (product, idx) {
-    var tokens = productTokens(product.name || '');
-    return { idx: idx, sku: validSku(product), tokens: tokens, phrases: productPhrases(tokens) };
-  });
-  var tokenOwners = {};
-  var phraseOwners = {};
-  productMatchKeys.forEach(function (product) {
-    product.tokens.forEach(function (token) {
-      tokenOwners[token] = (tokenOwners[token] || 0) + 1;
-    });
-    product.phrases.forEach(function (phrase) {
-      phraseOwners[phrase] = (phraseOwners[phrase] || 0) + 1;
-    });
-  });
-
-  function nameMatchScore(campaignText, product) {
-    var hits = product.tokens.filter(function (token) { return hasTerm(campaignText, token); });
-    var phraseHits = product.phrases.filter(function (phrase) { return hasTerm(campaignText, phrase); });
-    var uniqueWordHit = hits.some(function (token) { return token.length >= 4 && tokenOwners[token] === 1; });
-    var uniquePhraseHit = phraseHits.some(function (phrase) { return phraseOwners[phrase] === 1; });
-    if (hits.length < Math.min(2, product.tokens.length) && !uniqueWordHit && !uniquePhraseHit) return 0;
-    var score = hits.reduce(function (total, token) {
-      return total + token.length + (tokenOwners[token] === 1 ? 6 : 0);
-    }, 0);
-    return score + phraseHits.reduce(function (total, phrase) {
-      return total + phrase.length + (phraseOwners[phrase] === 1 ? 12 : 0);
-    }, 0);
-  }
-
   function buildCampaignAssignments() {
-    var assignments = {};
-    var summary = { skuRows: 0, nameRows: 0, unmatchedRows: 0 };
-    campaignSpendRows.forEach(function (row) {
-      var campaignText = textKey(row && row.campaign || '');
-      if (!campaignText) {
-        summary.unmatchedRows++;
-        return;
-      }
-      var skuCandidates = productMatchKeys.filter(function (product) {
-        return product.sku && hasTerm(campaignText, product.sku);
-      }).sort(function (a, b) { return b.sku.length - a.sku.length; });
-      var best = skuCandidates.length ? { idx: skuCandidates[0].idx, method: 'sku' } : null;
-      if (!best) {
-        var nameCandidates = productMatchKeys.map(function (product) {
-          return { idx: product.idx, score: nameMatchScore(campaignText, product) };
-        }).filter(function (candidate) { return candidate.score > 0; })
-          .sort(function (a, b) { return b.score - a.score; });
-        if (nameCandidates.length && (!nameCandidates[1] || nameCandidates[0].score > nameCandidates[1].score)) {
-          best = { idx: nameCandidates[0].idx, method: 'name' };
-        }
-      }
-      if (!best) {
-        summary.unmatchedRows++;
-        return;
-      }
-      if (!assignments[best.idx]) assignments[best.idx] = { spend: 0, methods: {}, rowCount: 0 };
-      assignments[best.idx].spend += campaignSpendToSar(row);
-      assignments[best.idx].methods[best.method] = true;
-      assignments[best.idx].rowCount++;
-      summary[best.method + 'Rows']++;
+    var attribution = window.KhodProductAttribution;
+    var index = attribution.createProductIndex(pd);
+    var result = attribution.attributeCampaignRows(campaignSpendRows, index, {
+      accountId: forecastAccountId !== '__all__' ? forecastAccountId : '',
+      getSpend: campaignSpendToSar
     });
-    return { assignments: assignments, summary: summary };
+    var summary = result.summary;
+    summary.skuRows = summary.separatedSkuRows + summary.gluedSkuRows;
+    return result;
   }
 
   var campaignAssignmentResult = buildCampaignAssignments();
@@ -317,6 +245,7 @@ window.renderSectionProductForecast = function (mountEl, data, ctx) {
     sim.syncedAdSpend = true;
     sim.syncMatchMethod = assignment.methods.sku && assignment.methods.name ? 'sku+name' :
       (assignment.methods.sku ? 'sku' : 'name');
+    sim.syncMatchDetails = Object.keys(assignment.details || {});
     sim.syncMatchedRows = assignment.rowCount;
   });
 
@@ -578,10 +507,10 @@ window.renderSectionProductForecast = function (mountEl, data, ctx) {
     // Unit economics
     if (c.cpa > c.revenuePerDel && s.adSpend > 0) {
       insights.push({ type: 'negative', icon: '📉', cat: p9Txt('UNIT ECONOMICS', 'اقتصاديات الطلب'),
-        text: p9Txt('<span class="hi-red">CPA (', '<span class="hi-red">تكلفة الطلب (') + formatMoney(c.cpa, true, 2) + p9Txt(')</span> exceeds revenue per delivery <strong>(', ')</span> أعلى من إيراد التسليم <strong>(') + formatMoney(c.revenuePerDel, true, 2) + p9Txt(')</strong>. Scaling multiplies losses.', ')</strong>. التوسع سيضاعف الخسائر.') });
+        text: p9Txt('<span class="hi-red">CPA (', '<span class="hi-red">تكلفة الطلب (') + formatMoney(c.cpa, true, 2) + p9Txt(')</span> exceeds commission per delivery <strong>(', ')</span> أعلى من عمولة التسليم <strong>(') + formatMoney(c.revenuePerDel, true, 2) + p9Txt(')</strong>. Scaling multiplies losses.', ')</strong>. التوسع سيضاعف الخسائر.') });
     } else if (c.revenuePerDel > 0 && s.adSpend > 0) {
       insights.push({ type: 'positive', icon: '📈', cat: p9Txt('UNIT ECONOMICS', 'اقتصاديات الطلب'),
-        text: p9Txt('Revenue per delivery <span class="hi-cyan">(', 'إيراد التسليم <span class="hi-cyan">(') + formatMoney(c.revenuePerDel, true, 2) + p9Txt(')</span> exceeds CPA — unit economics healthy.', ')</span> أعلى من تكلفة الطلب — اقتصاديات صحية.') });
+        text: p9Txt('Commission per delivery <span class="hi-cyan">(', 'عمولة التسليم <span class="hi-cyan">(') + formatMoney(c.revenuePerDel, true, 2) + p9Txt(')</span> exceeds CPA — unit economics healthy.', ')</span> أعلى من تكلفة الطلب — اقتصاديات صحية.') });
     }
 
     // NDR analysis
@@ -744,7 +673,7 @@ window.renderSectionProductForecast = function (mountEl, data, ctx) {
         '<div style="display:flex;align-items:center;justify-content:space-between;gap:10px;margin-top:10px;padding:9px 10px;border:1px solid rgba(45,212,191,.18);border-radius:10px;background:rgba(45,212,191,.06);flex-wrap:wrap;">' +
           '<div style="display:flex;flex-direction:column;gap:2px;min-width:0;">' +
             '<span style="font-size:11px;color:#2dd4bf;font-weight:900;">' + p9Txt('Marketing sync period', 'Marketing sync period') + ': ' + productSyncPeriodLabel() + ' · ' + p9Txt('Spend platform', 'منصة الإنفاق') + ': ' + FORECAST_PLATFORMS.filter(function (platform) { return platform.id === selectedMarketingPlatform; })[0].label + '</span>' +
-            '<span style="font-size:10px;color:rgba(255,255,255,.48);font-weight:700;">' + p9Txt('Matched products', 'المنتجات المطابقة') + ': ' + syncedProductCount + ' / ' + simulations.length + ' · ' + p9Txt('SKU rows', 'صفوف SKU') + ': ' + matchSummary.skuRows + ' · ' + p9Txt('Name fallback rows', 'صفوف مطابقة الاسم') + ': ' + matchSummary.nameRows + ' · ' + p9Txt('Unmatched', 'غير مطابق') + ': ' + matchSummary.unmatchedRows + '</span>' +
+            '<span style="font-size:10px;color:rgba(255,255,255,.48);font-weight:700;">' + p9Txt('Matched products', 'المنتجات المطابقة') + ': ' + syncedProductCount + ' / ' + simulations.length + ' · ' + p9Txt('Separated SKU', 'SKU منفصل') + ': ' + matchSummary.separatedSkuRows + ' · ' + p9Txt('Glued SKU', 'SKU ملتصق') + ': ' + matchSummary.gluedSkuRows + ' · ' + p9Txt('Name fallback', 'مطابقة الاسم') + ': ' + matchSummary.nameRows + ' · ' + p9Txt('Ambiguous', 'ملتبس') + ': ' + matchSummary.ambiguousRows + ' · ' + p9Txt('Unmatched', 'غير مطابق') + ': ' + matchSummary.unmatchedRows + '</span>' +
             '<span style="font-size:10px;color:#f59e0b;font-weight:700;">' + p9Txt('Best accuracy: include the product SKU in each TikTok, Snapchat, or Facebook campaign name. Name fallback accepts a distinctive single word or matching phrase and normalizes common Arabic spelling variants. Renamed historical campaigns may require a campaign-data refresh before they appear here.', 'لأدق نتيجة: ضع SKU المنتج داخل اسم كل حملة تيك توك أو سناب شات أو فيسبوك. تقبل مطابقة الاسم كلمة مميزة واحدة أو عبارة مطابقة مع توحيد اختلافات الكتابة العربية الشائعة. قد تحتاج أسماء الحملات التاريخية المعدلة إلى تحديث بيانات الحملات قبل أن تظهر هنا.') + '</span>' +
           '</div>' +
           '<button type="button" id="s9-sync-now" style="border:1px solid rgba(168,85,247,.45);background:rgba(168,85,247,.18);color:#fff;border-radius:8px;padding:7px 11px;font-size:11px;font-weight:900;cursor:pointer;font-family:inherit;"' + syncDisabled + '>' + syncLabel + '</button>' +
@@ -823,10 +752,10 @@ window.renderSectionProductForecast = function (mountEl, data, ctx) {
         ) +
         _kpiMiniTip(
           p9Txt('Avg Commission', 'متوسط العمولة'),
-          toDisplay(s.avgCommission).toFixed(2) + ' ' + viewCurrency, '#3b82f6', '💵',
+          averageCommissionDisplay(s), '#3b82f6', '💵',
           p9Txt('Average Commission', 'متوسط العمولة'),
           p9Txt('Average commission earned per delivered order from the company.', 'متوسط العمولة المكتسبة لكل طلب مسلم واحد من الشركة.'),
-          'avgCommission = totalRevenue ÷ deliveredOrders'
+          'avgCommission = deliveredCommission ÷ deliveredOrders'
         ) +
         _kpiMiniTip(
           p9Txt('Total Delivered Sales', 'إجمالي المبيعات المستلمة'),
@@ -858,7 +787,7 @@ window.renderSectionProductForecast = function (mountEl, data, ctx) {
           '<span style="font-size:11px;color:rgba(255,255,255,0.35);">' + p9Txt('Real: ', 'الفعلي: ') + formatPct(s.realNdr) + '</span>' +
         '</div>' +
         '<div class="sfe-input-wrap2">' +
-          '<input type="number" class="s9-ndr-input sfe-input2" min="1" max="100" step="1" value="' + Math.round(s.ndr * 100) + '" placeholder="24" style="direction:ltr;">' +
+          '<input type="number" class="s9-ndr-input sfe-input2" min="0" max="100" step="1" value="' + Math.round(s.ndr * 100) + '" placeholder="0" style="direction:ltr;">' +
           '<span class="sfe-input-unit2">%</span>' +
         '</div>' +
         '<div class="sfe-slider-markers" style="margin-top:6px;">' +
@@ -877,12 +806,12 @@ window.renderSectionProductForecast = function (mountEl, data, ctx) {
             _tip('💵',
               p9Txt('Average Commission', 'متوسط العمولة'),
               p9Txt('Average commission earned per delivered order. Edit to simulate different product pricing.', 'متوسط العمولة المكتسبة لكل طلب مسلم. عدّلها لمحاكاة تسعير مختلف.'),
-              'avgCommission = totalRevenue ÷ deliveredOrders') +
+              'avgCommission = deliveredCommission ÷ deliveredOrders') +
           '</label>' +
-          '<span style="font-size:11px;color:rgba(255,255,255,0.35);" dir="ltr">' + p9Txt('Real: ', 'الفعلي: ') + toDisplay(s.realCommission).toFixed(2) + ' ' + viewCurrency + '</span>' +
+          '<span style="font-size:11px;color:rgba(255,255,255,0.35);" dir="ltr">' + p9Txt('Real: ', 'الفعلي: ') + realAverageCommissionDisplay(s) + '</span>' +
         '</div>' +
         '<div class="sfe-input-wrap2">' +
-          '<input type="number" class="s9-comm-input sfe-input2" min="1" step="0.5" value="' + toDisplay(s.avgCommission).toFixed(2) + '" placeholder="32.79" style="direction:ltr;">' +
+          '<input type="number" class="s9-comm-input sfe-input2" min="0" step="0.5" value="' + toDisplay(s.avgCommission).toFixed(2) + '" placeholder="0" style="direction:ltr;">' +
           '<span class="sfe-input-unit2 s9-comm-unit">' + viewCurrency + '</span>' +
         '</div>' +
       '</div>';
@@ -958,13 +887,13 @@ window.renderSectionProductForecast = function (mountEl, data, ctx) {
       '<div style="display:grid;grid-template-columns:repeat(5,1fr);gap:12px;">' +
         // Net Profit
         '<div class="s7-card">' +
-          '<div style="font-size:11px;color:#00e676;font-weight:700;display:flex;align-items:center;gap:4px;">' + p9Txt('Net Profit', 'صافي الربح') + ' ' + _tip('🪙', p9Txt('Net Profit', 'الربح الصافي'), p9Txt('Net profit after deducting ad spend from revenue.', 'الربح بعد خصم الإنفاق من الإيراد.'), 'netProfit = revenue − adSpend') + '</div>' +
+          '<div style="font-size:11px;color:#00e676;font-weight:700;display:flex;align-items:center;gap:4px;">' + p9Txt('Net Profit', 'صافي الربح') + ' ' + _tip('🪙', p9Txt('Net Profit', 'الربح الصافي'), p9Txt('Net profit after deducting ad spend from commission return.', 'الربح بعد خصم الإنفاق من عائد العمولة.'), 'netProfit = commissionReturn − adSpend') + '</div>' +
           '<div class="s9-kpi-netprofit ' + npClass + '" style="font-size:17px;font-weight:900;color:' + npColor + ' !important;" dir="ltr">' + formatMoney(c.netProfit) + '</div>' +
           '<div style="font-size:10px;color:rgba(255,255,255,0.4);background:rgba(255,255,255,0.06);padding:2px 8px;border-radius:10px;">' + viewCurrency + '</div>' +
         '</div>' +
-        // Revenue
+        // Commission return
         '<div class="s7-card">' +
-          '<div style="font-size:11px;color:#3b82f6;font-weight:700;display:flex;align-items:center;gap:4px;">' + p9Txt('Revenue', 'الإيرادات') + ' ' + _tip('💰', p9Txt('Expected Revenue', 'الإيرادات المتوقعة'), p9Txt('Expected revenue from delivered orders × avg commission.', 'الدخل المتوقع من الطلبات المسلمة × متوسط العمولة.'), 'revenue = deliveredOrders × avgCommission') + '</div>' +
+          '<div style="font-size:11px;color:#3b82f6;font-weight:700;display:flex;align-items:center;gap:4px;">' + p9Txt('Commission Return', 'عائد العمولة') + ' ' + _tip('💰', p9Txt('Expected Commission', 'العمولة المتوقعة'), p9Txt('Expected commission from delivered orders × average commission.', 'العمولة المتوقعة من الطلبات المسلمة × متوسط العمولة.'), 'commissionReturn = deliveredOrders × avgCommission') + '</div>' +
           '<div style="font-size:17px;font-weight:900;color:#fff;" dir="ltr">' + formatMoney(c.revenue) + '</div>' +
           '<div style="font-size:10px;color:rgba(255,255,255,0.4);background:rgba(255,255,255,0.06);padding:2px 8px;border-radius:10px;">' + viewCurrency + '</div>' +
         '</div>' +
@@ -1201,7 +1130,7 @@ window.renderSectionProductForecast = function (mountEl, data, ctx) {
         npEl.textContent = formatMoney(c.netProfit);
         applyProfitColor(npEl, c.netProfit);
       }
-      // Revenue
+      // Commission return
       var revEl = cards[1].querySelector('div:nth-child(2)');
       if (revEl) revEl.textContent = formatMoney(c.revenue);
       // CPA
@@ -1225,7 +1154,7 @@ window.renderSectionProductForecast = function (mountEl, data, ctx) {
       if (metricVals[0]) metricVals[0].textContent = p9Num(c.totalOrders);
       if (metricVals[1]) metricVals[1].textContent = p9Num(Math.round(c.deliveredOrders));
       if (metricVals[2]) metricVals[2].textContent = Math.round(s.ndr * 100) + '%';
-      if (metricVals[3]) metricVals[3].textContent = toDisplay(s.avgCommission).toFixed(2) + ' ' + viewCurrency;
+      if (metricVals[3]) metricVals[3].textContent = averageCommissionDisplay(s);
       if (metricVals[4]) metricVals[4].textContent = formatMoney(s.realDeliveredSales, true);
       if (metricVals[5]) metricVals[5].textContent = toDisplay(s.realDeliveredAov).toFixed(2) + ' ' + viewCurrency;
     }
@@ -1410,7 +1339,7 @@ window.renderSectionProductForecast = function (mountEl, data, ctx) {
       });
       ndrInp.addEventListener('blur', function (e) {
         var v = parseFloat(e.target.value);
-        if (isNaN(v) || v < 1) { e.target.value = Math.round(simulations[selectedIdx].ndr * 100); return; }
+        if (isNaN(v) || v < 0) { e.target.value = Math.round(simulations[selectedIdx].ndr * 100); return; }
         if (v > 100) e.target.value = '100';
       });
     }

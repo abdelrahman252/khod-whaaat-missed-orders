@@ -780,7 +780,106 @@ async function revealEasyOrdersIdentityMenu(page) {
   return false;
 }
 
+function parseEasyOrdersIdentityFromDocument() {
+  // Read the active EasyOrders store from the account identity header paired
+  // with the active email. The "Stores" list can contain available stores,
+  // not necessarily the currently selected one.
+  const emailPattern = /^[A-Z0-9._%+-]+@[A-Z0-9.-]+\.[A-Z]{2,}$/i;
+  const ignoredSectionLabels = new Set(["stores", "change to", "switch account", "switch accounts", "accounts"]);
+  const ignoredActionLabels = new Set(["add store", "add new account", "update info", "update your info", "sign out", "log out", "logout", "exit"]);
+  const normalize = (value) => String(value || "")
+    .replace(/[\u200E\u200F\u061C]/g, "")
+    .replace(/[\u{1F300}-\u{1FAFF}\u2600-\u27BF\uFE0F\u200D]/gu, "")
+    .replace(/\s+(?:Ã°|Ã¢)[^\s]{1,8}\s*$/giu, "")
+    .replace(/\s+/g, " ")
+    .trim()
+    .toLowerCase();
+  const visible = (element) => {
+    if (!element || !element.isConnected) return false;
+    const style = window.getComputedStyle(element);
+    if (style.display === "none" || style.visibility === "hidden" || Number(style.opacity) === 0) return false;
+    return !!(element.offsetWidth || element.offsetHeight || element.getClientRects().length);
+  };
+  const text = (element) => String(element && (element.innerText || element.textContent) || "").trim();
+  const normalizedText = (element) => normalize(text(element));
+  const isEmail = (value) => emailPattern.test(normalize(value));
+  const sectionLabel = (element) => normalizedText(element).replace(/:$/, "");
+  const isLeafTextElement = (element) => {
+    if (!visible(element) || !normalizedText(element)) return false;
+    return !Array.from(element.children).some((child) => visible(child) && normalizedText(child));
+  };
+  const isIgnoredAction = (element) => {
+    const action = element.closest("a, button, [role='button'], [role='menuitem']");
+    return action ? ignoredActionLabels.has(normalizedText(action)) : false;
+  };
+  const isAfterIgnoredSectionHeading = (element, surface) => {
+    for (let ancestor = element.parentElement; ancestor; ancestor = ancestor.parentElement) {
+      const headings = Array.from(ancestor.querySelectorAll("h1, h2, h3, h4, h5, h6, [role='heading'], p, span, strong, b"));
+      if (headings.some((heading) =>
+        visible(heading) &&
+        ignoredSectionLabels.has(sectionLabel(heading)) &&
+        !!(heading.compareDocumentPosition(element) & Node.DOCUMENT_POSITION_FOLLOWING)
+      )) return true;
+      if (ancestor === surface) break;
+    }
+    return false;
+  };
+  const findAdjacentLabel = (emailElement, surface) => {
+    for (let container = emailElement.parentElement; container; container = container.parentElement) {
+      const items = Array.from(container.querySelectorAll("p, span, h1, h2, h3, h4, h5, h6, strong, b, small, div")).filter(isLeafTextElement);
+      const emailIndex = items.indexOf(emailElement);
+      if (emailIndex >= 0) {
+        for (let distance = 1; distance < items.length; distance++) {
+          for (const index of [emailIndex - distance, emailIndex + distance]) {
+            const candidate = items[index];
+            if (!candidate) continue;
+            const label = normalizedText(candidate);
+            if (!label || isEmail(label) || ignoredSectionLabels.has(label.replace(/:$/, ""))) continue;
+            if (ignoredActionLabels.has(label) || isIgnoredAction(candidate)) continue;
+            return label;
+          }
+        }
+      }
+      if (container === surface) break;
+    }
+    return "";
+  };
+
+  const identitySurfaces = Array.from(document.querySelectorAll("[role='menu'], [role='dialog'], [class~='MuiPopover-paper']")).filter(visible);
+  const surfaces = identitySurfaces.length ? identitySurfaces : [document.body];
+  for (const surface of surfaces) {
+    const emailElements = Array.from(surface.querySelectorAll("p, span, h1, h2, h3, h4, h5, h6, strong, b, small, div, [data-email]"))
+      .filter((element) => isLeafTextElement(element) && isEmail(text(element)));
+    for (const emailElement of emailElements) {
+      if (isIgnoredAction(emailElement) || isAfterIgnoredSectionHeading(emailElement, surface)) continue;
+      const store = findAdjacentLabel(emailElement, surface);
+      if (store) return { email: normalize(text(emailElement)), store, source: "account-popover-header" };
+    }
+  }
+  return null;
+}
+
+async function readEasyOrdersActiveIdentity(page) {
+  for (let attempt = 1; attempt <= 5; attempt++) {
+    await revealEasyOrdersIdentityMenu(page);
+    await page.waitForTimeout(attempt === 1 ? 800 : 1500);
+    try {
+      const identity = await page.evaluate(parseEasyOrdersIdentityFromDocument);
+      if (identity && identity.email && identity.store) return identity;
+    } finally {
+      await page.keyboard.press("Escape").catch(() => {});
+      await page.waitForTimeout(300).catch(() => {});
+    }
+  }
+  return null;
+}
+
 async function readEasyOrdersCurrentStore(page, expectedEmail) {
+  const activeIdentity = await readEasyOrdersActiveIdentity(page).catch(() => null);
+  if (activeIdentity && normalizeEmail(activeIdentity.email) === normalizeEmail(expectedEmail)) {
+    return normalizeIdentityText(activeIdentity.store);
+  }
+
   // Do not use generated MUI class names like "muiltr-new-*".
   // They are build-generated and can change anytime; use aria-labels, text, roles, and stable structure only.
   await revealEasyOrdersIdentityMenu(page);
@@ -813,6 +912,47 @@ async function readEasyOrdersCurrentStore(page, expectedEmail) {
   }
 }
 
+async function selectExpectedEasyOrdersStore(page) {
+  const expectedStore = normalizeIdentityText(config.easyStore);
+  if (!expectedStore) throw new Error("EASY_ORDERS_STORE_CONFIG_MISSING: easyStore is required for this licensed account slot");
+
+  const returnUrl = page.url();
+  const shouldReturn = returnUrl &&
+    returnUrl.startsWith("https://app.easy-orders.net/") &&
+    !returnUrl.includes("store-selection") &&
+    !returnUrl.includes("login");
+
+  await gotoWithNetworkRetries(page, "https://app.easy-orders.net/#/store-selection", "Easy-Orders store selection");
+  await page.waitForTimeout(1500);
+  if (page.url().includes("login")) return false;
+
+  const cards = page.locator(":is(.MuiCard-root, button, [role='button']):has(h1, h2, h3, h4, h5, h6, [role='heading'])");
+  await cards.first().waitFor({ state: "visible", timeout: 12000 }).catch(() => {});
+  const count = await cards.count();
+
+  for (let i = 0; i < count; i++) {
+    const card = cards.nth(i);
+    const nameEl = card.locator("h1, h2, h3, h4, h5, h6, [role='heading']").first();
+    const rawName = await nameEl.innerText().catch(() => "");
+    if (normalizeIdentityText(rawName) !== expectedStore) continue;
+
+    log(`Easy-Orders: selecting configured store "${config.easyStore}" from store-selection.`);
+    await card.click();
+    await page.waitForFunction(() => !window.location.href.includes("store-selection"), { timeout: 15000 });
+    await page.waitForTimeout(1200);
+    await ensureEasyOrdersEnglish(page);
+
+    if (shouldReturn && returnUrl !== page.url()) {
+      await gotoWithNetworkRetries(page, returnUrl, "Easy-Orders return after store verification");
+      await page.waitForTimeout(1200);
+      await ensureEasyOrdersEnglish(page);
+    }
+    return true;
+  }
+
+  return false;
+}
+
 async function verifyEasyOrdersIdentity(page, where = "session") {
   const expected = normalizeEmail(config.easyEmail);
   const expectedStore = normalizeIdentityText(config.easyStore);
@@ -824,6 +964,10 @@ async function verifyEasyOrdersIdentity(page, where = "session") {
   }
 
   let hits = await collectEasyOrdersIdentityEmails(page).catch(() => []);
+  let activeIdentity = await readEasyOrdersActiveIdentity(page).catch(() => null);
+  if (activeIdentity && activeIdentity.email) {
+    hits.push({ source: activeIdentity.source || "active-identity", email: activeIdentity.email });
+  }
   let detected = [...new Set(hits.map(h => normalizeEmail(h.email)).filter(Boolean))];
 
   if (!detected.includes(expected)) {
@@ -838,11 +982,34 @@ async function verifyEasyOrdersIdentity(page, where = "session") {
 
   if (detected.includes(expected)) {
     const sources = [...new Set(hits.filter(h => normalizeEmail(h.email) === expected).map(h => h.source))].join(", ") || "page";
-    const currentStore = await readEasyOrdersCurrentStore(page, expected).catch(() => "");
+    if (activeIdentity && normalizeEmail(activeIdentity.email) !== expected) {
+      await debugScreenshot(page, `easy-orders-identity-${where}`);
+      throw new Error(`EASY_ORDERS_IDENTITY_MISMATCH: expected ${expected}, detected ${normalizeEmail(activeIdentity.email)}`);
+    }
+
+    let currentStore = activeIdentity && normalizeEmail(activeIdentity.email) === expected
+      ? normalizeIdentityText(activeIdentity.store)
+      : "";
+    if (!currentStore) currentStore = await readEasyOrdersCurrentStore(page, expected).catch(() => "");
     log(`[IDENTITY][Easy-Orders] expected email=${expected}, expected store=${expectedStore}, detected emails=${detected.join(", ") || "none"}, detected store=${currentStore || "unknown"}, where=${where}`);
     if (currentStore !== expectedStore) {
-      await debugScreenshot(page, `easy-orders-store-mismatch-${where}`);
+      const reason = currentStore
+        ? `detected store "${currentStore}" did not match`
+        : "active store header was not readable";
+      log(`Easy-Orders ${reason}; selecting configured store "${config.easyStore}" explicitly.`);
+      const selected = await selectExpectedEasyOrdersStore(page).catch((error) => {
+        log(`Easy-Orders configured store selection failed: ${error.message}`);
+        return false;
+      });
+      if (selected) {
+        activeIdentity = await readEasyOrdersActiveIdentity(page).catch(() => null);
+        currentStore = activeIdentity && normalizeEmail(activeIdentity.email) === expected
+          ? normalizeIdentityText(activeIdentity.store)
+          : await readEasyOrdersCurrentStore(page, expected).catch(() => "");
+        log(`[IDENTITY][Easy-Orders] after store selection: detected store=${currentStore || "unknown"}, where=${where}`);
+      }
     }
+    if (currentStore !== expectedStore) await debugScreenshot(page, `easy-orders-store-mismatch-${where}`);
     assertIdentityMatch("EASY_ORDERS", "store", expectedStore, currentStore);
     log(`✅ Easy-Orders identity verified: ${expected} (${sources})`);
     easyOrdersIdentityVerified = true;
@@ -934,6 +1101,14 @@ async function phase1_easyOrdersLogin(page) {
           found = true;
           break;
         }
+      }
+
+      if (!found) {
+        log(`Easy-Orders: store not found with legacy card selector; trying robust store-selection scan...`);
+        found = await selectExpectedEasyOrdersStore(page).catch((error) => {
+          log(`Easy-Orders robust store-selection scan failed: ${error.message}`);
+          return false;
+        });
       }
 
       if (!found) {

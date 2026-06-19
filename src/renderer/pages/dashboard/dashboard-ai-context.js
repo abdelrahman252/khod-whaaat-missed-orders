@@ -115,7 +115,7 @@
     var profitLoss = commissionInCurrency - allocatedSpend;
     var delivered = Number(p.deliveredCount || p.units || 0);
     var ndrPct = num(p.ndrPct || p.deliveryRate || 0, 1);
-    var avgCommissionSar = delivered > 0 ? Number(p.commission || 0) / delivered : 0;
+    var avgCommissionSar = window.KhodFinancialMetrics.averageCommission(p.commission || 0, delivered);
     var breakEvenSar = breakEvenCpaSar(avgCommissionSar, ndrPct);
     var breakEvenInCurrency = convertCommissionFromSar(breakEvenSar, financials);
     return {
@@ -171,7 +171,7 @@
     return (products || []).map(function (p) {
       var orders = Number(p.placedCount || 0);
       var delivered = Number(p.deliveredCount || 0);
-      var avgCommission = delivered > 0 ? Number(p.commission || 0) / delivered : Number(roi && roi.avgCommission || 0);
+      var avgCommission = window.KhodFinancialMetrics.averageCommission(p.commission || 0, delivered);
       var ndr = orders > 0 ? delivered / orders : 0;
       var expectedRevenue = delivered * avgCommission;
       var breakEvenCpa = avgCommission * ndr;

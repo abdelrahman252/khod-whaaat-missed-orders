@@ -38,28 +38,6 @@
     return !!term && (" " + text + " ").indexOf(" " + term + " ") !== -1;
   }
 
-  function productTokens(name) {
-    var stop = {
-      ad: true, ads: true, campaign: true, sales: true, sale: true, lead: true, leads: true,
-      tiktok: true, tik: true, tok: true, snapchat: true, snap: true, facebook: true, meta: true,
-      ksa: true, saudi: true, offer: true, new: true, test: true, original: true, product: true,
-      "منتج": true, "عرض": true, "جديد": true, "اصلي": true, "حمله": true, "حملة": true
-    };
-    return textKey(name).split(" ").filter(function (token) {
-      return token.length >= 3 && !stop[token] && !/^x\d+$/i.test(token) && !/^\d+$/.test(token);
-    });
-  }
-
-  function productPhrases(tokens) {
-    var phrases = [];
-    for (var size = 2; size <= Math.min(3, tokens.length); size += 1) {
-      for (var start = 0; start <= tokens.length - size; start += 1) {
-        phrases.push(tokens.slice(start, start + size).join(" "));
-      }
-    }
-    return phrases;
-  }
-
   function cleanProductName(name) {
     if (!name) return "";
     var clean = String(name);
@@ -98,7 +76,10 @@
           qty: 0,
           units: 0,
           pieces: 0,
-          cityMap: {}
+          cityMap: {},
+          accounts: {},
+          countries: {},
+          scopes: {}
         };
       }
       
@@ -110,6 +91,22 @@
         if (cleanSku && g.skus.indexOf(cleanSku) === -1) {
           g.skus.push(cleanSku);
         }
+      });
+      (Array.isArray(p.accountIds) ? p.accountIds : []).forEach(function (accountId) {
+        if (accountId) g.accounts[String(accountId)] = true;
+      });
+      (Array.isArray(p.countries) ? p.countries : []).forEach(function (country) {
+        if (country) g.countries[String(country)] = true;
+      });
+      (Array.isArray(p.scopes) ? p.scopes : []).forEach(function (scope) {
+        var accountId = String(scope && (scope.accountId || scope.dashboardAccountId) || "");
+        var country = String(scope && (scope.khodCountry || scope.country) || "");
+        if (accountId) g.accounts[accountId] = true;
+        if (country) g.countries[country] = true;
+        if (accountId || country) g.scopes[accountId + "|" + country] = {
+          accountId: accountId,
+          khodCountry: country
+        };
       });
       
       g.placedCount += num(p.placedCount || p.orders);
@@ -187,6 +184,9 @@
         key: g.name,
         sku: g.skus.join(", "),
         name: g.name,
+        accountIds: Object.keys(g.accounts),
+        countries: Object.keys(g.countries),
+        scopes: Object.keys(g.scopes).map(function (scopeKey) { return g.scopes[scopeKey]; }),
         units: g.deliveredCount,
         pieces: g.pieces || g.qty,
         placedCount: g.placedCount,
@@ -213,21 +213,6 @@
         cityBreakdown: cityBreakdown
       };
     });
-  }
-
-  function validSkus(product) {
-    var raw = product && (product.sku || product.sku_code || product.skuCode) || "";
-    var skus = [];
-    raw.split(/[\s,]+/).forEach(function (part) {
-      var sku = textKey(part);
-      if (!sku || sku === "n a" || sku === "na") return;
-      if (/[a-z\u0600-\u06ff]/i.test(sku) || /\d{6,}/.test(sku)) {
-        if (skus.indexOf(sku) === -1) {
-          skus.push(sku);
-        }
-      }
-    });
-    return skus;
   }
 
   function campaignName(row) {
@@ -368,7 +353,7 @@
     var delivered = num(product && (product.deliveredCount || product.units || product.delivered));
     var commission = num(product && product.commission, 2);
     var totalSales = num(product && (product.totalSales != null ? product.totalSales : product.revenue), 2);
-    var avgCommission = delivered > 0 ? commission / delivered : 0;
+    var avgCommission = window.KhodFinancialMetrics.averageCommission(commission, delivered);
     var ndr = num(product && (product.ndrPct || product.deliveryRate || product.deliveryPct));
     var dr = num(product && (product.drRate || product.deliveryPct));
     var breakEven = avgCommission * (ndr / 100);
@@ -397,67 +382,6 @@
         };
       })
     };
-  }
-
-  function productMatchIndex(products) {
-    var entries = products.map(function (product, idx) {
-      var tokens = productTokens(product.name || product.key || "");
-      return { idx: idx, skus: validSkus(product), tokens: tokens, phrases: productPhrases(tokens) };
-    });
-    var tokenOwners = {};
-    var phraseOwners = {};
-    entries.forEach(function (entry) {
-      entry.tokens.forEach(function (token) { tokenOwners[token] = (tokenOwners[token] || 0) + 1; });
-      entry.phrases.forEach(function (phrase) { phraseOwners[phrase] = (phraseOwners[phrase] || 0) + 1; });
-    });
-    return { entries: entries, tokenOwners: tokenOwners, phraseOwners: phraseOwners };
-  }
-
-  function nameMatchScore(campaignText, spaceText, entry, index) {
-    var hasAnyToken = entry.tokens.some(function (token) {
-      return campaignText.indexOf(token) !== -1;
-    });
-    if (!hasAnyToken) return 0;
-
-    var hits = entry.tokens.filter(function (token) { return spaceText.indexOf(" " + token + " ") !== -1; });
-    var phraseHits = entry.phrases.filter(function (phrase) { return spaceText.indexOf(" " + phrase + " ") !== -1; });
-    var uniqueWordHit = hits.some(function (token) { return token.length >= 4 && index.tokenOwners[token] === 1; });
-    var uniquePhraseHit = phraseHits.some(function (phrase) { return index.phraseOwners[phrase] === 1; });
-    if (hits.length < Math.min(2, entry.tokens.length) && !uniqueWordHit && !uniquePhraseHit) return 0;
-    return hits.reduce(function (total, token) {
-      return total + token.length + (index.tokenOwners[token] === 1 ? 6 : 0);
-    }, 0) + phraseHits.reduce(function (total, phrase) {
-      return total + phrase.length + (index.phraseOwners[phrase] === 1 ? 12 : 0);
-    }, 0);
-  }
-
-  function matchCampaign(row, products, index) {
-    var campaignText = textKey(campaignName(row));
-    if (!campaignText) return null;
-    var spaceText = " " + campaignText + " ";
-    
-    // Quick SKU match in single loop (no allocations and sorting)
-    var bestSkuEntry = null;
-    var bestMatchedSkuLength = 0;
-    for (var i = 0; i < index.entries.length; i++) {
-      var entry = index.entries[i];
-      if (entry.skus && entry.skus.length > 0) {
-        for (var j = 0; j < entry.skus.length; j++) {
-          var s = entry.skus[j];
-          if (campaignText.indexOf(s) !== -1 && spaceText.indexOf(" " + s + " ") !== -1) {
-            if (!bestSkuEntry || s.length > bestMatchedSkuLength) {
-              bestSkuEntry = entry;
-              bestMatchedSkuLength = s.length;
-            }
-          }
-        }
-      }
-    }
-    if (bestSkuEntry) {
-      return { product: products[bestSkuEntry.idx], idx: bestSkuEntry.idx, method: "sku", confidence: "high" };
-    }
-    
-    return null;
   }
 
   function marketingStates(accountId, platform) {
@@ -493,6 +417,7 @@
       ].join(":");
     }).join("|");
     return [
+      window.KhodProductAttribution && window.KhodProductAttribution.VERSION || 0,
       accountId,
       opts.platform || "all",
       textKey(opts.productName || opts.product || ""),
@@ -534,7 +459,8 @@
     var snapshots = products.map(function (product) {
       return productSnapshot(product, reportingCurrency);
     });
-    var index = productMatchIndex(products);
+    var attribution = window.KhodProductAttribution;
+    var index = attribution.createProductIndex(products);
     var rows = [];
     var totals = {
       adSpendSar: 0,
@@ -544,7 +470,12 @@
       unmatchedSpendSar: 0,
       spentCampaignCount: 0,
       zeroSpendRowsSkipped: 0,
-      missingSkuCampaignCount: 0
+      missingSkuCampaignCount: 0,
+      separatedSkuRows: 0,
+      gluedSkuRows: 0,
+      nameRows: 0,
+      ambiguousRows: 0,
+      unmatchedRows: 0
     };
     var objectiveMap = {};
     var productGroups = {};
@@ -559,7 +490,13 @@
       totals.campaignCount += num(summary.campaignCount);
       totals.rowCount += num(summary.rowCount);
       rowsFromState(state).forEach(function (row) {
-        rows.push({ row: row, state: state });
+        rows.push({
+          row: Object.assign({
+            dashboardAccountId: row && row.dashboardAccountId ||
+              (state && state.accountId && state.accountId !== "__all__" ? state.accountId : "")
+          }, row),
+          state: state
+        });
       });
     });
 
@@ -573,19 +510,31 @@
         return;
       }
       var objective = objectiveOf(row);
-      var match = matchCampaign(row, products, index);
-      var isVerifiedSkuMatch = !!(match && match.method === "sku" && match.product);
-      var product = isVerifiedSkuMatch ? snapshots[match.idx] : null;
-      var suggestedProduct = match && !isVerifiedSkuMatch ? snapshots[match.idx] : null;
+      var match = attribution.matchCampaignName(row, index, {
+        accountId: accountId !== "__all__" ? accountId : ""
+      });
+      var product = match.status === "matched" ? snapshots[match.productIndex] : null;
+      var candidateProducts = (match.candidateIds || []).map(function (candidateId) {
+        var candidate = index.entries.filter(function (item) { return item.id === candidateId; })[0];
+        return candidate ? snapshots[candidate.idx] : null;
+      }).filter(Boolean);
+      var suggestedProduct = !product && candidateProducts.length === 1 ? candidateProducts[0] : null;
       var khodOrders = product ? product.orders : 0;
       var estimatedCpaSar = product && khodOrders > 0 ? spendSar / khodOrders : 0;
       var performance = campaignPerformance(row, spendSar, currency);
       totals.adSpendSar += spendSar;
       totals.spentCampaignCount += 1;
-      if (product) totals.matchedSpendSar += spendSar;
+      if (product) {
+        totals.matchedSpendSar += spendSar;
+        if (match.matchDetail === "sku_separated") totals.separatedSkuRows += 1;
+        else if (match.matchDetail === "sku_glued") totals.gluedSkuRows += 1;
+        else if (match.method === "name") totals.nameRows += 1;
+      }
       else {
         totals.unmatchedSpendSar += spendSar;
         totals.missingSkuCampaignCount += 1;
+        if (match.status === "ambiguous") totals.ambiguousRows += 1;
+        else totals.unmatchedRows += 1;
       }
       if (!objectiveMap[objective]) objectiveMap[objective] = { objective: objective, spendSar: 0, campaignCount: 0 };
       objectiveMap[objective].spendSar += spendSar;
@@ -612,8 +561,15 @@
         productSku: product ? product.sku : "",
         suggestedProduct: suggestedProduct ? suggestedProduct.name : "",
         suggestedProductSku: suggestedProduct ? suggestedProduct.sku : "",
-        matchMethod: match ? match.method : "unmatched",
-        matchConfidence: product ? match.confidence : (suggestedProduct ? "needs_sku" : "none"),
+        candidateIds: match.candidateIds || [],
+        candidateProducts: candidateProducts.map(function (candidate) {
+          return { id: candidate.id, name: candidate.name, sku: candidate.sku };
+        }),
+        matchMethod: match.method,
+        matchDetail: match.matchDetail,
+        matchedSku: match.matchedSku || "",
+        matchConfidence: match.confidence,
+        attributionStatus: match.status,
         attributionVerified: !!product,
         khodOrders: khodOrders,
         khodDelivered: product ? product.delivered : 0,
@@ -621,7 +577,11 @@
         estimatedCpaSar: num(estimatedCpaSar, 2),
         khodConversionRatePct: product && performance.trafficViews > 0 ? num((khodOrders / performance.trafficViews) * 100, 2) : 0,
         deliveredConversionRatePct: product && performance.trafficViews > 0 ? num((product.delivered / performance.trafficViews) * 100, 2) : 0,
-        note: product ? "Orders and delivery results come from the KHOD dashboard." : "Unmatched spend; no KHOD product attribution."
+        note: product
+          ? "Orders and delivery results come from the KHOD dashboard."
+          : (match.status === "ambiguous"
+            ? "Ambiguous campaign; spend is assigned to no product."
+            : "Unmatched spend; no KHOD product attribution.")
       };
       campaign.searchHaystack = textKey([
         campaign.campaign,
@@ -634,7 +594,9 @@
         campaign.productSku || "",
         campaign.suggestedProductSku || "",
         campaign.matchMethod,
-        campaign.matchConfidence
+        campaign.matchConfidence,
+        campaign.matchDetail,
+        campaign.candidateProducts.map(function (candidate) { return candidate.name + " " + candidate.sku; }).join(" ")
       ].join(" "));
       allCampaignSummaries.push(campaign);
       pushTop(topSpendCampaigns, campaign);
@@ -690,7 +652,7 @@
       var cpa = group.khodOrders > 0 ? group.spendSar / group.khodOrders : 0;
       var deliveredCpa = group.khodDelivered > 0 ? group.spendSar / group.khodDelivered : 0;
       var breakEven = group.breakEvenCpaSar || 0;
-      var avgCommissionSar = group.khodDelivered > 0 ? group.commission / group.khodDelivered : 0;
+      var avgCommissionSar = window.KhodFinancialMetrics.averageCommission(group.commission, group.khodDelivered);
       var trafficViews = group.trafficViews || 0;
       var netProfitSar = group.commission - group.spendSar;
       var cpaUnsafe = breakEven > 0 && cpa > breakEven;
@@ -819,6 +781,11 @@
       matchedSpendPct: totals.adSpendSar > 0 ? num(totals.matchedSpendSar / totals.adSpendSar * 100, 2) : 0,
       unmatchedSpendPct: totals.adSpendSar > 0 ? num(totals.unmatchedSpendSar / totals.adSpendSar * 100, 2) : 0,
       missingSkuCampaignCount: totals.missingSkuCampaignCount,
+      separatedSkuRows: totals.separatedSkuRows,
+      gluedSkuRows: totals.gluedSkuRows,
+      nameRows: totals.nameRows,
+      ambiguousRows: totals.ambiguousRows,
+      unmatchedRows: totals.unmatchedRows,
       khodOrders: num(matchedProductTotals.khodOrders),
       noKhodProductSpendSar: num(totals.unmatchedSpendSar, 2)
     };
@@ -831,8 +798,9 @@
     }, "");
     var matchedKhodCpaSar = matchedProductTotals.khodOrders > 0 ? matchedProductTotals.spendSar / matchedProductTotals.khodOrders : 0;
     var result = {
-      version: 2,
-      sourceOfTruth: "Product decisions use SKU-matched campaign spend and KHOD orders, delivery, and commission data.",
+      version: 3,
+      attributionVersion: attribution.VERSION,
+      sourceOfTruth: "Product decisions use shared campaign-name attribution with KHOD orders, delivery, and commission data.",
       periodLabel: periodLabel,
       accountId: accountId,
       platform: opts.platform || "all",
@@ -852,6 +820,11 @@
         unmatchedSpend: num(sarToReportingCurrency(totals.unmatchedSpendSar, reportingCurrency), 2),
         matchedSpendPct: attributionQuality.matchedSpendPct,
         unmatchedSpendPct: attributionQuality.unmatchedSpendPct,
+        separatedSkuRows: totals.separatedSkuRows,
+        gluedSkuRows: totals.gluedSkuRows,
+        nameRows: totals.nameRows,
+        ambiguousRows: totals.ambiguousRows,
+        unmatchedRows: totals.unmatchedRows,
         khodOrders: num(matchedProductTotals.khodOrders),
         khodDelivered: num(matchedProductTotals.khodDelivered),
         khodCpaSar: num(matchedKhodCpaSar, 2),

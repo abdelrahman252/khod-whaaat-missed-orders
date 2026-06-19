@@ -19,6 +19,8 @@
     "verify:dashboard-range": "node scripts/verify-dashboard-current-year.js && node scripts/verify-khod-date-range.js",
     "verify:campaign-decisions": "node scripts/verify-campaign-decisions.js",
     "verify:campaign-ui": "node scripts/verify-campaign-ui.js",
+    "verify:product-attribution": "node scripts/verify-product-attribution.js",
+    "verify:average-commission": "node scripts/verify-average-commission.js",
     "verify:license-warning": "node scripts/verify-license-expiry-warning.js",
     "qa:dashboard": "node scripts/qa-dashboard-responsive.js",
     "qa:dashboard:only": "node scripts/qa-dashboard-only.js",

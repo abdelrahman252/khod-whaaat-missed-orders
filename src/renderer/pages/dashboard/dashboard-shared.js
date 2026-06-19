@@ -458,6 +458,7 @@
     var value    = opts.value        || 0;
     var unit     = window.dashboardI18n ? window.dashboardI18n.raw(opts.unit || '') : (opts.unit || '');
     var delta    = opts.delta        || 0;
+    var hideDelta = opts.hideDelta === true;
     var color    = opts.color        || 'green';
     var spark    = opts.sparklineData || opts.spark || [];
     var iconType = opts.iconType     || color;
@@ -511,10 +512,10 @@
           '<span title="' + fullValue + (unit ? ' ' + unit : '') + '" style="font-size:20px;font-weight:900;color:#fff;letter-spacing:0;line-height:1;white-space:nowrap;max-width:100%;overflow:hidden;text-overflow:ellipsis;direction:ltr;unicode-bidi:isolate;font-variant-numeric:tabular-nums;" class="dash-kpi-value kpi-num" data-id="'+id+'" data-decimals="' + decimals + '" data-compact="true" data-to="'+value+'">' + displayValue + '</span>' +
           '<span style="font-size:11px;font-weight:700;color:rgba(255,255,255,0.5);direction:inherit;">'+unit+'</span>' +
         '</div>' +
-        '<div style="display:flex;flex-direction:column;align-items:flex-end;gap:2px;margin-top:4px;">' +
+        (hideDelta ? '' : '<div style="display:flex;flex-direction:column;align-items:flex-end;gap:2px;margin-top:4px;">' +
           '<span style="font-size:12px;font-weight:700;color:'+dColor+';line-height:1;">'+(isPositive?'↑':'↓')+'&nbsp;'+Math.abs(delta)+'%</span>' +
           '<span style="font-size:9px;color:rgba(255,255,255,0.28);direction:inherit;line-height:1;">' + (window.dashboardI18n ? window.dashboardI18n.raw('عن الشهر الماضي') : 'عن الشهر الماضي') + '</span>' +
-        '</div>' +
+        '</div>') +
         sparkHtml +
       '</div>' +
     '</div>';

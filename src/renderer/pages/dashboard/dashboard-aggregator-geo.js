@@ -162,7 +162,9 @@
           commission:            cp.commission || 0,
           revenue:               cp.revenue    || 0,
           avgOrderValue:         (cp.orders || 0) > 0 ? parseFloat(((cp.revenue || 0) / cp.orders).toFixed(2)) : 0,
-          avgCommissionPerOrder: (cp.orders || 0) > 0 ? parseFloat(((cp.commission || 0) / cp.orders).toFixed(2)) : 0,
+          avgCommissionPerOrder: parseFloat(
+            window.KhodFinancialMetrics.averageCommission(cp.commission || 0, cp.delivered || 0).toFixed(2)
+          ),
 
           // Payment
           prepaidCount:  cp.prepaidCount || 0,

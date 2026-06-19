@@ -595,9 +595,9 @@ window.renderSection1 = function (mountEl, data, ctx) {
                         '<div style="width:12px;height:12px;border-radius:3px;background:' + s.color + ';box-shadow:0 0 6px ' + s.color + '88;flex-shrink:0;"></div>' +
                         '<div style="display:flex;flex-direction:column;">' +
                           '<span style="font-size:12px;color:rgba(255,255,255,0.5);font-weight:500;">' + s.label + '</span>' +
-                          '<span style="font-size:15px;font-weight:800;color:#fff;font-family:\'DM Mono\', monospace;margin-top:2px;white-space:nowrap;">' +
-                            fmt(s.sar) + ' <span style="font-size:11px;color:rgba(255,255,255,0.4);">SAR</span>' +
-                            ' <span style="font-size:12px;font-weight:700;color:' + s.color + ';margin-left:6px;">(' + s.pct + '%)</span>' +
+                          '<span style="font-size:10px;font-weight:800;color:#fff;font-family:\'DM Mono\', monospace;margin-top:2px;white-space:nowrap;">' +
+                            fmt(s.sar) + ' <span style="font-size:8px;color:rgba(255,255,255,0.4);">SAR</span>' +
+                            ' <span style="font-size:9px;font-weight:700;color:' + s.color + ';margin-left:4px;">(' + s.pct + '%)</span>' +
                           '</span>' +
                         '</div>' +
                       '</div>';

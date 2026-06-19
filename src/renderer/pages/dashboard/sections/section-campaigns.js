@@ -32,6 +32,7 @@
 
   function campaignIntelCacheKey(data, accountId, platform, syncStamp, reportingCurrency) {
     return [
+      window.KhodProductAttribution && window.KhodProductAttribution.VERSION || 0,
       data && data._version || data && data.meta && (data.meta.lastUpdatedAt || data.meta.generatedAt || data.meta.periodLabel) || "loaded",
       accountId || "__all__",
       platform || "all",
@@ -265,9 +266,9 @@
     var currency = intel.currency || intel.reportingCurrency || "SAR";
     var totals = intel.totals || {};
     return card("Spend", money(totals.adSpend != null ? totals.adSpend : sarToCampaignCurrency(totals.adSpendSar, currency), currency), "Spent campaigns in this period", "wallet", "spend") +
-      card("Matched spend", percent(totals.matchedSpendPct), money(totals.matchedSpend != null ? totals.matchedSpend : sarToCampaignCurrency(totals.matchedSpendSar, currency), currency) + " exact SKU", "shieldHalved", "matched") +
-      card("Unmatched spend", percent(totals.unmatchedSpendPct), money(totals.unmatchedSpend != null ? totals.unmatchedSpend : sarToCampaignCurrency(totals.unmatchedSpendSar, currency), currency) + " needs SKU", "circleXmark", "unmatched") +
-      card("KHOD orders", fmt(totals.khodOrders), "From SKU-confirmed products", "package", "orders") +
+      card("Matched spend", percent(totals.matchedSpendPct), money(totals.matchedSpend != null ? totals.matchedSpend : sarToCampaignCurrency(totals.matchedSpendSar, currency), currency) + " attributed once", "shieldHalved", "matched") +
+      card("Unmatched spend", percent(totals.unmatchedSpendPct), money(totals.unmatchedSpend != null ? totals.unmatchedSpend : sarToCampaignCurrency(totals.unmatchedSpendSar, currency), currency) + " unmatched or ambiguous", "circleXmark", "unmatched") +
+      card("KHOD orders", fmt(totals.khodOrders), "From attributed products", "package", "orders") +
       card("KHOD CPA", totals.khodOrders > 0 ? money(totals.khodCpa != null ? totals.khodCpa : sarToCampaignCurrency(totals.khodCpaSar, currency), currency) : "No KHOD orders", "Spend / KHOD orders", "calculator", "cpa") +
       card("Net profit", signedMoney(totals.netProfit != null ? totals.netProfit : sarToCampaignCurrency(totals.netProfitSar, currency), currency), "Earned commission - spend", "moneyBill", "profit", financialState(totals.netProfitSar, true)) +
       card("ROI", totals.matchedSpendSar > 0 ? percent(totals.roiPct) : campaignPick("Unavailable", "غير متوفر"), "Net profit / spend", "trendingUp", "roi", financialState(totals.roiPct, totals.matchedSpendSar > 0)) +
@@ -357,23 +358,23 @@
   function headerTip(mode, key, label) {
     var tips = {
       products: {
-        product: "KHOD product matched only by exact SKU in the campaign name.",
-        spendSar: "SKU-matched campaign spend shown in the shared calculator/product currency.",
-        clicks: "Synced platform clicks. The small line shows how many SKU-matched campaigns feed this product.",
+        product: "KHOD product matched by a complete SKU or a unique high-confidence product name.",
+        spendSar: "Attributed campaign spend shown in the shared calculator/product currency.",
+        clicks: "Synced platform clicks. The small line shows how many attributed campaigns feed this product.",
         khodOrders: "Real conversions from KHOD dashboard orders. Conversion rate = KHOD orders / landing-page views, or content views when landing-page views are unavailable.",
         khodDelivered: "Delivered KHOD orders from dashboard data. Delivered conversion rate uses the same landing-page or content-view denominator.",
         khodNdrPct: "NDR from KHOD dashboard delivery data.",
-        khodCpaSar: "KHOD CPA = SKU-matched campaign spend / KHOD dashboard orders, shown in shared currency.",
-        deliveredCpaSar: "Delivered CPA = SKU-matched campaign spend / delivered KHOD orders, shown in shared currency.",
+        khodCpaSar: "KHOD CPA = attributed campaign spend / KHOD dashboard orders, shown in shared currency.",
+        deliveredCpaSar: "Delivered CPA = attributed campaign spend / delivered KHOD orders, shown in shared currency.",
         breakEvenCpaSar: "Break-even CPA uses KHOD average commission and NDR, shown in shared currency.",
         commission: "Earned commission from KHOD delivered/order data, shown in shared currency.",
         avgCommissionSar: "Average commission = earned commission / delivered KHOD orders, shown in shared currency.",
-        netProfitSar: "Net profit = earned commission - SKU-matched campaign spend. ROI = net profit / spend.",
+        netProfitSar: "Net profit = earned commission - attributed campaign spend. ROI = net profit / spend.",
         commissionRoas: "Commission ROAS = earned commission / spend. Small line shows total sales and total sales ROAS.",
         decision: "Decision uses KHOD orders, delivered orders, NDR, CPA vs break-even, and net profit."
       },
       campaigns: {
-        campaign: "Synced campaign name and ID. Add the exact SKU to the name for product attribution.",
+        campaign: "Synced campaign name and ID. Attribution searches only the campaign name.",
         platform: "The ad platform that owns this campaign.",
         objective: "Campaign objective detected from synced fields and campaign naming.",
         status: "Current or effective campaign status reported by the ad platform.",
@@ -383,7 +384,7 @@
         ctrPct: "CTR = clicks / impressions.",
         cpcSar: "Raw ad-platform CPC in the ad account currency.",
         cpmSar: "Raw ad-platform CPM in the ad account currency.",
-        product: "Attribution result. Product Actions only use exact SKU matches; unmatched spend stays separate."
+        product: "Attribution result. Complete SKU and unique-name matches feed Product Actions; ambiguous spend stays separate."
       }
     };
     return tips[mode || "campaigns"] && tips[mode || "campaigns"][key] || label;
@@ -416,18 +417,19 @@
     var unmatchedPct = Math.max(0, Math.min(100, Number(totals.unmatchedSpendPct || 0)));
     var note = totals.adSpendSar > 0
       ? (unmatchedPct > 0
-        ? "Add SKU to campaign names to move unmatched spend into Product Actions."
-        : "All spent campaigns are SKU-matched for product-level decisions.")
-      : "Sync spent campaigns to unlock SKU-based Product Actions.";
+        ? "Use one complete SKU or one distinctive product name per campaign to improve attribution."
+        : "All spent campaigns have one clear product attribution.")
+      : "Sync spent campaigns to unlock attributed Product Actions.";
     return '<div class="campaign-health-card">' +
-      '<div class="campaign-health-top"><span>SKU match coverage</span><strong>' + percent(matchedPct) + '</strong></div>' +
-      '<div class="campaign-match-bar" aria-label="SKU matched spend coverage">' +
+      '<div class="campaign-health-top"><span>Attribution coverage</span><strong>' + percent(matchedPct) + '</strong></div>' +
+      '<div class="campaign-match-bar" aria-label="Attributed spend coverage">' +
         '<i class="campaign-match-bar-fill" style="width:' + esc(String(matchedPct)) + '%"></i>' +
       '</div>' +
       '<div class="campaign-health-legend">' +
-        '<span><i class="matched"></i>SKU-matched</span>' +
-        '<span><i class="unmatched"></i>Unmatched</span>' +
+        '<span><i class="matched"></i>Attributed</span>' +
+        '<span><i class="unmatched"></i>Unmatched / ambiguous</span>' +
       '</div>' +
+      '<div class="campaign-note">Separated SKU: ' + fmt(totals.separatedSkuRows) + ' · Glued SKU: ' + fmt(totals.gluedSkuRows) + ' · Name fallback: ' + fmt(totals.nameRows) + ' · Ambiguous: ' + fmt(totals.ambiguousRows) + '</div>' +
       '<div class="campaign-note">' + esc(note) + '</div>' +
       (unmatchedPct > 0 ? '<div class="campaign-health-foot"><span>Needs SKU</span><strong>' + percent(unmatchedPct) + '</strong></div>' : '') +
     '</div>';
@@ -445,7 +447,7 @@
       '<div class="campaign-signal"><span>Watch / needs data</span><strong>' + fmt(watchCount) + '</strong></div>' +
       '<div class="campaign-signal"><span>Pause / reduce</span><strong>' + fmt(pauseCount) + '</strong></div>' +
       '<div class="campaign-signal"><span>Creative refresh</span><strong>' + fmt((intel.creativeSummary && intel.creativeSummary.fatigueCandidates || []).length) + '</strong></div>' +
-      '<div class="campaign-note">Product Actions use campaign spend and clicks only when the campaign name contains an exact SKU. KHOD orders, NDR, commission, ROI, ROAS, and decisions come from dashboard orders.</div>';
+      '<div class="campaign-note">Product Actions use spend and clicks only when the campaign name resolves to one product. KHOD orders, NDR, commission, ROI, ROAS, and decisions come from dashboard orders.</div>';
   }
 
   function decisionLabel(decision) {
@@ -538,7 +540,7 @@
 
   function renderProductRows(groups, periodLabel, currency) {
     currency = normalizeCampaignCurrency(currency || "SAR", "SAR");
-    if (!groups.length) return '<tr><td colspan="14" class="campaign-empty">No SKU-confirmed product spend on this page.</td></tr>';
+    if (!groups.length) return '<tr><td colspan="14" class="campaign-empty">No attributed product spend on this page.</td></tr>';
     return groups.map(function (group) {
       var cpaLabel = group.khodOrders > 0 ? money(group.khodCpa != null ? group.khodCpa : sarToCampaignCurrency(group.khodCpaSar || group.estimatedCpaSar, currency), currency) : "No KHOD orders";
       var deliveredCpaLabel = group.khodDelivered > 0 ? money(group.deliveredCpa != null ? group.deliveredCpa : sarToCampaignCurrency(group.deliveredCpaSar, currency), currency) : "No delivered orders";
@@ -594,10 +596,17 @@
   function renderCampaignRows(rows) {
     if (!rows.length) return '<tr><td colspan="11" class="campaign-empty">No spent campaigns match the current filters.</td></tr>';
     return rows.map(function (row) {
-      var matchText = row.attributionVerified ? row.product : (row.suggestedProduct ? "Needs SKU" : "Unmatched");
+      var ambiguous = row.attributionStatus === "ambiguous" || row.matchMethod === "ambiguous";
+      var matchText = row.attributionVerified ? row.product : (ambiguous ? "Ambiguous" : "Unmatched");
       var matchSub = row.attributionVerified
-        ? ("SKU " + (row.productSku || ""))
-        : (row.suggestedProduct ? compactText(row.suggestedProduct, 42) : "No KHOD product attribution");
+        ? (row.matchMethod === "name"
+          ? "Name fallback · " + (row.matchDetail || "")
+          : ((row.matchDetail === "sku_glued" ? "Glued SKU " : "Separated SKU ") + (row.matchedSku || row.productSku || "")))
+        : (ambiguous
+          ? (row.candidateProducts || []).map(function (candidate) {
+              return compactText((candidate.name || "") + " " + (candidate.sku || ""), 32);
+            }).join(" vs ")
+          : "No KHOD product attribution");
       var campaignTitle = row.campaign || "";
       return '<tr>' +
         '<td class="campaign-cell-name campaign-cell-campaign" title="' + esc(campaignTitle) + '"><strong>' + esc(compactText(campaignTitle, 48)) + '</strong><small>' + esc(row.campaignId || row.note || "") + '</small></td>' +
@@ -610,7 +619,7 @@
         '<td class="campaign-num">' + percent(row.ctrPct) + '</td>' +
         '<td class="campaign-num"><strong>' + campaignNativeMoney(campaignNativeCpc(row), row.rawCurrency || "SAR") + '</strong><small>Platform CPC</small></td>' +
         '<td class="campaign-num">' + campaignNativeMoney(campaignNativeCpm(row), row.rawCurrency || "SAR") + '</td>' +
-        '<td class="campaign-cell-match" title="' + esc(row.product || row.suggestedProduct || "") + '"><strong>' + esc(matchText) + '</strong><small>' + esc(matchSub) + '</small></td>' +
+        '<td class="campaign-cell-match" title="' + esc(row.product || matchSub || "") + '"><strong>' + esc(matchText) + '</strong><small>' + esc(matchSub) + '</small></td>' +
       '</tr>';
     }).join("");
   }
@@ -787,9 +796,9 @@
       '</div>' +
       '<div class="campaign-kpis">' +
         card("Spend", money(intel.totals.adSpend != null ? intel.totals.adSpend : sarToCampaignCurrency(intel.totals.adSpendSar, intel.currency || intel.reportingCurrency || "SAR"), intel.currency || intel.reportingCurrency || "SAR"), "Spent campaigns in this period", "wallet", "spend") +
-        card("Matched spend", percent(intel.totals.matchedSpendPct), money(intel.totals.matchedSpend != null ? intel.totals.matchedSpend : sarToCampaignCurrency(intel.totals.matchedSpendSar, intel.currency || intel.reportingCurrency || "SAR"), intel.currency || intel.reportingCurrency || "SAR") + " exact SKU", "shieldHalved", "matched") +
-        card("Unmatched spend", percent(intel.totals.unmatchedSpendPct), money(intel.totals.unmatchedSpend != null ? intel.totals.unmatchedSpend : sarToCampaignCurrency(intel.totals.unmatchedSpendSar, intel.currency || intel.reportingCurrency || "SAR"), intel.currency || intel.reportingCurrency || "SAR") + " needs SKU", "circleXmark", "unmatched") +
-        card("KHOD orders", fmt(intel.totals.khodOrders), "From SKU-confirmed products", "package", "orders") +
+        card("Matched spend", percent(intel.totals.matchedSpendPct), money(intel.totals.matchedSpend != null ? intel.totals.matchedSpend : sarToCampaignCurrency(intel.totals.matchedSpendSar, intel.currency || intel.reportingCurrency || "SAR"), intel.currency || intel.reportingCurrency || "SAR") + " attributed once", "shieldHalved", "matched") +
+        card("Unmatched spend", percent(intel.totals.unmatchedSpendPct), money(intel.totals.unmatchedSpend != null ? intel.totals.unmatchedSpend : sarToCampaignCurrency(intel.totals.unmatchedSpendSar, intel.currency || intel.reportingCurrency || "SAR"), intel.currency || intel.reportingCurrency || "SAR") + " unmatched or ambiguous", "circleXmark", "unmatched") +
+        card("KHOD orders", fmt(intel.totals.khodOrders), "From attributed products", "package", "orders") +
         card("KHOD CPA", intel.totals.khodOrders > 0 ? money(intel.totals.khodCpa != null ? intel.totals.khodCpa : sarToCampaignCurrency(intel.totals.khodCpaSar, intel.currency || intel.reportingCurrency || "SAR"), intel.currency || intel.reportingCurrency || "SAR") : "No KHOD orders", "Spend / KHOD orders", "calculator", "cpa") +
         card("Net profit", signedMoney(intel.totals.netProfit != null ? intel.totals.netProfit : sarToCampaignCurrency(intel.totals.netProfitSar, intel.currency || intel.reportingCurrency || "SAR"), intel.currency || intel.reportingCurrency || "SAR"), "Earned commission - spend", "moneyBill", "profit", financialState(intel.totals.netProfitSar, true)) +
         card("ROI", intel.totals.matchedSpendSar > 0 ? percent(intel.totals.roiPct) : campaignPick("Unavailable", "غير متوفر"), "Net profit / spend", "trendingUp", "roi", financialState(intel.totals.roiPct, intel.totals.matchedSpendSar > 0)) +
@@ -799,7 +808,7 @@
         '<div class="campaign-panel campaign-panel-health"><h3>Spend Match Health</h3>' + renderSpendMatchHealth(intel) + '</div>' +
         '<div class="campaign-panel campaign-panel-signals"><h3>Media Buying Signals</h3>' + renderMediaBuyingSignals(intel) + '</div>' +
       '</div>' +
-      '<div class="campaign-panel wide"><div class="campaign-panel-title"><div><h3>Product Actions</h3><span>SKU-confirmed products only. Financial columns use the shared calculator/product currency.</span></div><div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;justify-content:flex-end"><div style="display:flex;align-items:center;gap:6px;padding:4px 7px;border-radius:10px;border:1px solid rgba(96,165,250,0.18);background:rgba(96,165,250,0.06);" title="Product Actions use the same shared calculator currency as Products and calculators. Raw campaign rows stay in the ad account currency."><span style="font-size:10px;color:rgba(255,255,255,0.42);font-weight:800;white-space:nowrap;text-transform:uppercase;letter-spacing:0.4px">Currency</span><div data-campaign-product-currency style="width:88px;min-width:88px"></div></div><button type="button" class="campaign-ai-chip" data-campaign-ai-review>' + icon("sparkles") + 'Analyze actions</button></div></div>' +
+      '<div class="campaign-panel wide"><div class="campaign-panel-title"><div><h3>Product Actions</h3><span>Clearly attributed products only. Financial columns use the shared calculator/product currency.</span></div><div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;justify-content:flex-end"><div style="display:flex;align-items:center;gap:6px;padding:4px 7px;border-radius:10px;border:1px solid rgba(96,165,250,0.18);background:rgba(96,165,250,0.06);" title="Product Actions use the same shared calculator currency as Products and calculators. Raw campaign rows stay in the ad account currency."><span style="font-size:10px;color:rgba(255,255,255,0.42);font-weight:800;white-space:nowrap;text-transform:uppercase;letter-spacing:0.4px">Currency</span><div data-campaign-product-currency style="width:88px;min-width:88px"></div></div><button type="button" class="campaign-ai-chip" data-campaign-ai-review>' + icon("sparkles") + 'Analyze actions</button></div></div>' +
         '<div class="campaign-controls">' +
           '<label class="campaign-search"><span>' + icon("search") + '</span><input type="search" data-product-search placeholder="Search product or SKU" value="' + esc(state.productSearch || "") + '" /></label>' +
         '</div>' +

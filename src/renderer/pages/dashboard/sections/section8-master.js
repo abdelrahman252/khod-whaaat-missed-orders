@@ -105,7 +105,7 @@ window.renderSection8 = function (mountEl, data, ctx) {
     adSpend:        finalAdSpend,
     totalOrders:    _roiLiveRaw.totalOrders    != null ? _roiLiveRaw.totalOrders    : (d.roi ? d.roi.totalOrders    : null),
     deliveredCount: _roiLiveRaw.deliveredCount != null ? _roiLiveRaw.deliveredCount : (d.roi ? d.roi.deliveredCount : null),
-    avgCommission:  _roiLiveRaw.avgCommission  != null ? _roiLiveRaw.avgCommission  : (d.roi ? d.roi.avgCommission  : 40),
+    avgCommission:  _roiLiveRaw.avgCommission  != null ? _roiLiveRaw.avgCommission  : (d.roi ? d.roi.avgCommission  : 0),
     ndrPct:         _roiLiveRaw.ndrPct         != null ? _roiLiveRaw.ndrPct         : (d.roi ? d.roi.ndrPct         : 0)
   };
 
@@ -164,14 +164,6 @@ window.renderSection8 = function (mountEl, data, ctx) {
     { label: s8Txt('Average Order Value (Delivered)', 'متوسط قيمة الطلب المستلم'), value: overview.deliveredAov ? overview.deliveredAov.value : 0, unit: 'SAR', delta: overview.deliveredAov ? overview.deliveredAov.delta : 0, color: 'blue', spark: [], iconType: 'blue', tooltip: tx('kpi.deliveredAov.tooltip', 'متوسط قيمة الطلب المستلم ويحسب بقسمة إجمالي المبيعات المستلمة على عدد الطلبات المستلمة.') },
     { label: s8Txt('Net ROAS', 'العائد الصافي على الإعلان'), value: netRoas.toFixed(2), unit: 'x', delta: netRoasDelta, color: 'purple', spark: [], iconType: 'purple', tooltip: tx('kpi.netRoas.tooltip', s8Txt('Net ROAS = delivered sales divided by ad spend. It uses only successfully delivered order revenue, so pending, canceled, and returned orders do not inflate ad performance.', 'العائد الصافي على الإعلان = مبيعات الطلبات المسلمة مقسومة على الإنفاق الإعلاني. يستخدم مبيعات الطلبات المسلمة فقط حتى لا ترفع الطلبات المعلقة أو الملغاة أو المرتجعة نتيجة الإعلان.')) },
     { label: s8Txt('Delivery Rate (DR)', 'معدل التسليم (DR)'), value: accountDrPct, unit: '%', delta: 0, color: 'blue', spark: [], iconType: 'blue', tooltip: tx('kpi.dr.tooltip', s8Txt('Account-wide delivery rate based on delivered orders divided by active delivery base.', 'معدل التسليم على مستوى الحساب حسب الطلبات المسلمة مقارنة بقاعدة التسليم النشطة.')) }
-  ];
-
-  // Health bar percentages
-  var health = overview.health || {};
-  var HEALTH = [
-    { label: s8Txt('Earned', 'محصّلة'),  pct: health.earned ? health.earned.pct : 0, color: '#00e676' },
-    { label: s8Txt('Incoming', 'قادمة'),   pct: health.incoming ? health.incoming.pct : 0, color: '#f59e0b' },
-    { label: s8Txt('Lost', 'ضائعة'),   pct: health.lost ? health.lost.pct : 0, color: '#ef4444' },
   ];
 
   var STAGES = pipeline.stages || [
@@ -306,7 +298,18 @@ window.renderSection8 = function (mountEl, data, ctx) {
 
   // Quick Summary dynamic items
   var ndrPct = cod.ndrPct != null ? num(cod.ndrPct, 0) : (d.roi ? num(d.roi.ndrPct, 0) : 0);
-  var avgCommission = num(roiLive.avgCommission, 40);
+  var avgCommission = num(roiLive.avgCommission, 0);
+  var accountSpend = Math.max(0, num(roiLive.adSpend, 0));
+  var accountOrders = Math.max(0, roiLive.totalOrders != null ? num(roiLive.totalOrders, 0) : num(totalOrders, 0));
+  var accountNdrPct = roiLive.ndrPct != null ? num(roiLive.ndrPct, 0) : ndrPct;
+  var accountDeliveredOrders = roiLive.deliveredCount != null
+    ? Math.max(0, num(roiLive.deliveredCount, 0))
+    : 0;
+  var avgCommissionInTargetCurrency = convert(avgCommission, 'SAR', targetCurrency);
+  var accountCpa = accountOrders > 0 ? accountSpend / accountOrders : 0;
+  var accountBreakEvenCpa = avgCommissionInTargetCurrency * (accountNdrPct / 100);
+  var accountRevenue = accountDeliveredOrders * avgCommissionInTargetCurrency;
+  var accountNetProfit = accountRevenue - accountSpend;
   var averageDeliveredOrderValue = overview.deliveredAov ? num(overview.deliveredAov.value, 0) : 0;
   var deliveredSalesValue = overview.totalDeliveredSales ? num(overview.totalDeliveredSales.value, 0) : 0;
   var activeCitiesCount = citiesList.length;
@@ -627,20 +630,22 @@ window.renderSection8 = function (mountEl, data, ctx) {
     '</div>';
   }).join('');
 
-  var healthSegHtml = HEALTH.map(function (h, i) {
-    return '<div class="health-seg" data-pct="' + h.pct + '" style="width:0%;height:100%;flex-shrink:0;background:' + h.color + ';' +
-      'box-shadow:inset 0 4px 8px rgba(255,255,255,0.15);transition:width 0.45s cubic-bezier(0.22,1,0.36,1) ' + (0.08 + i * 0.07) + 's;"></div>';
-  }).join('');
+  var financialKpiCards = [
+    { label: s8Txt('Total Spend', 'إجمالي الإنفاق'), value: accountSpend, decimals: 0, color: 'blue', iconType: 'blue', tooltip: s8Txt('Total Spend = live connected marketing spend or the current Account Calculator spend.', 'إجمالي الإنفاق = الإنفاق التسويقي المتصل مباشرة أو إنفاق حاسبة الحساب الحالي.') },
+    { label: s8Txt('Account CPA', 'تكلفة الطلب للحساب'), value: accountCpa, decimals: 2, color: 'purple', iconType: 'purple', tooltip: s8Txt('Account CPA = total spend divided by net total orders.', 'تكلفة الطلب للحساب = إجمالي الإنفاق مقسوما على صافي إجمالي الطلبات.') },
+    { label: s8Txt('Account Break-even CPA', 'تكلفة التعادل للحساب'), value: accountBreakEvenCpa, decimals: 2, color: 'orange', iconType: 'orange', tooltip: s8Txt('Account Break-even CPA = average profit after tax per delivered order multiplied by account NDR.', 'تكلفة التعادل للحساب = متوسط الربح بعد الضريبة لكل طلب مسلم مضروبا في نسبة التسليم الصافي للحساب.') },
+    { label: s8Txt('Commission Return', 'عائد العمولة'), value: accountRevenue, decimals: 0, color: 'green', iconType: 'green', tooltip: s8Txt('Commission Return = delivered orders multiplied by average commission per delivered order.', 'عائد العمولة = الطلبات المسلمة مضروبة في متوسط العمولة لكل طلب مسلم.') },
+    { label: s8Txt('Net Profit', 'صافي الربح'), value: accountNetProfit, decimals: 0, color: accountNetProfit >= 0 ? 'green' : 'red', iconType: accountNetProfit >= 0 ? 'green' : 'red', tooltip: s8Txt('Net Profit = commission return minus total spend.', 'صافي الربح = عائد العمولة ناقص إجمالي الإنفاق.') }
+  ];
 
-  var healthLegendHtml = HEALTH.map(function (h) {
-    return '<div style="display:flex;align-items:center;gap:5px;">' +
-      '<span style="font-size:9px;color:rgba(255,255,255,0.45);">' + h.label + '</span>' +
-      '<div style="width:8px;height:8px;border-radius:50%;background:' + h.color + ';flex-shrink:0;"></div>' +
+  var financialKpiRowHtml = financialKpiCards.map(function (c, i) {
+    return '<div class="fade-up" style="flex:1 1 calc((100% - 40px) / 5);min-width:170px;animation-delay:' + ((i + 10) * 100) + 'ms;">' +
+      window.s8KpiCard({
+        label: c.label, value: c.value, unit: targetCurrency, decimals: c.decimals, delta: 0, hideDelta: true,
+        color: c.color, sparklineData: [], iconType: c.iconType,
+        tooltip: c.tooltip
+      }) +
     '</div>';
-  }).join('');
-
-  var healthLabelsHtml = HEALTH.map(function (h) {
-    return '<span style="font-size:10px;font-weight:700;color:' + h.color + ';">' + h.label + ' ' + h.pct + '%</span>';
   }).join('');
 
   var pipelineStagesHtml = STAGES.map(function (s, i) {
@@ -835,7 +840,7 @@ window.renderSection8 = function (mountEl, data, ctx) {
   var roiTotalOrders = roiLive.totalOrders != null ? num(roiLive.totalOrders, totalOrders) : totalOrders;
   var roiDeliveredOrders = roiLive.deliveredCount != null
     ? Number(roiLive.deliveredCount || 0)
-    : Math.round(roiTotalOrders * (ndrPct / 100));
+    : 0;
   var roiRevenue = roiDeliveredOrders * avgCommission;
   var roiNetProfit = roiRevenue - roiDefaultBudget;
   var roiPct = roiDefaultBudget > 0 ? (roiNetProfit / roiDefaultBudget) * 100 : 0;
@@ -876,9 +881,9 @@ window.renderSection8 = function (mountEl, data, ctx) {
     '<div style="display:grid;grid-template-columns:minmax(0,1.05fr) minmax(260px,.95fr);gap:18px;align-items:stretch;flex:1;" class="s8-roi-preview-grid">' +
       '<div style="display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:12px;align-content:start;">' +
         roiMetricCard(s8Txt('Ad spend', 'الإنفاق الإعلاني'), fmt(roiDefaultBudget) + ' SAR', s8Txt('from calculator', 'من الحاسبة'), '#3b82f6', '<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 1v22"/><path d="M17 5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6"/></svg>') +
-        roiMetricCard(s8Txt('Delivered orders', 'الطلبات المسلمة'), fmt(roiDeliveredOrders, 0), fmt(roiTotalOrders, 0) + ' × ' + ndrVal, ndrMetricColor, '<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M20 6 9 17l-5-5"/></svg>') +
-        roiMetricCard(s8Txt('Revenue', 'الإيراد'), fmt(roiRevenue) + ' SAR', s8Txt('delivered × avg commission', 'المسلم × متوسط العمولة'), '#06b6d4', '<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 3v18h18"/><path d="m7 15 4-4 3 3 5-7"/></svg>') +
-        roiMetricCard(s8Txt('Net profit', 'صافي الربح'), fmt(roiNetProfit) + ' SAR', s8Txt('revenue - spend', 'الإيراد - الإنفاق'), roiProfitColor, '<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="8" r="7"/><path d="M8.21 13.89 7 23l5-3 5 3-1.21-9.12"/></svg>') +
+        roiMetricCard(s8Txt('Delivered orders', 'الطلبات المسلمة'), fmt(roiDeliveredOrders, 0), s8Txt('actual delivered status count', 'العدد الفعلي للطلبات المسلمة'), ndrMetricColor, '<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M20 6 9 17l-5-5"/></svg>') +
+        roiMetricCard(s8Txt('Commission return', 'عائد العمولة'), fmt(roiRevenue) + ' SAR', s8Txt('delivered × avg commission', 'المسلم × متوسط العمولة'), '#06b6d4', '<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 3v18h18"/><path d="m7 15 4-4 3 3 5-7"/></svg>') +
+        roiMetricCard(s8Txt('Net profit', 'صافي الربح'), fmt(roiNetProfit) + ' SAR', s8Txt('commission return - spend', 'عائد العمولة - الإنفاق'), roiProfitColor, '<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="8" r="7"/><path d="M8.21 13.89 7 23l5-3 5 3-1.21-9.12"/></svg>') +
         roiMetricCard('CPA', fmt(roiCpa) + ' SAR', s8Txt('spend ÷ total orders', 'الإنفاق ÷ إجمالي الطلبات'), '#a855f7', '<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><circle cx="12" cy="12" r="5"/><circle cx="12" cy="12" r="1"/></svg>') +
         roiMetricCard(s8Txt('Break-even deliveries', 'طلبات التعادل'), fmt(roiBreakEvenDeliveries, 0), s8Txt('needed to cover spend', 'مطلوبة لتغطية الإنفاق'), '#f59e0b', '<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M4 12h16"/><path d="M12 4v16"/></svg>') +
       '</div>' +
@@ -930,18 +935,7 @@ window.renderSection8 = function (mountEl, data, ctx) {
       sectionBadge('1', s8Txt('Performance Overview', 'نظرة عامة على الأداء'), '#00e676') +
       '<div class="s8-kpi-row" style="display:flex;flex-wrap:wrap;gap:10px;margin-bottom:10px;">' + kpiRowHtml + '</div>' +
       '<div class="s8-kpi-row" style="display:flex;flex-wrap:wrap;gap:10px;margin-bottom:14px;">' + newKpiRowHtml + '</div>' +
-
-      /* Health bar */
-      '<div class="fade-up" style="margin-bottom:22px;animation-delay:400ms;background:#0d1220;border:1px solid rgba(255,255,255,0.07);border-radius:14px;padding:13px 18px;direction:' + (isAr ? 'rtl' : 'ltr') + ';">' +
-        '<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:10px;">' +
-          '<span style="font-size:12px;font-weight:700;color:#fff;">' + s8Txt('Commission Health', 'صحة العمولة') + '</span>' +
-          '<div style="display:flex;gap:14px;">' + healthLabelsHtml + '</div>' +
-        '</div>' +
-        '<div style="display:flex;height:8px;border-radius:6px;overflow:hidden;gap:2px;" id="s8-health-bar">' +
-          healthSegHtml +
-        '</div>' +
-        '<div style="display:flex;gap:18px;margin-top:8px;justify-content:flex-end;">' + healthLegendHtml + '</div>' +
-      '</div>' +
+      '<div class="s8-kpi-row" style="display:flex;flex-wrap:wrap;gap:10px;margin-bottom:22px;">' + financialKpiRowHtml + '</div>' +
 
       /* Row 2 & 3 badge */
       '<div style="display:flex;align-items:center;gap:10px;margin-bottom:12px;justify-content:flex-end;">' +
@@ -1190,10 +1184,6 @@ window.renderSection8 = function (mountEl, data, ctx) {
   })();
 
   requestAnimationFrame(function () {
-    var segs = mountEl.querySelectorAll('.health-seg[data-pct]');
-    segs.forEach(function (el) {
-      el.style.width = el.getAttribute('data-pct') + '%';
-    });
     var cityRows = mountEl.querySelectorAll('.city-bar-row');
     cityRows.forEach(function (row) {
       var bar = row.querySelector('.city-bar-fill');

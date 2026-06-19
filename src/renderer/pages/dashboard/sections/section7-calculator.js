@@ -77,7 +77,7 @@ window.renderSection7 = function (mountEl, data, ctx) {
   var realExpectedDvl =
     d.deliveredCount != null
       ? Number(d.deliveredCount || 0)
-      : Math.round((realNdrPct / 100) * realTotalOrders);
+      : 0;
 
   // ── 2. State ────────────────────────────────────────────────────────────────
   var nativeCurrency = window.dashboardActiveCurrency || (d && d.currency) || "SAR";
@@ -1243,15 +1243,15 @@ window.renderSection7 = function (mountEl, data, ctx) {
       ) +
       card(
         "sfe-neutral",
-        s7Txt("Revenue", "الإيرادات"),
+        s7Txt("Commission Return", "عائد العمولة"),
         sfeFmt(c.revenue),
         c.returnPerSar.toFixed(2) + s7Txt("x per ", "× لكل ") + sfeCurrLabel(),
-        s7Txt("Revenue", "الإيرادات"),
+        s7Txt("Commission Return", "عائد العمولة"),
         s7Txt(
-          "Total expected income from delivered orders multiplied by average commission.",
-          "إجمالي الدخل المتوقع من الطلبات المسلمة مضروبةً في متوسط العمولة.",
+          "Expected commission from delivered orders multiplied by average commission.",
+          "العمولة المتوقعة من الطلبات المسلمة مضروبة في متوسط العمولة.",
         ),
-        "revenue = deliveredOrders × avgCommission",
+        "commissionReturn = deliveredOrders × avgCommission",
         "💰",
       ) +
       card(
@@ -1262,13 +1262,13 @@ window.renderSection7 = function (mountEl, data, ctx) {
           '">' +
           sfeFmt(c.netProfit) +
           "</span>",
-        s7Txt("rev - spend", "الإيراد - الإنفاق"),
+        s7Txt("commission return - spend", "عائد العمولة - الإنفاق"),
         s7Txt("Net Profit", "الربح الصافي"),
         s7Txt(
-          "Net profit or loss after subtracting ad spend from revenue.",
-          "الربح أو الخسارة الصافية بعد خصم الإنفاق الإعلاني من الإيرادات.",
+          "Net profit or loss after subtracting ad spend from commission return.",
+          "الربح أو الخسارة الصافية بعد خصم الإنفاق الإعلاني من عائد العمولة.",
         ),
-        "netProfit = revenue − adSpend",
+        "netProfit = commissionReturn − adSpend",
         "🪙",
       ) +
       card(
@@ -1517,8 +1517,8 @@ window.renderSection7 = function (mountEl, data, ctx) {
           ) +
           sfeFmt(Math.abs(c.netProfit)) +
           s7Txt(
-            "</span> net. Revenue of <strong>",
-            "</span> صافي. إيراد <strong>",
+            "</span> net. Commission return of <strong>",
+            "</span> صافي. عائد عمولة <strong>",
           ) +
           sfeFmt(c.revenue) +
           s7Txt(
@@ -1539,7 +1539,7 @@ window.renderSection7 = function (mountEl, data, ctx) {
             'الحملة <span class="hi-green">رابحة</span> — صافي الربح <strong>',
           ) +
           sfeFmt(c.netProfit) +
-          s7Txt("</strong> on <strong>", "</strong> من إيراد <strong>") +
+          s7Txt("</strong> on a commission return of <strong>", "</strong> من عائد عمولة <strong>") +
           sfeFmt(c.revenue) +
           "</strong>.",
       });
@@ -1558,8 +1558,8 @@ window.renderSection7 = function (mountEl, data, ctx) {
           ) +
           sfeFmt(c.cpa, 2) +
           s7Txt(
-            ")</span> exceeds revenue per delivered order <strong>(",
-            ")</span> أعلى من إيراد الطلب المسلم <strong>(",
+            ")</span> exceeds commission per delivered order <strong>(",
+            ")</span> أعلى من عمولة الطلب المسلم <strong>(",
           ) +
           sfeFmt(c.revenuePerDel, 2) +
           s7Txt(
@@ -1574,8 +1574,8 @@ window.renderSection7 = function (mountEl, data, ctx) {
         cat: s7Txt("UNIT ECONOMICS", "اقتصاديات الطلب"),
         text:
           s7Txt(
-            'Revenue per delivered order <span class="hi-green">(',
-            'إيراد الطلب المسلم <span class="hi-green">(',
+            'Commission per delivered order <span class="hi-green">(',
+            'عمولة الطلب المسلم <span class="hi-green">(',
           ) +
           sfeFmt(c.revenuePerDel, 2) +
           s7Txt(
@@ -1865,7 +1865,7 @@ window.renderSection7 = function (mountEl, data, ctx) {
       "</th><th>" +
       s7Txt("Delivered", "المسلمة") +
       "</th><th>" +
-      s7Txt("Revenue", "الإيراد") +
+      s7Txt("Commission Return", "عائد العمولة") +
       "</th><th>" +
       s7Txt("Net Profit", "صافي الربح") +
       "</th><th>ROI</th></tr></thead>" +
@@ -2001,25 +2001,29 @@ window.renderSection7 = function (mountEl, data, ctx) {
             "العائد لكل وحدة عملة (ROAS)",
           ),
           s7Txt(
-            "For each unit spent, how much do you get back in revenue? More than 1 means revenue exceeds spend.",
-            "لكل وحدة عملة تنفقها، كم تحصل عليه إيرادا؟ أكثر من 1 يعني أن الإيراد أعلى من الإنفاق.",
+            "For each unit spent, how much commission return do you get? More than 1 means commission exceeds spend.",
+            "لكل وحدة عملة تنفقها، كم تحصل من عائد العمولة؟ أكثر من 1 يعني أن العمولة أعلى من الإنفاق.",
           ),
-          "ROAS = revenue ÷ adSpend",
+          "returnPerSpend = commissionReturn ÷ adSpend",
         );
     }
 
     // Dynamic conversion of real average commission indicator card
     var realCommEl = document.getElementById("s7-real-avg-comm");
     if (realCommEl) {
-      var convertedComm = convert(realAvgCommission, nativeCurrency || "SAR", state.currency);
-      var sym =
-        state.currency === "SAR"
-          ? "SAR"
-          : "$";
-      if (state.currency === "USD") {
-        realCommEl.textContent = sym + convertedComm.toFixed(2);
+      if (realExpectedDvl <= 0) {
+        realCommEl.textContent = s7Txt("No delivered orders", "لا توجد طلبات مسلمة");
       } else {
-        realCommEl.textContent = fmt(convertedComm, 2) + " " + sym;
+        var convertedComm = convert(realAvgCommission, nativeCurrency || "SAR", state.currency);
+        var sym =
+          state.currency === "SAR"
+            ? "SAR"
+            : "$";
+        if (state.currency === "USD") {
+          realCommEl.textContent = sym + convertedComm.toFixed(2);
+        } else {
+          realCommEl.textContent = fmt(convertedComm, 2) + " " + sym;
+        }
       }
     }
 
@@ -2638,10 +2642,10 @@ window.renderSection7 = function (mountEl, data, ctx) {
         "✅",
         s7Txt("Delivered Orders", "الطلبات المسلمة"),
         s7Txt(
-          "Orders that actually reached the customer. Calculated from total orders × delivery rate.",
-          "الطلبات التي وصلت فعلياً للعميل. تحسب من إجمالي الطلبات × نسبة التسليم.",
+          "Actual delivered orders in the selected dashboard period.",
+          "الطلبات المسلمة الفعلية خلال فترة لوحة التحكم المحددة.",
         ),
-        "delivered = totalOrders × NDR%",
+        "deliveredOrders = count(delivered status)",
       ) +
       _kpiMiniTip(
         s7Txt("Delivery Rate NDR", "نسبة التسليم NDR"),
@@ -2657,7 +2661,7 @@ window.renderSection7 = function (mountEl, data, ctx) {
       ) +
       _kpiMiniTip(
         s7Txt("Average Commission", "متوسط العمولة"),
-        '<span id="s7-real-avg-comm">' + realAvgCommission + " SAR</span>",
+        '<span id="s7-real-avg-comm">' + (realExpectedDvl > 0 ? realAvgCommission + " SAR" : s7Txt("No delivered orders", "لا توجد طلبات مسلمة")) + "</span>",
         "#3b82f6",
         "💵",
         s7Txt("Average Commission", "متوسط العمولة"),
@@ -2665,7 +2669,7 @@ window.renderSection7 = function (mountEl, data, ctx) {
           "Average commission earned per delivered order from the company.",
           "متوسط العمولة المكتسبة لكل طلب مسلم واحد من الشركة.",
         ),
-        "avgCommission = totalRevenue ÷ deliveredOrders",
+        "avgCommission = deliveredCommission ÷ deliveredOrders",
       ) +
       "</div>" +
       "</div>" +
@@ -2804,16 +2808,16 @@ window.renderSection7 = function (mountEl, data, ctx) {
       state.viewCurrency +
       "</div></div>" +
       '<div class="s7-card"><div style="font-size:12px;color:#3b82f6;font-weight:700;display:flex;align-items:center;gap:5px">' +
-      s7Txt("Total Revenue", "إجمالي الإيرادات") +
+      s7Txt("Expected Commission", "العمولة المتوقعة") +
       " " +
       _tip(
         "💰",
-        s7Txt("Total Revenue", "إجمالي الإيرادات"),
+        s7Txt("Expected Commission", "العمولة المتوقعة"),
         s7Txt(
-          "Expected income from delivered orders × average commission.",
-          "الدخل المتوقع من الطلبات المسلمة × متوسط العمولة.",
+          "Expected commission from delivered orders × average commission.",
+          "العمولة المتوقعة من الطلبات المسلمة × متوسط العمولة.",
         ),
-        "revenue = deliveredOrders × avgCommission",
+        "commissionReturn = deliveredOrders × avgCommission",
       ) +
       '</div><div style="display:flex;align-items:center;gap:8px;font-size:22px;font-weight:900"><span style="color:#3b82f6">💰</span><span id="s7-out-revenue">--</span></div><div class="s7-curr-lbl" style="font-size:10px;color:' +
       (document.documentElement.getAttribute("data-theme") === "light"
@@ -2833,10 +2837,10 @@ window.renderSection7 = function (mountEl, data, ctx) {
         "🪙",
         s7Txt("Net Profit", "الربح الصافي"),
         s7Txt(
-          "Profit after subtracting ad costs from revenue. If negative, the campaign is losing money.",
-          "صافي الربح بعد طرح تكاليف الإعلان من الإيرادات. إذا كانت القيمة سالبة فأنت في خسارة.",
+          "Profit after subtracting ad costs from commission return. If negative, the campaign is losing money.",
+          "صافي الربح بعد طرح تكاليف الإعلان من عائد العمولة. إذا كانت القيمة سالبة فأنت في خسارة.",
         ),
-        "netProfit = revenue − adSpend",
+        "netProfit = commissionReturn − adSpend",
       ) +
       '</div><div style="display:flex;align-items:center;gap:8px;font-size:22px;font-weight:900"><span style="color:#00e676">🪙</span><span id="s7-out-net" dir="ltr">--</span></div><div class="s7-curr-lbl" style="font-size:10px;color:' +
       (document.documentElement.getAttribute("data-theme") === "light"
@@ -2893,10 +2897,10 @@ window.renderSection7 = function (mountEl, data, ctx) {
         "🔁",
         s7Txt("Return per Currency Unit (ROAS)", "العائد لكل ريال (ROAS)"),
         s7Txt(
-          "For each unit spent, how much revenue do you get back? More than 1 means revenue exceeds spend.",
-          "لكل ريال تنفقه، كم تحصل عليه إيرادا؟ أكثر من 1 يعني أن الإيراد أعلى من الإنفاق.",
+          "For each unit spent, how much commission return do you get? More than 1 means commission exceeds spend.",
+          "لكل ريال تنفقه، كم تحصل من عائد العمولة؟ أكثر من 1 يعني أن العمولة أعلى من الإنفاق.",
         ),
-        "ROAS = revenue ÷ adSpend",
+        "returnPerSpend = commissionReturn ÷ adSpend",
       ) +
       "</div>" +
       '<div style="font-size:20px;font-weight:900;color:#00e676" id="s7-out-return">--</div>' +
