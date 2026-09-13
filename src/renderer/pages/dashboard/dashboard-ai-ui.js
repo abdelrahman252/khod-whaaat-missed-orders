@@ -11,12 +11,7 @@
   var popupRequestSeq = 0;
   var popupInjectedAi = { insights: [], recommendations: [], forecasts: [], alerts: [] };
   var assistantMemory = null;
-  var assistantMemoryPromise = null;
   var popupFollowUps = [];
-  var popupPromptOptions = [];
-  var campaignReviewContext = null;
-  var activeRequestId = 0;
-  var lastSignalKey = "";
 
   function esc(value) {
     return String(value == null ? "" : value)
@@ -40,18 +35,25 @@
   }
 
   function formatAiMessageHtml(text) {
-    var html = esc(layoutAiMessageText(text || ""));
+    var html = esc(layoutAiMessageText(normalizeMetricSpacing(text || "")));
     html = html.replace(/\b((?:Net Delivery Rate\s*\(NDR\)|Delivery Rate\s*\(DR\)|NDR|DR|Delivery Rate|Cancel Rate|Cancellation Rate|Confirm Rate|Confirmation Rate)[^0-9%-]{0,50})(-?\d+(?:\.\d+)?%)/gi, function (_, label, value) {
-      var tone = metricTone(label, parseFloat(value));
-      return label + '<mark class="aii-metric-token ' + tone + '">' + value + '</mark>';
+      return label.replace(/\s+$/, "") + " " + value;
     });
-    html = html.replace(/\b(lost commission|loss|lost)\s*(\(?-?\d[\d,.]*(?:\s*(?:SAR|USD))?\)?)/gi, function (_, label, value) {
+    html = html.replace(/\b(lost commission|loss|lost)\s*(\(?-?\d[\d,.]*(?:\s*(?:SAR|USD|EGP|AED|IQD|OMR))?\)?)/gi, function (_, label, value) {
       return label + ' <mark class="aii-metric-token bad">' + value + '</mark>';
     });
-    html = html.replace(/\b(earned profit|earned commission|profit|commission)\s*(\(?-?\d[\d,.]*(?:\s*(?:SAR|USD))?\)?)/gi, function (_, label, value) {
+    html = html.replace(/\b(earned profit|earned commission|profit|commission)\s*(\(?-?\d[\d,.]*(?:\s*(?:SAR|USD|EGP|AED|IQD|OMR))?\)?)/gi, function (_, label, value) {
       return label + ' <mark class="aii-metric-token good">' + value + '</mark>';
     });
     return html;
+  }
+
+  function normalizeMetricSpacing(value) {
+    return String(value || "")
+      .replace(/([،,:;؛])\s*(NDR|CPA)\b/gi, "$1\u00a0$2")
+      .replace(/\b(NDR|CPA)\s*(\d+(?:\.\d+)?)\s*%/gi, "$1 $2%")
+      .replace(/\b(NDR|CPA)(\d)/gi, "$1 $2")
+      .replace(/%([\u0621-\u064aa-z])/gi, "% $1");
   }
 
   function layoutAiMessageText(text) {
@@ -109,7 +111,7 @@
 
   function getAiSessionId() {
     try {
-      var key = "khod_ai_session_id";
+      var key = "taager_ai_session_id";
       var existing = localStorage.getItem(key);
       if (existing) return existing;
       var next = "ai-" + Date.now().toString(36) + "-" + Math.random().toString(36).slice(2, 10);
@@ -121,21 +123,13 @@
   }
 
   function hydrateAssistantMemory() {
-    if (assistantMemory) return Promise.resolve(assistantMemory);
-    if (assistantMemoryPromise) return assistantMemoryPromise;
     if (window.KhodAiSessionMemory && typeof window.KhodAiSessionMemory.hydrate === "function") {
-      assistantMemoryPromise = window.KhodAiSessionMemory.hydrate().then(function (memory) {
+      return window.KhodAiSessionMemory.hydrate().then(function (memory) {
         assistantMemory = memory || {};
         return assistantMemory;
-      }).catch(function () {
-        assistantMemory = assistantMemory || {};
-        return assistantMemory;
       });
-      return assistantMemoryPromise;
     }
-    assistantMemory = assistantMemory || {};
-    assistantMemoryPromise = Promise.resolve(assistantMemory);
-    return assistantMemoryPromise;
+    return Promise.resolve(assistantMemory || {});
   }
 
   function defaultFollowUps(decision) {
@@ -162,27 +156,32 @@
   function formatStrategyPlanText(plan) {
     if (!plan || typeof plan !== "object") return "";
     var parts = [];
-    if (plan.recommendation) parts.push("Strategy plan: " + plan.recommendation);
-    if (plan.proof && plan.proof.length) parts.push("Proof: " + plan.proof.slice(0, 4).join(", ") + ".");
+    if (plan.recommendation) parts.push(uiText("Strategy plan: ", "خطة الاستراتيجية: ") + plan.recommendation);
+    if (plan.proof && plan.proof.length) parts.push(uiText("Proof: ", "الدليل: ") + plan.proof.slice(0, 4).join(", ") + ".");
     if (plan.campaignPlan) {
       var cp = plan.campaignPlan;
-      var campaign = [cp.objective ? "Objective: " + cp.objective : "", cp.structure, cp.audience || cp.cityLogic, cp.creativePlan].filter(Boolean);
-      if (campaign.length) parts.push("Campaign: " + campaign.join(" "));
+      var campaign = [cp.objective ? uiText("Objective: ", "الهدف: ") + cp.objective : "", cp.structure, cp.audience || cp.cityLogic, cp.creativePlan].filter(Boolean);
+      if (campaign.length) parts.push(uiText("Campaign: ", "الحملة: ") + campaign.join(" "));
     }
     if (plan.budgetPlan) {
       var bp = plan.budgetPlan;
       var budget = [bp.startBudget, bp.budgetRule, bp.killRule, bp.scaleRule].filter(Boolean);
-      if (budget.length) parts.push("Budget rules: " + budget.join(" "));
+      if (budget.length) parts.push(uiText("Budget rules: ", "قواعد الميزانية: ") + budget.join(" "));
     }
-    if (plan.watchMetrics && plan.watchMetrics.length) parts.push("Watch: " + plan.watchMetrics.slice(0, 6).join(", ") + ".");
+    if (plan.watchMetrics && plan.watchMetrics.length) parts.push(uiText("Watch: ", "راقب: ") + plan.watchMetrics.slice(0, 6).join(", ") + ".");
     return parts.join("\n\n");
   }
 
   function maybeAppendStrategyPlan(text, plan) {
     var planText = formatStrategyPlanText(plan);
     if (!planText) return text;
-    if (String(text || "").indexOf("Strategy plan:") !== -1) return text;
+    if (/Strategy plan:|خطة الاستراتيجية:/.test(String(text || ""))) return text;
     return String(text || "").trim() + "\n\n" + planText;
+  }
+
+  function shouldShowStrategyPlan(command) {
+    return /\b(strategy|plan|campaign|budget|scale|scaling|media buying)\b/i.test(String(command || "")) ||
+      /خطة|استراتيجية|حملة|ميزانية|توسع|توسيع/.test(String(command || ""));
   }
 
   function rememberAssistantTurn(context, response) {
@@ -208,9 +207,12 @@
       }
       assistantMemory = window.KhodAiSessionMemory.get ? window.KhodAiSessionMemory.get() : assistantMemory;
     }
-    popupFollowUps = Array.isArray(response.followUpQuestions) && response.followUpQuestions.length
+    var nextSuggestions = Array.isArray(response.followUpQuestions) && response.followUpQuestions.length
       ? response.followUpQuestions.slice(0, 4)
       : defaultFollowUps(response.decision || null);
+    popupFollowUps = window.KhodAiShared && window.KhodAiShared.normalizeSuggestions
+      ? window.KhodAiShared.normalizeSuggestions(nextSuggestions)
+      : nextSuggestions;
   }
 
   function sectionForTarget(target) {
@@ -322,6 +324,12 @@
         if (action.productId || action.productKey || action.productName) runProductOpen(action);
         else runProductFilter(action);
         return;
+      }
+      if (section === "cities" && (action.sort || action.query)) {
+        window._pendingDashboardAiCitySort = {
+          metric: action.sort || "commission",
+          direction: action.query === "asc" ? "asc" : "desc"
+        };
       }
       navigate(section);
       if (action.productId && window.DashboardFilterBus) {
@@ -535,9 +543,11 @@
   }
 
   function renderPopupActions(actions, msgIdx) {
-    actions = Array.isArray(actions) ? actions : [];
+    actions = window.KhodAiShared && window.KhodAiShared.sanitizeActions
+      ? window.KhodAiShared.sanitizeActions(actions)
+      : (Array.isArray(actions) ? actions : []);
     if (!actions.length) return "";
-    return '<div class="ai-popup-actions">' + actions.slice(0, 4).map(function (action, actionIdx) {
+    return '<div class="ai-popup-actions">' + actions.slice(0, 2).map(function (action, actionIdx) {
       return '<button type="button" class="ai-popup-action" data-ai-popup-action="' + msgIdx + ':' + actionIdx + '">' +
         esc(action.label || action.type || tr("aii.action.review", "Review")) +
       '</button>';
@@ -545,11 +555,7 @@
   }
 
   function renderAssistantControlStrip() {
-    return '<div class="ai-control-strip">' +
-      '<span>' + esc(campaignReviewContext ? "Campaign Intelligence" : uiText("Dashboard intelligence", "ذكاء الداشبورد")) + '</span>' +
-      '<span>' + esc(uiText("Suggest-only", "اقتراحات فقط")) + '</span>' +
-      '<span>' + esc(uiText("Memory saves after confirmation", "الحفظ بعد التأكيد")) + '</span>' +
-    '</div>';
+    return "";
   }
 
   function renderLearningControls() {
@@ -571,21 +577,9 @@
   function renderPopupMessage(msg, msgIdx) {
     var sender = msg.sender === "user" ? "user" : "ai";
     var state = msg.state || "complete";
-    var body = sender === "ai" ? formatAiMessageHtml(msg.text || "") : esc(msg.text || "");
-    if (sender === "ai" && state === "pending") {
-      body = '<div class="ai-request-loader" data-ai-loader="' + esc(msg.requestId || "") + '">' +
-        '<span class="ai-request-loader-dots" aria-hidden="true"><i></i><i></i><i></i></span>' +
-        '<strong class="ai-request-loader-label">' + esc(msg.text || "Preparing analysis") + '</strong>' +
-        '<button type="button" class="ai-request-cancel" data-ai-cancel="' + esc(msg.requestId || "") + '">Cancel</button>' +
-      '</div>';
-    }
-    var retry = state === "error" && msg.request
-      ? '<button type="button" class="ai-request-retry" data-ai-retry="' + msgIdx + '">Retry</button>'
-      : "";
     return '<div class="ai-message ' + esc(sender) + ' ' + esc(state) + '">' +
-      '<div class="ai-message-bubble">' +
-        '<div>' + body + '</div>' +
-        retry +
+      '<div class="ai-message-bubble" dir="auto">' +
+        '<div>' + (sender === "ai" ? formatAiMessageHtml(msg.text || "") : esc(msg.text || "")) + '</div>' +
         renderPopupActions(msg.actions, msgIdx) +
       '</div>' +
     '</div>';
@@ -596,38 +590,27 @@
     var placeholderText = tr("ai.askPlaceholder", "Ask for strategy, best cities, scale plan, or what to do next...");
 
     // Suggested prompts
-    var prompts = popupPromptOptions.length ? popupPromptOptions : (popupFollowUps.length ? popupFollowUps : [
-      uiText("What should I do next?", "أعمل إيه دلوقتي؟"),
-      uiText("Build a scale plan", "اعمل خطة سكيل"),
-      uiText("Best cities to scale?", "أفضل مدن للسكيل؟"),
-      uiText("Explain weak NDR", "اشرح ضعف NDR")
-    ]);
-    var promptsHtml = prompts.map(function(p, idx) {
-      var label = typeof p === "string" ? p : p.displayText;
-      return '<button type="button" class="ai-prompt-pill" data-ai-prompt-index="' + idx + '">' + esc(label) + '</button>';
+    var prompts = window.KhodAiShared && window.KhodAiShared.normalizeSuggestions
+      ? window.KhodAiShared.normalizeSuggestions(popupFollowUps)
+      : (popupFollowUps.length ? popupFollowUps : [
+        uiText("What should I do next?", "ماذا أفعل بعد ذلك؟"),
+        uiText("Build a scale plan", "ابنِ خطة توسع"),
+        uiText("Best cities to scale?", "ما أفضل المدن للتوسع؟"),
+        uiText("Explain weak NDR", "اشرح ضعف NDR")
+      ]);
+    var promptsHtml = prompts.slice(0, 3).map(function(p) {
+      return '<button type="button" class="ai-prompt-pill">' + esc(p) + '</button>';
     }).join("");
-    var nudges = Array.isArray(state.nudges) ? state.nudges : [];
-    var nudgesHtml = nudges.length
-      ? '<div class="ai-smart-nudges">' + nudges.map(function (nudge, idx) {
-        return '<button type="button" class="ai-smart-nudge" data-ai-nudge="' + idx + '">' +
-          '<strong>' + esc(nudge.title || "Strategy") + '</strong>' +
-          '<span>' + esc(nudge.body || nudge.prompt || "") + '</span>' +
-        '</button>';
-      }).join("") + '</div>'
-      : "";
-
-    var itemsHtml = state.items.length
-      ? state.items.map(renderItemAsMessage).join("")
-      : '<div class="ai-insight-block severity-info"><span class="ai-insight-title">' + esc(state.status === "loading" ? tr("dashboardAi.loadingBody", "Insights will appear when loading finishes.") : tr("dashboardAi.emptyBody", "No strong AI findings are available for this dashboard view.")) + '</span></div>';
     var feedHtml = popupMessages.length
       ? popupMessages.map(renderPopupMessage).join("")
       : '<div class="ai-message ai">' +
-          '<div class="ai-message-bubble">' + esc(state.body) + '</div>' +
-        '</div>' +
-        (state.items.length || state.status === "empty" || state.status === "loading" ?
-          '<div class="ai-message ai">' +
-            '<div class="ai-message-bubble">' + itemsHtml + '</div>' +
-          '</div>' : '');
+          '<div class="ai-message-bubble" dir="auto">' +
+            esc(uiText(
+              "Ask me a business question. I will answer directly, explain the numbers, and suggest one practical next step.",
+              "اسألني سؤالًا عن عملك. سأجيب مباشرة، وأوضح معنى الأرقام، وأقترح خطوة عملية واحدة."
+            )) +
+          '</div>' +
+        '</div>';
 
     return '' +
       '<button type="button" class="ai-copilot-orb state-' + esc(state.status) + '" id="ai-copilot-orb" aria-expanded="' + (isOpen ? "true" : "false") + '" aria-controls="ai-copilot-panel" aria-label="' + esc(toggleText) + '" data-tooltip="' + esc(toggleText) + '">' +
@@ -635,7 +618,9 @@
       '</button>' +
       '<section id="ai-copilot-panel" class="ai-copilot-panel" role="dialog" aria-label="' + esc(tr("dashboardAi.panelTitle", "Dashboard AI insights")) + '" aria-hidden="' + (isOpen ? "false" : "true") + '">' +
         '<div class="ai-panel-header">' +
-          '<div class="ai-panel-title"><strong>Khod Whaat AI</strong><span data-ai-panel-status>' + esc(popupBusy ? "Analyzing" : (state.status === 'loading' ? 'Preparing' : 'Ready')) + '</span></div>' +
+          '<div class="ai-panel-title"><strong>KHOD AI</strong><span>' + esc(popupBusy
+            ? uiText("Analyzing", "جاري التحليل")
+            : (state.status === "loading" ? uiText("Scanning", "جاري الفحص") : uiText("Ready", "جاهز"))) + '</span></div>' +
           '<button type="button" id="ai-panel-close" class="ai-panel-close" aria-label="' + esc(tr("dashboardAi.closePanel", "Close AI insights")) + '">&#10005;</button>' +
         '</div>' +
         renderAssistantControlStrip() +
@@ -644,10 +629,9 @@
         '</div>' +
         '<div class="ai-copilot-input-area">' +
           renderLearningControls() +
-          nudgesHtml +
           '<div class="ai-suggested-prompts">' + promptsHtml + '</div>' +
           '<div class="ai-chat-input-wrapper">' +
-            '<input type="text" class="ai-chat-input" id="ai-chat-input" placeholder="' + esc(placeholderText) + '"' + (popupBusy ? ' disabled' : '') + ' />' +
+            '<input type="text" class="ai-chat-input" id="ai-chat-input" placeholder="' + esc(placeholderText) + '" />' +
             '<button type="button" class="ai-chat-send" id="ai-chat-send" aria-label="Send"' + (popupBusy ? ' disabled' : '') + '>&#8593;</button>' +
           '</div>' +
         '</div>' +
@@ -655,191 +639,35 @@
   }
 
   function openPanel() {
-    var shell = document.getElementById("db-shell-mount");
-    if (shell && shell._dashboardActiveSection !== "campaigns") {
-      campaignReviewContext = null;
-      popupPromptOptions = [];
-    }
-    isOpen = true;
-    refresh();
-  }
-
-  function campaignPromptChoices(context) {
-    var base = "Use only the provided Campaign Intelligence context. Use shared-attribution campaign spend and KHOD orders, delivery, commission, and profit metrics. ";
-    return [
-      {
-        displayText: "What should I scale?",
-        prompt: base + "Identify the clearly attributed Product Actions that are safest to scale. Explain the evidence and give controlled budget steps.",
-        scope: "campaigns",
-        context: context
-      },
-      {
-        displayText: "What needs fixing?",
-        prompt: base + "Identify Product Actions marked Fix First or showing weak NDR, delivered CPA, ROI, or net profit. Prioritize the fixes.",
-        scope: "campaigns",
-        context: context
-      },
-      {
-        displayText: "What should I pause?",
-        prompt: base + "Identify Product Actions that should be paused or reduced. Explain the KHOD evidence and the condition required to restart.",
-        scope: "campaigns",
-        context: context
-      },
-      {
-        displayText: "What needs more data?",
-        prompt: base + "Identify Product Actions marked Watch or Needs Data. Explain the missing sample evidence and the threshold required before making a scale, fix, or pause decision.",
-        scope: "campaigns",
-        context: context
-      },
-      {
-        displayText: "Review all Product Actions",
-        prompt: base + "Review all supplied Product Actions and produce a concise Scale, Fix First, Watch / Needs Data, and Pause plan with the most important next actions.",
-        scope: "campaigns",
-        context: context
-      }
-    ];
-  }
-
-  function openCampaignReview(options) {
-    options = options || {};
-    campaignReviewContext = options.context || {};
-    popupPromptOptions = campaignPromptChoices(campaignReviewContext);
-    popupFollowUps = [];
     isOpen = true;
     refresh();
   }
 
   function closePanel() {
-    if (popupBusy && activeRequestId) cancelActiveRequest(activeRequestId);
     isOpen = false;
     refresh();
   }
 
   function openIntelligencePage() {
     isOpen = false;
-    navigate("khodAi");
+    navigate("taagerAi");
   }
 
   function setPopupAssistant(requestId, state, text, actions) {
     var idx = popupMessages.findIndex(function (msg) { return msg.requestId === requestId; });
     if (idx === -1) return;
-    var previous = popupMessages[idx] || {};
     popupMessages[idx] = {
       sender: "assistant",
       state: state || "complete",
       text: text || "",
       actions: actions || [],
       requestId: requestId,
-      request: previous.request || null
     };
-    if (state !== "pending" && state !== "pending-input" && activeRequestId === requestId) {
-      activeRequestId = 0;
-    }
-    updateConversationUi();
+    refresh();
   }
 
   function nextUiTick() {
     return new Promise(function (resolve) { setTimeout(resolve, 0); });
-  }
-
-  function normalizeAskRequest(value) {
-    if (value && typeof value === "object") {
-      return {
-        prompt: String(value.prompt || value.command || value.displayText || "").trim(),
-        displayText: String(value.displayText || value.prompt || value.command || "").trim(),
-        scope: String(value.scope || ""),
-        context: value.context || null,
-        skipMarketingRefresh: value.skipMarketingRefresh === true || value.scope === "campaigns",
-        forceRemote: value.forceRemote === true
-      };
-    }
-    var text = String(value || "").trim();
-    return {
-      prompt: text,
-      displayText: text,
-      scope: "",
-      context: null,
-      skipMarketingRefresh: false,
-      forceRemote: true
-    };
-  }
-
-  function campaignScopedContext(request) {
-    return {
-      currentPage: "campaigns",
-      intent: "campaign_actions",
-      sourceOfTruth: "Product decisions use shared campaign-name attribution and KHOD orders, delivery, commission, and profit metrics.",
-      mediaBuying: request.context || {},
-      localSummary: {
-        message: "Campaign Intelligence is ready.",
-        insights: [],
-        actions: []
-      }
-    };
-  }
-
-  function campaignLocalAnalysis(request) {
-    var media = request.context || {};
-    var groups = Array.isArray(media.productActions) ? media.productActions : [];
-    var command = String(request.prompt || "").toLowerCase();
-    var desired = /pause|reduce/.test(command)
-      ? "pause"
-      : (/fix|weak|repair/.test(command)
-        ? "fix_first"
-        : (/watch|needs data|more data|sample/.test(command) ? "watch" : (/scale/.test(command) ? "scale" : "")));
-    var selected = groups.filter(function (group) {
-      return !desired || group.decision === desired;
-    }).slice(0, 6);
-    if (!selected.length && desired) selected = groups.slice(0, 6);
-    if (!selected.length) {
-      return {
-        message: "No clearly attributed Product Actions are available for this campaign view yet.",
-        actions: []
-      };
-    }
-    var decisionLabel = { scale: "Scale", fix_first: "Fix First", watch: "Needs Data", pause: "Pause", both: "Scale + Fix" };
-    var lines = selected.map(function (group, idx) {
-      return (idx + 1) + ". " + (group.product || "Product") +
-        (group.sku ? " (SKU " + group.sku + ")" : "") + ": " +
-        (decisionLabel[group.decision] || group.decision || "Review") +
-        ". KHOD orders " + Math.round(Number(group.khodOrders || 0)) +
-        ", NDR " + Number(group.khodNdrPct || 0).toFixed(1) + "%" +
-        ", KHOD CPA " + Number(group.khodCpaSar || group.estimatedCpaSar || 0).toFixed(2) + " SAR" +
-        ", net profit " + Number(group.netProfitSar || 0).toFixed(2) + " SAR.";
-    });
-    return {
-      message: "Campaign action review based on KHOD results:\n\n" + lines.join("\n"),
-      actions: []
-    };
-  }
-
-  function requestStillActive(requestId) {
-    return activeRequestId === requestId && popupRequestSeq === requestId;
-  }
-
-  function setPendingPhase(requestId, label) {
-    if (!requestStillActive(requestId)) return;
-    var msg = popupMessages.find(function (item) { return item.requestId === requestId; });
-    if (msg && msg.state === "pending") msg.text = label;
-    var loader = rootRef && rootRef.querySelector('[data-ai-loader="' + requestId + '"] .ai-request-loader-label');
-    if (loader) loader.textContent = label;
-  }
-
-  function withUiTimeout(promise, ms) {
-    return Promise.race([
-      promise,
-      new Promise(function (_, reject) {
-        setTimeout(function () { reject(new Error("ai_ui_timeout")); }, ms);
-      })
-    ]);
-  }
-
-  function cancelActiveRequest(requestId) {
-    if (!requestId || activeRequestId !== requestId) return;
-    activeRequestId = 0;
-    popupRequestSeq += 1;
-    popupBusy = false;
-    setPopupAssistant(requestId, "error", "Analysis canceled.", []);
   }
 
   function localFallbackMessage(context) {
@@ -859,60 +687,76 @@
     return window.DashboardMarketingState.load(accountId).catch(function () { return null; });
   }
 
-  async function askPopup(prompt) {
-    var request = normalizeAskRequest(prompt);
-    var text = request.prompt;
-    if (!text || popupBusy) return;
-    if (request.scope !== "campaigns") {
-      campaignReviewContext = null;
-      popupPromptOptions = [];
+  function mirrorRoute(command, dashboardData, parsedIntent, localStrategic, warmOnly) {
+    if (!window.DashboardAiMirror || typeof window.DashboardAiMirror.answer !== "function") return null;
+    if (warmOnly && typeof window.DashboardAiMirror.answerWarm === "function") {
+      return window.DashboardAiMirror.answerWarm(command, {
+        parsedIntent: parsedIntent || null,
+        localStrategic: localStrategic || null
+      });
     }
+    return window.DashboardAiMirror.answer(command, dashboardData || dataRef || window.dashboardGeoData || {}, {
+      parsedIntent: parsedIntent || null,
+      localStrategic: localStrategic || null,
+      warmOnly: !!warmOnly
+    });
+  }
+
+  function historyForAi() {
+    return popupMessages
+      .filter(function (msg) { return msg && msg.state !== "pending" && msg.state !== "pending-input"; })
+      .slice(-8)
+      .map(function (msg) {
+        return { role: msg.sender === "user" ? "user" : "assistant", text: msg.text || "" };
+      });
+  }
+
+  async function askPopup(prompt) {
+    var text = String(prompt || "").trim();
+    if (!text || popupBusy) return;
 
     isOpen = true;
     popupBusy = true;
     var requestId = ++popupRequestSeq;
-    activeRequestId = requestId;
-    popupMessages.push({ sender: "user", state: "complete", text: request.displayText });
+    popupMessages.push({ sender: "user", state: "complete", text: text });
     popupMessages.push({
       sender: "assistant",
       state: "pending",
-      text: request.scope === "campaigns" ? "Preparing campaign analysis" : "Preparing analysis",
+      text: tr("ai.thinking", "Analyzing dashboard intelligence..."),
       requestId: requestId,
-      request: request
     });
-    if (rootRef && rootRef.innerHTML) updateConversationUi();
-    else refresh();
-    setTimeout(function () {
-      setPendingPhase(requestId, request.scope === "campaigns" ? "Analyzing campaign performance" : "Analyzing performance");
-    }, 900);
-    setTimeout(function () {
-      setPendingPhase(requestId, "Building recommendations");
-    }, 2400);
+    refresh();
     await nextUiTick();
-    await hydrateAssistantMemory();
-    if (!requestStillActive(requestId)) return;
 
     var dashboardData = dataRef || window.dashboardGeoData || {};
+    var warmRoute = mirrorRoute(text, dashboardData, null, null, true);
+    if (warmRoute && warmRoute.message && warmRoute.rankingRequest && !warmRoute.enhanceWithGemini) {
+      popupBusy = false;
+      rememberAssistantTurn({}, warmRoute);
+      setPopupAssistant(requestId, "complete", warmRoute.message, warmRoute.actions || []);
+      return;
+    }
+    await hydrateAssistantMemory();
     var context = {};
     var parsedIntent = null;
     var analyticsResult = null;
     var localStrategic = null;
 
     try {
-      if (!request.skipMarketingRefresh) refreshMarketingSpendForAi(dashboardData);
-      var learningContext = null;
-      if (request.scope !== "campaigns") {
-        learningContext = window.getDashboardAiContext
-          ? window.getDashboardAiContext({ data: dashboardData })
-          : (window.buildDashboardAiContext ? window.buildDashboardAiContext({ data: dashboardData }) : {});
-      }
-      if (learningContext && window.KhodAiSessionMemory && assistantMemory && assistantMemory.pendingLearningSuggestion) {
+      await refreshMarketingSpendForAi(dashboardData);
+      var learningContext = window.getDashboardAiContext
+        ? window.getDashboardAiContext({ data: dashboardData })
+        : (window.buildDashboardAiContext ? window.buildDashboardAiContext({ data: dashboardData }) : {});
+      if (window.KhodAiSessionMemory && assistantMemory && assistantMemory.pendingLearningSuggestion) {
         if (isLearningConfirm(text) && typeof window.KhodAiSessionMemory.confirmPendingLearning === "function") {
           var savedLearning = window.KhodAiSessionMemory.confirmPendingLearning();
           assistantMemory = window.KhodAiSessionMemory.get ? window.KhodAiSessionMemory.get() : assistantMemory;
           popupBusy = false;
           popupFollowUps = ["What should I do next?", "Use this rule in a scale plan", "Show scale candidates", "Best cities to scale?"];
-          setPopupAssistant(requestId, "complete", "Saved. I will use this rule in future media buying recommendations: " + (savedLearning && savedLearning.label || ""), []);
+          setPopupAssistant(requestId, "complete", uiText(
+            "Saved. I will use this rule in future media buying recommendations: ",
+            "تم الحفظ. سأستخدم هذه القاعدة في توصيات التسويق القادمة: "
+          ) + (savedLearning && savedLearning.label || ""), []);
           return;
         }
         if (isLearningReject(text) && typeof window.KhodAiSessionMemory.discardPendingLearning === "function") {
@@ -920,11 +764,11 @@
           assistantMemory = window.KhodAiSessionMemory.get ? window.KhodAiSessionMemory.get() : assistantMemory;
           popupBusy = false;
           popupFollowUps = defaultFollowUps(null);
-          setPopupAssistant(requestId, "complete", "No problem. I did not save that rule.", []);
+          setPopupAssistant(requestId, "complete", uiText("No problem. I did not save that rule.", "حسنًا، لم أحفظ هذه القاعدة."), []);
           return;
         }
       }
-      if (learningContext && window.KhodAiSessionMemory && typeof window.KhodAiSessionMemory.detectLearningSuggestion === "function") {
+      if (window.KhodAiSessionMemory && typeof window.KhodAiSessionMemory.detectLearningSuggestion === "function") {
         var detectedLearning = window.KhodAiSessionMemory.detectLearningSuggestion(text, learningContext || {});
         if (detectedLearning && typeof window.KhodAiSessionMemory.proposeLearningSuggestion === "function") {
           var proposedLearning = window.KhodAiSessionMemory.proposeLearningSuggestion(detectedLearning, learningContext || {});
@@ -935,16 +779,15 @@
           return;
         }
       }
-      if (request.scope === "campaigns" && request.context) {
-        context = campaignScopedContext(request);
-        parsedIntent = { intent: "campaign_actions", aiAllowed: true, localOnly: false };
-        localStrategic = campaignLocalAnalysis(request);
-      } else if (window.KhodAiBusinessOrchestrator && window.KhodAiBusinessOrchestrator.orchestrate) {
+      if (window.KhodAiBusinessOrchestrator && window.KhodAiBusinessOrchestrator.orchestrate) {
         var orchestration = window.KhodAiBusinessOrchestrator.orchestrate(text, dashboardData);
         if (orchestration.mode === "followup" || orchestration.mode === "local") {
           popupBusy = false;
-          if (orchestration.mode === "local") rememberAssistantTurn(orchestration.context || {}, orchestration);
-          setPopupAssistant(requestId, orchestration.mode === "followup" ? "pending-input" : "complete", orchestration.message, orchestration.actions || []);
+          var localRoute = orchestration.mode === "local" ? mirrorRoute(text, dashboardData, orchestration.parsedIntent, orchestration.localStrategic) : null;
+          var preferMirrorKpi = localRoute && orchestration.parsedIntent && orchestration.parsedIntent.intent === "KPI_ANALYSIS" && localRoute.selectedSlice === "account";
+          var localResponse = preferMirrorKpi ? localRoute : orchestration;
+          if (orchestration.mode === "local") rememberAssistantTurn(orchestration.context || {}, localResponse);
+          setPopupAssistant(requestId, orchestration.mode === "followup" ? "pending-input" : "complete", localResponse.message, localResponse.actions || []);
           return;
         }
         parsedIntent = orchestration.parsedIntent;
@@ -952,7 +795,14 @@
         context = orchestration.context || {};
         localStrategic = orchestration.localStrategic || null;
         if (localStrategic && localStrategic.message) {
-          setPendingPhase(requestId, "Building recommendations");
+          var draftRoute = mirrorRoute(text, dashboardData, parsedIntent, localStrategic);
+          setPopupAssistant(
+            requestId,
+            "complete",
+            draftRoute && draftRoute.message ? draftRoute.message : localStrategic.message,
+            draftRoute && draftRoute.actions || localStrategic.actions || []
+          );
+          await nextUiTick();
         }
       } else if (window.KhodAiIntentDetector && window.KhodAiAnalyticsEngine && window.KhodAiContextCompressor && window.KhodAiSessionMemory) {
         parsedIntent = window.KhodAiIntentDetector.parse(text, dashboardData, window.KhodAiSessionMemory.get());
@@ -981,26 +831,72 @@
         return;
       }
 
-      var response = await withUiTimeout(window.api.dashboardAiQuery({
+      var localeRequest = window.KhodAiShared && window.KhodAiShared.requestLocale
+        ? window.KhodAiShared.requestLocale(text)
+        : { uiLocale: isArabicUi() ? "ar" : "en", responseLanguage: isArabicUi() ? "ar" : "en" };
+      var route = mirrorRoute(text, dashboardData, parsedIntent, localStrategic);
+      if (route && route.message && !route.enhanceWithGemini) {
+        popupBusy = false;
+        rememberAssistantTurn(context, { message: route.message, actions: route.actions || [] });
+        setPopupAssistant(requestId, "complete", route.message, route.actions || []);
+        if (route.partial && route.mirrorPending && typeof route.mirrorPending.then === "function") {
+          route.mirrorPending.then(function () {
+            var readyRoute = mirrorRoute(text, dashboardData, parsedIntent, localStrategic);
+            if (!readyRoute || !readyRoute.message || readyRoute.partial || readyRoute.enhanceWithGemini) return;
+            rememberAssistantTurn(context, { message: readyRoute.message, actions: readyRoute.actions || [] });
+            setPopupAssistant(requestId, "complete", readyRoute.message, readyRoute.actions || []);
+          }).catch(function () {});
+        }
+        return;
+      }
+      var selectedSlice = route && route.slice ? route.slice : context;
+      context = {
+        intent: parsedIntent && parsedIntent.intent || context.intent || "",
+        question: text,
+        localePolicy: localeRequest,
+        aiMirror: route ? {
+          mirrorKey: route.mirror && route.mirror.mirrorKey,
+          selectedSlice: route.selectedSlice,
+          route: route.enhanceWithGemini ? "LOCAL_PLUS_GEMINI" : "LOCAL_ONLY",
+          enhanceWithGemini: !!route.enhanceWithGemini,
+          localDraft: route.message
+        } : null,
+        localStrategicSkeleton: localStrategic ? {
+          message: localStrategic.message,
+          actions: localStrategic.actions || [],
+          decision: localStrategic.decision || null,
+          strategyPlan: localStrategic.strategyPlan || null,
+          followUpQuestions: localStrategic.followUpQuestions || []
+        } : null,
+        selectedMirrorSlice: selectedSlice
+      };
+      var response = await window.api.dashboardAiQuery({
         command: text,
         context: context,
-        forceGemini: request.forceRemote,
+        uiLocale: localeRequest.uiLocale,
+        responseLanguage: localeRequest.responseLanguage,
+        localDraft: route && route.message || "",
         sessionId: getAiSessionId(),
         assistantMemory: assistantMemory,
         workflow: assistantMemory && assistantMemory.assistantWorkflow,
         historySummary: assistantMemory && assistantMemory.lastDiagnosis,
-        history: popupMessages.slice(-8).map(function (msg) {
-          return { role: msg.sender === "user" ? "user" : "assistant", text: msg.text || "" };
-        }),
-      }), 25000);
-      if (!requestStillActive(requestId)) return;
+        history: historyForAi(),
+      });
       var normalized = window.KhodAiIntelligenceData ? window.KhodAiIntelligenceData.normalizeAiResponse(response) : { message: response && response.message || "" };
       var meta = response && response.meta ? response.meta : {};
       var shouldUseLocal = localStrategic && (meta.blocked || meta.error || (meta.source === "fallback" && response.message === "AI service is not available. I am showing local dashboard guidance instead."));
       var answerText = shouldUseLocal
         ? localStrategic.message
         : (normalized.message || (localStrategic && localStrategic.message) || tr("ai.contextReady", "Analysis complete."));
-      answerText = maybeAppendStrategyPlan(answerText, normalized.strategyPlan || (localStrategic && localStrategic.strategyPlan));
+      if (window.KhodAiShared && window.KhodAiShared.matchesResponseLanguage &&
+          !window.KhodAiShared.matchesResponseLanguage(answerText, localeRequest.responseLanguage)) {
+        answerText = localStrategic && localStrategic.message
+          ? localStrategic.message
+          : uiText("I could not produce a reliable answer in the selected language.", "لم أتمكن من إنتاج إجابة موثوقة باللغة المحددة.");
+      }
+      if (shouldShowStrategyPlan(text)) {
+        answerText = maybeAppendStrategyPlan(answerText, normalized.strategyPlan || (localStrategic && localStrategic.strategyPlan));
+      }
       var learningSuggestion = normalized.strategyPlan && normalized.strategyPlan.learningSuggestion;
       if (learningSuggestion && window.KhodAiSessionMemory && typeof window.KhodAiSessionMemory.proposeLearningSuggestion === "function") {
         var proposedAfterAnswer = window.KhodAiSessionMemory.proposeLearningSuggestion(learningSuggestion, context || {});
@@ -1011,6 +907,7 @@
       var answerActions = shouldUseLocal
         ? (localStrategic.actions || [])
         : ((normalized.actions && normalized.actions.length ? normalized.actions : (localStrategic && localStrategic.actions)) || []);
+      if (window.KhodAiShared && window.KhodAiShared.sanitizeActions) answerActions = window.KhodAiShared.sanitizeActions(answerActions);
 
       if (shouldUseLocal && localStrategic) {
         normalized = {
@@ -1025,73 +922,17 @@
       pushInjectedAi(normalized);
       rememberAssistantTurn(context, shouldUseLocal ? Object.assign({}, localStrategic || {}, { message: answerText }) : response);
       popupBusy = false;
-      activeRequestId = 0;
       setPopupAssistant(requestId, "complete", answerText, answerActions);
     } catch (err) {
-      if (!requestStillActive(requestId)) return;
       popupBusy = false;
-      activeRequestId = 0;
       if (localStrategic) {
         pushInjectedAi(localStrategic);
         rememberAssistantTurn(context, localStrategic);
         setPopupAssistant(requestId, "complete", localStrategic.message, localStrategic.actions || []);
       } else {
-        var timedOut = err && (err.message === "ai_ui_timeout" || err.message === "ai_request_timeout" || err.message === "ai_queue_timeout");
-        setPopupAssistant(
-          requestId,
-          "error",
-          timedOut ? "The analysis took too long. Try again using the same campaign context." : tr("ai.requestFailed", "AI request failed."),
-          []
-        );
+        setPopupAssistant(requestId, "error", tr("ai.requestFailed", "AI request failed.") + " " + (err && err.message ? err.message : ""), []);
       }
     }
-  }
-
-  function wireConversationControls(root) {
-    if (!root) return;
-    root.querySelectorAll("[data-ai-cancel]").forEach(function (button) {
-      if (button._khodBound) return;
-      button._khodBound = true;
-      button.addEventListener("click", function () {
-        cancelActiveRequest(Number(button.getAttribute("data-ai-cancel") || 0));
-      });
-    });
-    root.querySelectorAll("[data-ai-retry]").forEach(function (button) {
-      if (button._khodBound) return;
-      button._khodBound = true;
-      button.addEventListener("click", function () {
-        var message = popupMessages[Number(button.getAttribute("data-ai-retry"))];
-        if (message && message.request) askPopup(message.request);
-      });
-    });
-    root.querySelectorAll("[data-ai-popup-action]").forEach(function (button) {
-      if (button._khodBound) return;
-      button._khodBound = true;
-      button.addEventListener("click", function () {
-        var parts = String(button.getAttribute("data-ai-popup-action") || "").split(":");
-        var msg = popupMessages[Number(parts[0])];
-        var action = msg && msg.actions ? msg.actions[Number(parts[1])] : null;
-        runAction(action);
-      });
-    });
-  }
-
-  function updateConversationUi() {
-    if (!rootRef) return;
-    var feed = rootRef.querySelector("#ai-copilot-feed");
-    if (feed) {
-      feed.innerHTML = popupMessages.length
-        ? popupMessages.map(renderPopupMessage).join("")
-        : "";
-      feed.scrollTop = feed.scrollHeight;
-    }
-    var status = rootRef.querySelector("[data-ai-panel-status]");
-    if (status) status.textContent = popupBusy ? "Analyzing" : "Ready";
-    var send = rootRef.querySelector("#ai-chat-send");
-    if (send) send.disabled = popupBusy;
-    var input = rootRef.querySelector("#ai-chat-input");
-    if (input) input.disabled = popupBusy;
-    wireConversationControls(rootRef);
   }
 
   function wire(root) {
@@ -1111,14 +952,7 @@
       if (!input || !input.value.trim()) return;
       var text = input.value.trim();
       input.value = "";
-      askPopup(campaignReviewContext
-        ? {
-          displayText: text,
-          prompt: "Use only the provided Campaign Intelligence context. " + text,
-          scope: "campaigns",
-          context: campaignReviewContext
-        }
-        : text);
+      askPopup(text);
     }
 
     if (sendBtn) sendBtn.addEventListener("click", handleSend);
@@ -1170,10 +1004,7 @@
           input.value = "";
           input.focus();
         }
-        var promptIndex = Number(pill.getAttribute("data-ai-prompt-index"));
-        var options = popupPromptOptions.length ? popupPromptOptions : popupFollowUps;
-        var selected = Number.isFinite(promptIndex) ? options[promptIndex] : null;
-        askPopup(selected || pill.textContent);
+        askPopup(pill.textContent);
       });
     });
 
@@ -1215,40 +1046,28 @@
       });
     });
 
-    wireConversationControls(root);
+    root.querySelectorAll("[data-ai-popup-action]").forEach(function (btn) {
+      btn.addEventListener("click", function () {
+        var parts = String(btn.getAttribute("data-ai-popup-action") || "").split(":");
+        var msg = popupMessages[Number(parts[0])];
+        var action = msg && msg.actions ? msg.actions[Number(parts[1])] : null;
+        runAction(action);
+      });
+    });
   }
 
-  function signalStateKey(data) {
-    data = data || {};
-    var meta = data.meta || {};
-    var accountId = meta.activeAccountId || "__all__";
-    var marketing = window.DashboardMarketingState && typeof window.DashboardMarketingState.get === "function"
-      ? window.DashboardMarketingState.get(accountId)
-      : null;
-    return [
-      accountId,
-      meta.lastUpdatedAt || meta.generatedAt || meta.periodLabel || "",
-      data.products && data.products.rankedList && data.products.rankedList.length || 0,
-      marketing && (marketing.lastSyncAt || marketing.summary && marketing.summary.lastSyncAt) || "",
-      popupInjectedAi.insights.length,
-      popupInjectedAi.recommendations.length,
-      popupInjectedAi.forecasts.length,
-      popupInjectedAi.alerts.length
-    ].join("::");
-  }
-
-  function refresh(forceState) {
+  function refresh() {
     if (!rootRef) return;
-    var nextSignalKey = signalStateKey(dataRef || {});
-    if (!lastState || forceState || nextSignalKey !== lastSignalKey) {
-      lastState = buildSignalState(dataRef || {});
-      lastSignalKey = nextSignalKey;
-    }
+    lastState = buildSignalState(dataRef || {});
     rootRef.classList.toggle("is-open", isOpen);
     rootRef.innerHTML = renderRoot(lastState);
     wire(rootRef);
     if (window.dashboardI18n) window.dashboardI18n.apply(rootRef);
-    if (window.KhodUI) window.KhodUI.enhance(rootRef);
+    if (window.TaagerUI && typeof window.TaagerUI.enhance === "function") {
+      window.TaagerUI.enhance(rootRef);
+    } else if (window.KhodUI && typeof window.KhodUI.enhance === "function") {
+      window.KhodUI.enhance(rootRef);
+    }
     if (isOpen) {
       setTimeout(function () {
         var feed = rootRef && rootRef.querySelector("#ai-copilot-feed");
@@ -1260,6 +1079,15 @@
   function mountUi(shellEl, data, ctx) {
     dataRef = data || {};
     ctxRef = ctx || {};
+    if (window.DashboardAiMirror) {
+      if (typeof window.DashboardAiMirror.warm === "function") {
+        window.DashboardAiMirror.warm(dataRef, { force: false }).catch(function () {});
+      } else if (typeof window.DashboardAiMirror.hydrate === "function") {
+        window.DashboardAiMirror.hydrate(dataRef).catch(function () {});
+      } else if (typeof window.DashboardAiMirror.ensure === "function") {
+        window.DashboardAiMirror.ensure(dataRef);
+      }
+    }
     if (!shellEl) return;
     hydrateAssistantMemory().then(function () {
       if (rootRef) refresh();
@@ -1285,8 +1113,8 @@
   window.KhodDashboardAi = Object.assign(window.KhodDashboardAi || {}, {
     ask: askPopup,
     open: openPanel,
-    openCampaignReview: openCampaignReview,
     runAction: runAction
   });
+  window.TaagerDashboardAi = window.KhodDashboardAi;
   window.runDashboardAiAction = runAction;
 })();

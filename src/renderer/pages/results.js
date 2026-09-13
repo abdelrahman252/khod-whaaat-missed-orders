@@ -1,10 +1,30 @@
 // ── RESULTS PAGE ──
+function normalizeKhodStats(stats) {
+  const s = stats || {};
+  const num = value => Number(value) || 0;
+  const realInKhod = num(s.realInKhod ?? s.realInTaager ?? 0);
+  const missedInKhod = num(s.missedInKhod ?? s.missedInTaager ?? 0);
+  const realDupe = num(s.realDupe ?? 0);
+  const missedDupe = num(s.missedDupe ?? 0);
+  const khodOrderCount = s.khodOrderCount == null ? null : num(s.khodOrderCount);
+  return {
+    ...s,
+    realInKhod,
+    missedInKhod,
+    realInTaager: realInKhod,
+    missedInTaager: missedInKhod,
+    khodOrderCount,
+    realDupe,
+    missedDupe,
+  };
+}
 window.renderResults = function (data, dateFrom, dateTo, onRunAgain, onHome) {
   // Build a time tag like "1423" for 2:23 PM — makes every run's filename unique
   const _now = new Date();
   const _runTimeTag = String(_now.getHours()).padStart(2,"0") + String(_now.getMinutes()).padStart(2,"0");
   const el = document.getElementById("page-results");
   const t  = window._t;
+  const displayKhodOrderCount = value => value == null ? "—" : value;
   const dateDisplay = dateFrom === dateTo ? dateFrom : `${dateFrom} → ${dateTo}`;
 
   function safeFilenamePart(value) {
@@ -59,7 +79,7 @@ window.renderResults = function (data, dateFrom, dateTo, onRunAgain, onHome) {
         color: var(--text2);
         white-space: nowrap;
       }
-      .orders-preview-table { border-collapse: collapse; width: 100%; }
+      .orders-preview-table { border-collapse: collapse; width: 100%; table-layout: fixed; }
       .orders-preview-table th,
       .orders-preview-table td {
         padding: 7px 10px;
@@ -83,6 +103,61 @@ window.renderResults = function (data, dateFrom, dateTo, onRunAgain, onHome) {
       }
       .orders-preview-table tbody tr:hover { background: rgba(79,142,247,0.05); }
       .orders-preview-table tbody tr:last-child td { border-bottom: none; }
+      .orders-preview-table.results-orders-table {
+        width: 100%;
+        min-width: 1360px;
+      }
+      .results-orders-table th,
+      .results-orders-table td {
+        padding: 9px 14px;
+        vertical-align: middle;
+        line-height: 1.35;
+      }
+      .results-orders-table .res-index {
+        text-align: center;
+        color: var(--text2);
+        font-size: 11px;
+      }
+      .results-orders-table .res-name,
+      .results-orders-table .res-product {
+        direction: rtl;
+        text-align: right;
+      }
+      .results-orders-table .res-name {
+        font-weight: 600;
+      }
+      .results-orders-table .res-product {
+        color: var(--text);
+        font-weight: 650;
+      }
+      .results-orders-table .res-phone {
+        direction: ltr;
+        font-family: monospace;
+        color: var(--accent);
+        font-size: 13px;
+        font-weight: 700;
+      }
+      .results-orders-table .res-number {
+        text-align: right;
+        font-weight: 700;
+      }
+      .results-orders-table .res-price {
+        color: var(--success);
+      }
+      .results-orders-table .res-date {
+        color: var(--text2);
+        font-variant-numeric: tabular-nums;
+      }
+      .results-orders-table .res-city {
+        color: var(--text2);
+        direction: rtl;
+        text-align: right;
+      }
+      .results-orders-table-wrap {
+        overflow-x: auto;
+        overflow-y: visible;
+        overscroll-behavior-inline: contain;
+      }
     `;
     document.head.appendChild(style);
   }
@@ -169,22 +244,30 @@ window.renderResults = function (data, dateFrom, dateTo, onRunAgain, onHome) {
   ensureResultsPaginationStyle();
   attachResultPagination();
 
-  function buildSkippedOrdersHtml(skippedOrders) {
+  function buildSkippedOrdersHtml(skippedOrders, accountId) {
     if (!skippedOrders || !skippedOrders.count) return "";
+    const reviewId = safeFilenamePart(accountId || "single");
+    const reviewRows = Array.isArray(skippedOrders.rows) ? skippedOrders.rows : [];
+    const escReview = value => String(value == null ? "" : value).replace(/[&<>"']/g, ch => ({"&":"&amp;","<":"&lt;",">":"&gt;","\"":"&quot;","'":"&#39;"}[ch]));
     const reasonLabels = {
       phone_parse_failed: t("results.reason_phone_parse_failed"),
       phone_uncertain_zero_appended: t("results.reason_phone_uncertain_zero_appended"),
       product_not_in_catalog: t("results.reason_product_not_in_catalog"),
     };
-    const paged = buildPagedItems(skippedOrders.rows || [], (row, i, attrs) => {
+    const paged = buildPagedItems(reviewRows, (row, i, attrs) => {
       const reasonKey = row.uncertain && row.reason === "phone_parse_failed" ? "phone_uncertain_zero_appended" : row.reason;
-      return `<tr ${attrs} style="${row.uncertain ? "background:rgba(255,170,0,0.05)" : ""}">
+      return `<tr ${attrs} data-res-review-row="${reviewId}" style="background:rgba(249,115,22,0.09);border-inline-start:3px solid #f97316">
         <td style="color:var(--text2)">${i + 1}</td>
-        <td style="direction:rtl">${row.name || "—"}</td>
-        <td style="font-family:monospace;color:var(--danger);direction:ltr">${row.rawPhone || "—"}</td>
-        <td style="min-width:300px;white-space:normal;line-height:1.55;direction:rtl;word-break:normal;overflow-wrap:anywhere" title="${(row.productName || "").replace(/"/g,"")}">${row.productName || "—"}</td>
-        <td style="min-width:180px;font-size:11px;white-space:normal;line-height:1.45">${reasonLabels[reasonKey] || reasonKey || "—"}</td>
-        <td style="text-align:center">${row.uncertain ? `<span title="${t("results.phone_rescued_verify")}" style="color:var(--warning)">⚠️</span>` : ""}</td>
+        <td style="font-weight:700;color:${row.uploadedWithWarning ? "var(--warning)" : "var(--danger)"}">${row.uploadedWithWarning ? t("results.warning_uploaded") : t("results.warning_skipped")}</td>
+        <td><input data-res-review-account="${reviewId}" data-res-review-index="${i}" data-res-review-field="name" value="${escReview(row.name || "")}" style="width:130px;background:rgba(255,255,255,.05);border:1px solid #f97316;color:var(--text);padding:5px;border-radius:4px"></td>
+        <td><input data-res-review-account="${reviewId}" data-res-review-index="${i}" data-res-review-field="phone" value="${escReview(row.normalizedPhone || row.rawPhone || "")}" style="width:125px;background:rgba(255,255,255,.05);border:1px solid #f97316;color:var(--text);padding:5px;border-radius:4px;font-family:monospace"></td>
+        <td><input data-res-review-account="${reviewId}" data-res-review-index="${i}" data-res-review-field="sku" value="${escReview(row.sku || "")}" placeholder="SKU" style="width:90px;background:rgba(255,255,255,.05);border:1px solid #f97316;color:var(--text);padding:5px;border-radius:4px"></td>
+        <td><input data-res-review-account="${reviewId}" data-res-review-index="${i}" data-res-review-field="productName" value="${escReview(row.productName || "")}" style="width:180px;background:rgba(255,255,255,.05);border:1px solid #f97316;color:var(--text);padding:5px;border-radius:4px"></td>
+        <td><input data-res-review-account="${reviewId}" data-res-review-index="${i}" data-res-review-field="qty" type="number" min="1" value="${escReview(row.qty || 1)}" style="width:55px;background:rgba(255,255,255,.05);border:1px solid #f97316;color:var(--text);padding:5px;border-radius:4px"></td>
+        <td><input data-res-review-account="${reviewId}" data-res-review-index="${i}" data-res-review-field="unitPrice" type="number" min="0" step="0.01" value="${escReview(row.unitPrice || row.price || "")}" style="width:80px;background:rgba(255,255,255,.05);border:1px solid #f97316;color:var(--text);padding:5px;border-radius:4px"></td>
+        <td><input data-res-review-account="${reviewId}" data-res-review-index="${i}" data-res-review-field="city" value="${escReview(row.city || "")}" style="width:110px;background:rgba(255,255,255,.05);border:1px solid #f97316;color:var(--text);padding:5px;border-radius:4px"></td>
+        <td style="font-size:11px">${reasonLabels[reasonKey] || reasonKey || "—"}</td>
+        <td style="text-align:center;color:#f97316">⚠️</td>
       </tr>`;
     }, "skipped");
     return `
@@ -196,146 +279,89 @@ window.renderResults = function (data, dateFrom, dateTo, onRunAgain, onHome) {
           <div style="font-size:11px;color:var(--text2)">${t("results.skipped_followup")}</div>
         </div>
         <div class="dash-section-body no-pad" style="overflow-x:auto">
-          <table class="orders-preview-table" style="font-size:12px;width:100%;min-width:980px;table-layout:fixed;border-collapse:collapse">
-            <colgroup>
-              <col style="width:38px">
-              <col style="width:28%">
-              <col style="width:130px">
-              <col style="width:34%">
-              <col style="width:24%">
-              <col style="width:32px">
-            </colgroup>
+          <table class="orders-preview-table" style="font-size:12px">
             <thead><tr>
               <th>#</th>
+              <th>${t("results.warning_status_col")}</th>
               <th>${t("results.customer_name_col")}</th>
               <th>${t("results.raw_phone_col")}</th>
+              <th>SKU</th>
               <th>${t("results.product_col")}</th>
+              <th>Qty</th>
+              <th>Price</th>
+              <th>${t("results.city_col") || "City"}</th>
               <th>${t("results.reason_col")}</th>
               <th>⚠️</th>
             </tr></thead>
             <tbody>${paged.itemsHtml}</tbody>
           </table>
           ${paged.pagerHtml}
+          <div style="display:flex;align-items:center;gap:10px;padding:12px 14px;background:rgba(249,115,22,.08);border-top:1px solid rgba(249,115,22,.3)">
+            <strong style="color:#f97316">⚠️ Manual review required</strong>
+            <span style="font-size:11px;color:var(--text2)">Edit the orange rows, then run the reviewed orders.</span>
+            <button type="button" class="btn" data-res-start-reviewed="${reviewId}" style="margin-left:auto;background:rgba(249,115,22,.16);border-color:#f97316;color:#f97316">Start Reviewed</button>
+          </div>
         </div>
       </div>`;
   }
 
-  // ── Shared helper: render the full orders table (name, phone, product, qty, city) ──
-  function buildOrdersTableHtmlLegacy(orderRows, label) {
-    if (!orderRows || orderRows.length === 0) return "";
-    const t = window._t;
-    const ordersCountFn = t("results.orders_count");
-
-    // Generate a unique ID for this table's search scope
-    const tableUid = `orders-tbl-${Date.now()}-${Math.random().toString(36).slice(2,6)}`;
-
-    function renderOrderRows(rows) {
-      if (!rows || rows.length === 0) {
-        return `<tr><td colspan="7" style="text-align:center;padding:14px;color:var(--text2);font-size:12px">${t("results.no_orders_found") || "No orders match your search"}</td></tr>`;
-      }
-      return rows.map((o, i) => `<tr>
-        <td style="color:var(--text2);font-size:11px;text-align:center;width:38px">${i + 1}</td>
-        <td style="font-weight:600;direction:rtl;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${o.name || "—"}</td>
-        <td style="font-family:monospace;color:var(--accent);font-weight:700;font-size:13px;white-space:nowrap">${o.phone || "—"}</td>
-        <td style="overflow:hidden;text-overflow:ellipsis;white-space:nowrap;direction:rtl" title="${(o.productName||"").replace(/"/g,"")}">${o.productName || "—"}</td>
-        <td style="text-align:right;font-weight:700;width:44px">${o.qty || 1}</td>
-        <td style="text-align:right;color:var(--success);white-space:nowrap;width:72px">${o.unitPrice || "—"}</td>
-        <td style="color:var(--text2);overflow:hidden;text-overflow:ellipsis;white-space:nowrap;width:90px">${o.city || "—"}</td>
-      </tr>`).join("");
-    }
-
-    // Inject search filter function once
-    if (!window._resOrderSearch) {
-      window._resOrderSearch = function(uid, query) {
-        const allRows = window._resOrderRows && window._resOrderRows[uid];
-        if (!allRows) return;
-        const q = (query || "").trim().toLowerCase();
-        const filtered = q ? allRows.filter(o =>
-          (o.name || "").toLowerCase().includes(q) ||
-          (o.phone || "").toLowerCase().includes(q) ||
-          (o.productName || "").toLowerCase().includes(q)
-        ) : allRows;
-        const tbody = document.getElementById(`${uid}-tbody`);
-        if (tbody) tbody.innerHTML = renderOrderRows(filtered);
+  function wireManualReview(accountId, rows) {
+    const reviewId = safeFilenamePart(accountId || "single");
+    const button = el.querySelector(`[data-res-start-reviewed="${reviewId}"]`);
+    if (!button || button._manualReviewReady) return;
+    button._manualReviewReady = true;
+    button.addEventListener("click", () => {
+      const payload = (Array.isArray(rows) ? rows : []).map((row, index) => {
+        const next = { ...(row || {}), manualReviewIndex: index };
+        el.querySelectorAll(`[data-res-review-account="${reviewId}"][data-res-review-index="${index}"]`).forEach(input => {
+          next[input.dataset.resReviewField] = input.value;
+        });
+        return next;
+      });
+      window._pendingManualReviewRun = {
+        manualReviewOrders: payload,
+        manualReviewMode: true,
+        accountId: accountId || ""
       };
-    }
-    if (!window._resOrderRows) window._resOrderRows = {};
-    window._resOrderRows[tableUid] = orderRows;
-
-    return `
-      <div class="dash-section">
-        <div class="dash-section-header">
-          <div class="dash-section-title"><span>📋</span> ${label || t("results.all_orders_label")} <span style="font-size:11px;font-weight:400;color:var(--text2);margin-left:6px">${typeof ordersCountFn === "function" ? ordersCountFn(orderRows.length) : ordersCountFn}</span></div>
-          <div style="font-size:11px;color:var(--text2)">${t("run.click_to_copy")}</div>
-        </div>
-        <div style="padding:8px 12px;border-bottom:1px solid var(--border);background:rgba(0,0,0,0.04)">
-          <input type="text" placeholder="${t('results.search_orders_placeholder') || 'Search by name, phone or product…'}" style="width:100%;box-sizing:border-box;background:var(--bg);border:1px solid var(--border);border-radius:var(--radius-sm);padding:6px 10px;font-size:12px;color:var(--text);outline:none" oninput="window._resOrderSearch('${tableUid}',this.value)">
-        </div>
-        <div class="dash-section-body no-pad" style="overflow-x:auto">
-          <table class="orders-preview-table" style="width:100%;table-layout:fixed;border-collapse:collapse">
-            <colgroup>
-              <col style="width:38px">
-              <col style="width:auto">
-              <col style="width:130px">
-              <col style="width:auto">
-              <col style="width:44px">
-              <col style="width:72px">
-              <col style="width:90px">
-            </colgroup>
-            <thead><tr>
-              <th style="width:38px">#</th>
-              <th>${t("results.customer_name_col")}</th>
-              <th>${t("results.phone_col")}</th>
-              <th>${t("results.product_col")}</th>
-              <th style="text-align:right">${t("results.qty_col")}</th>
-              <th style="text-align:right">${t("results.price_col")}</th>
-              <th>${t("results.city_col")}</th>
-            </tr></thead>
-            <tbody id="${tableUid}-tbody">
-              ${renderOrderRows(orderRows)}
-            </tbody>
-          </table>
-        </div>
-      </div>
-    `;
+      button.disabled = true;
+      button.textContent = "Starting…";
+      onRunAgain();
+    });
   }
 
-
-  // ─────────────────────────────────────
-  // MULTI-ACCOUNT — sidebar + rich dashboard per account
-  // ─────────────────────────────────────
   function buildFailedOrdersDetailHtml(failedOrders) {
     const rows = failedOrders?.errorRows || [];
     if (rows.length > 0) {
       const paged = buildPagedItems(rows, (row, i, attrs) => `<tr ${attrs}>
-        <td style="color:var(--text2);text-align:center">${row.row || i + 1}</td>
-        <td style="font-family:monospace;color:var(--accent);overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${row.sku || "—"}</td>
-        <td style="overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="${(row.product || row.productName || "").replace(/"/g,"")}">${row.product || row.productName || "—"}</td>
-        <td style="font-family:monospace;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${row.phone || "—"}</td>
-        <td style="color:var(--danger);font-weight:600;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${row.error || "—"}</td>
+        <td style="color:var(--text2)">${row.row || i + 1}</td>
+        <td style="font-family:monospace;color:var(--accent)">${row.sku || "—"}</td>
+        <td style="max-width:160px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="${(row.product || row.productName || "").replace(/"/g,"")}">${row.product || row.productName || "—"}</td>
+        <td style="font-family:monospace">${row.phone || "—"}</td>
+        <td style="color:var(--danger);font-weight:600">${row.error || "—"}</td>
       </tr>`, "failed-orders");
       return `<div style="overflow-x:auto">
-        <table class="orders-preview-table" style="font-size:12px;width:100%;table-layout:fixed;border-collapse:collapse">
-          <colgroup>
-            <col style="width:44px"><col style="width:80px"><col style="width:auto">
-            <col style="width:120px"><col style="width:auto">
-          </colgroup>
-          <thead><tr>${[t("results.row_col") || t("results.row"), t("results.sku"), t("results.product_col"), t("results.phone_col") || t("results.phone"), t("results.error_col") || t("results.error")].map(h=>`<th>${h}</th>`).join("")}</tr></thead>
+        <table class="orders-preview-table" style="font-size:12px">
+          <thead><tr>
+            ${[t("results.row_col") || t("results.row"), t("results.sku"), t("results.product_col"), t("results.phone_col") || t("results.phone"), t("results.error_col") || t("results.error")]
+              .map(h => `<th>${h}</th>`).join("")}
+          </tr></thead>
           <tbody>${paged.itemsHtml}</tbody>
         </table>
         ${paged.pagerHtml}
       </div>`;
     }
+
     const summary = failedOrders?.summary || [];
     if (summary.length > 0) {
       const paged = buildPagedItems(summary, (f, i, attrs) => `
         <div ${attrs} style="background:rgba(255,77,109,0.12);border:1px solid rgba(255,77,109,0.3);border-radius:6px;padding:7px 14px;font-size:12px;user-select:text;-webkit-user-select:text">
           <span style="color:var(--text2)">${t("results.product_col")}:</span>
-          <span style="color:var(--text);font-weight:600;margin-left:4px">${f.productName || f.product || t("results.unknown")}</span>
-          <span style="color:var(--danger);font-weight:700;margin-left:10px">${f.count || 1} ${t("results.product_count")(f.count || 1)}</span>
+          <span style="color:var(--text);font-weight:600;margin-left:4px">${f.productName || t("results.unknown")}</span>
+          <span style="color:var(--danger);font-weight:700;margin-left:10px">${f.count} ${t("results.product_count")(f.count)}</span>
         </div>`, "failed-summary");
       return `<div style="display:flex;flex-wrap:wrap;gap:8px;padding:16px 18px">${paged.itemsHtml}</div>${paged.pagerHtml}`;
     }
+
     return `<div style="padding:12px 18px;font-size:12px;color:var(--text2)">${t("results.no_error_info")}</div>`;
   }
 
@@ -359,22 +385,36 @@ window.renderResults = function (data, dateFrom, dateTo, onRunAgain, onHome) {
     return addFailedProductCounts({}, failedOrders);
   }
 
+  // ── Shared helper: render the full orders table (name, phone, product, qty, city) ──
   function buildOrdersTableHtml(orderRows, label) {
     if (!orderRows || orderRows.length === 0) return "";
     const t = window._t;
     const ordersCountFn = t("results.orders_count");
-    const tableUid = `orders-tbl-${Date.now()}-${Math.random().toString(36).slice(2,6)}`;
+    const tableUid = `orders-tbl-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`;
+
+    function orderCreatedAtText(o) {
+      return o.easyCreatedAt || o.createdAt || o.date || "—";
+    }
 
     function renderOrderRow(o, i, attrs) {
+      const createdAt = orderCreatedAtText(o);
       return `<tr ${attrs || ""}>
-        <td style="color:var(--text2);font-size:11px;text-align:center;width:38px">${i + 1}</td>
-        <td style="font-weight:600;direction:rtl;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${o.name || "—"}</td>
-        <td style="font-family:monospace;color:var(--accent);font-weight:700;font-size:13px;white-space:nowrap">${o.phone || "—"}</td>
-        <td style="overflow:hidden;text-overflow:ellipsis;white-space:nowrap;direction:rtl" title="${(o.productName||"").replace(/"/g,"")}">${o.productName || "—"}</td>
-        <td style="text-align:right;font-weight:700;width:44px">${o.qty || 1}</td>
-        <td style="text-align:right;color:var(--success);white-space:nowrap;width:72px">${o.unitPrice || "—"}</td>
-        <td style="color:var(--text2);overflow:hidden;text-overflow:ellipsis;white-space:nowrap;width:90px">${o.city || "—"}</td>
+        <td class="res-index">${i + 1}</td>
+        <td class="res-name" title="${String(o.name || "").replace(/"/g,"")}">${o.name || "—"}</td>
+        <td class="res-phone">${o.phone || "—"}</td>
+        <td class="res-product" title="${(o.productName||"").replace(/"/g,"")}">${o.productName || "—"}</td>
+        <td class="res-number">${o.qty || 1}</td>
+        <td class="res-number res-price">${o.unitPrice || "—"}</td>
+        <td class="res-date" title="${String(createdAt).replace(/"/g,"")}">${createdAt}</td>
+        <td class="res-city" title="${String(o.city || "").replace(/"/g,"")}">${o.city || "—"}</td>
       </tr>`;
+    }
+
+    function renderOrderRows(rows) {
+      if (!rows || rows.length === 0) {
+        return `<tr><td colspan="8" style="text-align:center;padding:14px;color:var(--text2);font-size:12px">${t("results.no_orders_found") || "No orders match your search"}</td></tr>`;
+      }
+      return buildPagedItems(rows, renderOrderRow, `orders-${tableUid}`).itemsHtml;
     }
 
     window._resOrderSearch = function(uid, query) {
@@ -386,14 +426,13 @@ window.renderResults = function (data, dateFrom, dateTo, onRunAgain, onHome) {
         (o.name || "").toLowerCase().includes(q) ||
         (o.phone || "").toLowerCase().includes(q) ||
         (o.productName || "").toLowerCase().includes(q) ||
-        (o.sku || "").toLowerCase().includes(q) ||
-        (o.city || "").toLowerCase().includes(q)
+        (o.easyCreatedAt || o.createdAt || o.date || "").toLowerCase().includes(q)
       ) : allRows;
       const tbody = document.getElementById(`${uid}-tbody`);
       const pagerHost = document.getElementById(`${uid}-pager`);
       if (!tbody) return;
       if (!filtered.length) {
-        tbody.innerHTML = `<tr><td colspan="7" style="text-align:center;padding:14px;color:var(--text2);font-size:12px">${t("results.no_orders_found") || "No orders match your search"}</td></tr>`;
+        tbody.innerHTML = `<tr><td colspan="8" style="text-align:center;padding:14px;color:var(--text2);font-size:12px">${t("results.no_orders_found") || "No orders match your search"}</td></tr>`;
         if (pagerHost) pagerHost.innerHTML = "";
         return;
       }
@@ -416,27 +455,31 @@ window.renderResults = function (data, dateFrom, dateTo, onRunAgain, onHome) {
         <div style="padding:8px 12px;border-bottom:1px solid var(--border);background:rgba(0,0,0,0.04)">
           <input type="text" placeholder="${t('results.search_orders_placeholder') || 'Search by name, phone or product...'}" style="width:100%;box-sizing:border-box;background:var(--bg);border:1px solid var(--border);border-radius:var(--radius-sm);padding:6px 10px;font-size:12px;color:var(--text);outline:none" oninput="window._resOrderSearch('${tableUid}',this.value)">
         </div>
-        <div class="dash-section-body no-pad" style="overflow-x:auto">
-          <table class="orders-preview-table" style="width:100%;table-layout:fixed;border-collapse:collapse">
+        <div class="dash-section-body no-pad results-orders-table-wrap" style="overflow-x:auto">
+          <table class="orders-preview-table results-orders-table" style="width:100%;min-width:1360px;table-layout:fixed;border-collapse:collapse">
             <colgroup>
-              <col style="width:38px">
-              <col style="width:auto">
-              <col style="width:130px">
-              <col style="width:auto">
-              <col style="width:44px">
-              <col style="width:72px">
+              <col style="width:46px">
+              <col style="width:190px">
+              <col style="width:160px">
+              <col style="width:430px">
+              <col style="width:70px">
               <col style="width:90px">
+              <col style="width:190px">
+              <col style="width:180px">
             </colgroup>
             <thead><tr>
-              <th style="width:38px">#</th>
-              <th>${t("results.customer_name_col")}</th>
+              <th>#</th>
+              <th style="text-align:right">${t("results.customer_name_col")}</th>
               <th>${t("results.phone_col")}</th>
-              <th>${t("results.product_col")}</th>
+              <th style="text-align:right">${t("results.product_col")}</th>
               <th style="text-align:right">${t("results.qty_col")}</th>
               <th style="text-align:right">${t("results.price_col")}</th>
-              <th>${t("results.city_col")}</th>
+              <th>${t("results.easy_created_at_col")}</th>
+              <th style="text-align:right">${t("results.city_col")}</th>
             </tr></thead>
-            <tbody id="${tableUid}-tbody">${initialPagedOrders.itemsHtml}</tbody>
+            <tbody id="${tableUid}-tbody">
+              ${initialPagedOrders.itemsHtml}
+            </tbody>
           </table>
           <div id="${tableUid}-pager">${initialPagedOrders.pagerHtml}</div>
         </div>
@@ -444,12 +487,17 @@ window.renderResults = function (data, dateFrom, dateTo, onRunAgain, onHome) {
     `;
   }
 
+
+  // ─────────────────────────────────────
+  // MULTI-ACCOUNT — sidebar + rich dashboard per account
+  // ─────────────────────────────────────
   if (data && data._multiAccount && Array.isArray(data._accountResults)) {
     const accountResults = data._accountResults;
     let selectedPane = "__all__";
 
     // ── Helper: build per-product split rows from one account result ──
     function buildProductSplit(products, failedOrders) {
+      products = Array.isArray(products) ? products : [];
       const failedByProduct = failedProductCounts(failedOrders);
       const allNames = new Set([...products.map(p => p.productName || "—"), ...Object.keys(failedByProduct)]);
       return [...allNames].map(name => {
@@ -462,42 +510,18 @@ window.renderResults = function (data, dateFrom, dateTo, onRunAgain, onHome) {
 
     // ── Helper: build error rows HTML ──
     function buildErrorRowsHtml(failedOrders) {
-      const t = window._t;
-      if (failedOrders.errorRows && failedOrders.errorRows.length > 0) {
-        return `<div style="overflow-x:auto">
-          <table class="orders-preview-table" style="font-size:12px;width:100%;table-layout:fixed;border-collapse:collapse">
-            <colgroup>
-              <col style="width:44px"><col style="width:80px"><col style="width:auto">
-              <col style="width:120px"><col style="width:auto">
-            </colgroup>
-            <thead><tr>${[t("results.row_col"),t("results.sku"),t("results.product_col"),t("results.phone_col"),t("results.error_col")].map(h=>`<th>${h}</th>`).join("")}</tr></thead>
-            <tbody>${failedOrders.errorRows.map(row=>`<tr>
-              <td style="color:var(--text2);text-align:center">${row.row||"—"}</td>
-              <td style="font-family:monospace;color:var(--accent);overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${row.sku||"—"}</td>
-              <td style="overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${row.product||"—"}</td>
-              <td style="font-family:monospace;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${row.phone||"—"}</td>
-              <td style="color:var(--danger);font-weight:600;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${row.error||"—"}</td>
-            </tr>`).join("")}</tbody>
-          </table></div>`;
-      }
-      if (failedOrders.summary && failedOrders.summary.length > 0) {
-        return `<div style="display:flex;flex-wrap:wrap;gap:8px;padding:16px 18px">
-          ${failedOrders.summary.map(f=>`
-            <div style="background:rgba(255,77,109,0.12);border:1px solid rgba(255,77,109,0.3);border-radius:6px;padding:7px 14px;font-size:12px;user-select:text;-webkit-user-select:text">
-              <span style="color:var(--text2)">${t("results.product_col")}:</span>
-              <span style="font-weight:600;margin-left:4px">${f.productName||t("results.unknown")}</span>
-              <span style="color:var(--danger);font-weight:700;margin-left:10px">${f.count} ${t("results.product_count")(f.count)}</span>
-            </div>`).join("")}</div>`;
-      }
-      return `<div style="padding:12px 18px;font-size:12px;color:var(--text2)">${t("results.no_error_info")}</div>`;
+      return buildFailedOrdersDetailHtml(failedOrders);
     }
 
     // ── ALL ACCOUNTS overview pane ──
     function buildOverviewPane() {
       const totalOrders = accountResults.reduce((s, r) => s + (r.data?.orders || 0), 0);
       const totalFailed = accountResults.reduce((s, r) => s + (r.data?.failedOrders?.count || 0), 0);
-      const totalInKhod = accountResults.reduce((s, r) => s + ((r.data?.stats?.realInTaager||0)+(r.data?.stats?.missedInTaager||0)), 0);
-      const totalDupes  = accountResults.reduce((s, r) => s + ((r.data?.stats?.realDupe||0)+(r.data?.stats?.missedDupe||0)), 0);
+      const khodOrderCounts = accountResults.map(r => normalizeKhodStats(r.data?.stats).khodOrderCount);
+      const totalInTaager = khodOrderCounts.every(value => value != null)
+        ? khodOrderCounts.reduce((sum, value) => sum + value, 0)
+        : null;
+      const totalDupes  = accountResults.reduce((s, r) => { const k = normalizeKhodStats(r.data?.stats); return s + k.realDupe + k.missedDupe; }, 0);
       const totalAttempt = totalOrders + totalFailed;
       const successRate  = totalAttempt > 0 ? Math.round(totalOrders / totalAttempt * 100) : 100;
       const allOk = accountResults.every(r => r.success);
@@ -535,7 +559,7 @@ window.renderResults = function (data, dateFrom, dateTo, onRunAgain, onHome) {
           </div>
           <div class="dash-stat-card warning">
             <div class="ds-icon">🔁</div>
-            <div class="ds-value">${totalInKhod}</div>
+            <div class="ds-value">${displayKhodOrderCount(totalInTaager)}</div>
             <div class="ds-label">${t("results.in_khod")}</div>
             <div class="ds-sub">${t("results.already_in_system")}</div>
           </div>
@@ -576,10 +600,7 @@ window.renderResults = function (data, dateFrom, dateTo, onRunAgain, onHome) {
               <div style="font-size:11px;color:var(--text2)">${(()=>{const fn=t("results.accounts_click");return typeof fn==="function"?fn(accountResults.length):fn;})()}</div>
             </div>
             <div class="dash-section-body no-pad">
-              <table class="orders-preview-table" style="width:100%;table-layout:fixed;border-collapse:collapse">
-                <colgroup>
-                  <col style="width:auto"><col style="width:70px"><col style="width:70px"><col style="width:80px">
-                </colgroup>
+              <table class="orders-preview-table">
                 <thead><tr>
                   <th>${t("results.account_col")}</th>
                   <th style="text-align:right">${t("results.orders_col")}</th>
@@ -639,7 +660,7 @@ window.renderResults = function (data, dateFrom, dateTo, onRunAgain, onHome) {
     // ── SINGLE ACCOUNT PANE — full rich dashboard ──
     function buildAccountPane(r) {
       const accData      = r.data || {};
-      const stats        = accData.stats || {};
+      const stats        = normalizeKhodStats(accData.stats);
       const totalNew     = accData.orders || 0;
       const products     = accData.productSummary || [];
       const buffer       = accData.buffer;
@@ -649,8 +670,8 @@ window.renderResults = function (data, dateFrom, dateTo, onRunAgain, onHome) {
       const failReason   = r.error || "";
       const hasFailed    = failedOrders.count > 0;
       const hasSkipped   = skippedOrders.count > 0;
-      const totalInKhod  = (stats.realInTaager||0) + (stats.missedInTaager||0);
-      const totalDupes   = (stats.realDupe||0) + (stats.missedDupe||0);
+      const totalInTaager  = stats.khodOrderCount;
+      const totalDupes   = stats.realDupe + stats.missedDupe;
       const totalAttempt = totalNew + failedOrders.count;
       const successRate  = totalAttempt > 0 ? Math.round(totalNew / totalAttempt * 100) : 100;
       const pagedUploadedProducts = buildPagedItems(products, (p, i, attrs) => `<tr ${attrs}>
@@ -663,7 +684,7 @@ window.renderResults = function (data, dateFrom, dateTo, onRunAgain, onHome) {
       const failTitle   = typeof failTitleFn === "function" ? failTitleFn(failedOrders.count) : failTitleFn;
 
       const productSplitRows = buildProductSplit(products, failedOrders);
-      const errorRowsHtml    = buildFailedOrdersDetailHtml(failedOrders);
+      const errorRowsHtml    = buildErrorRowsHtml(failedOrders);
 
       return `
         ${runFailed ? `
@@ -699,7 +720,7 @@ window.renderResults = function (data, dateFrom, dateTo, onRunAgain, onHome) {
           </div>
           <div class="dash-stat-card warning">
             <div class="ds-icon">🔁</div>
-            <div class="ds-value">${totalInKhod}</div>
+            <div class="ds-value">${displayKhodOrderCount(totalInTaager)}</div>
             <div class="ds-label">${t("results.in_khod")}</div>
             <div class="ds-sub">${t("results.already_in_system")}</div>
           </div>
@@ -782,10 +803,7 @@ window.renderResults = function (data, dateFrom, dateTo, onRunAgain, onHome) {
                 <div style="font-size:11px;color:var(--text2)">${t("run.click_to_copy")}</div>
               </div>
               <div class="dash-section-body no-pad" style="overflow-x:auto">
-                <table class="orders-preview-table" style="font-size:12px;width:100%;table-layout:fixed;border-collapse:collapse">
-                  <colgroup>
-                    <col style="width:auto"><col style="width:80px"><col style="width:60px">
-                  </colgroup>
+                <table class="orders-preview-table" style="font-size:12px">
                   <thead><tr>
                     <th>${t("results.product_col")}</th>
                     <th style="text-align:right">${t("results.orders_col")}</th>
@@ -821,7 +839,7 @@ window.renderResults = function (data, dateFrom, dateTo, onRunAgain, onHome) {
           <div class="notice-text">${t("results.all_ok")}</div>
         </div>`}
 
-        ${buildSkippedOrdersHtml(skippedOrders)}
+        ${buildSkippedOrdersHtml(skippedOrders, r.accountId)}
 
         <!-- ALL ORDERS TABLE -->
         ${buildOrdersTableHtml(accData.attemptedOrderRows || accData.orderRows, t("results.all_attempted") || t("results.all_uploaded"))}
@@ -838,10 +856,11 @@ window.renderResults = function (data, dateFrom, dateTo, onRunAgain, onHome) {
         const r = accountResults.find(x => x.accountId === selectedPane);
         if (!r) return;
         wrap.innerHTML = buildAccountPane(r);
+        wireManualReview(r.accountId, (r.data && r.data.skippedOrders && r.data.skippedOrders.rows) || []);
         // Wire download buttons
         document.getElementById(`acc-btn-download-${r.accountId}`)?.addEventListener("click", async () => {
           const dateTag  = dateFrom.replace(/-/g,"");
-          const filename = `khod-orders-${resultAccountTag(r.accountLabel||r.accountId)}-${dateTag}.xlsx`;
+          const filename = `KHOD-orders-${resultAccountTag(r.accountLabel||r.accountId)}-${dateTag}.xlsx`;
           const result   = await window.api.saveOutputFile({ buffer: r.data?.buffer, filename });
           if (result.saved) { const fn = t("results.toast_saved"); showToast(typeof fn === "function" ? fn(result.path) : fn); }
         });
@@ -969,7 +988,7 @@ window.renderResults = function (data, dateFrom, dateTo, onRunAgain, onHome) {
   // ─────────────────────────────────────
   // SINGLE ACCOUNT — rich dashboard layout
   // ─────────────────────────────────────
-  const stats        = data.stats        || {};
+  const stats        = normalizeKhodStats(data.stats);
   const totalNew     = data.orders       || 0;
   const products     = data.productSummary || [];
   const buffer       = data.buffer;
@@ -978,8 +997,8 @@ window.renderResults = function (data, dateFrom, dateTo, onRunAgain, onHome) {
   const runFailed    = data._runFailed   || false;
   const failReason   = data._failReason  || "";
 
-  const totalInKhod    = (stats.realInTaager || 0) + (stats.missedInTaager || 0);
-  const totalDupes     = (stats.realDupe     || 0) + (stats.missedDupe     || 0);
+  const totalInTaager    = stats.khodOrderCount;
+  const totalDupes     = stats.realDupe + stats.missedDupe;
   const hasFailed      = failedOrders.count > 0;
   const hasSkipped     = skippedOrders.count > 0;
   const totalUploaded  = totalNew + failedOrders.count;
@@ -1061,7 +1080,7 @@ window.renderResults = function (data, dateFrom, dateTo, onRunAgain, onHome) {
         </div>
         <div class="dash-stat-card warning">
           <div class="ds-icon">🔁</div>
-          <div class="ds-value">${totalInKhod}</div>
+          <div class="ds-value">${displayKhodOrderCount(totalInTaager)}</div>
           <div class="ds-label">${t("results.in_khod")}</div>
           <div class="ds-sub">${t("results.already_in_system")}</div>
         </div>
@@ -1144,10 +1163,7 @@ window.renderResults = function (data, dateFrom, dateTo, onRunAgain, onHome) {
               <div style="font-size:11px;color:var(--text2)">${t("run.click_cells_copy")}</div>
             </div>
             <div class="dash-section-body no-pad" style="overflow-x:auto">
-              <table class="orders-preview-table" style="font-size:12px;width:100%;table-layout:fixed;border-collapse:collapse">
-                <colgroup>
-                  <col style="width:auto"><col style="width:80px"><col style="width:80px">
-                </colgroup>
+              <table class="orders-preview-table" style="font-size:12px">
                 <thead><tr>
                   <th>${t("results.product_col")}</th>
                   <th style="text-align:right">${t("results.orders_col")}</th>
@@ -1185,7 +1201,7 @@ window.renderResults = function (data, dateFrom, dateTo, onRunAgain, onHome) {
         <div class="notice-text">${t("results.all_ok")}</div>
       </div>`}
 
-      ${buildSkippedOrdersHtml(skippedOrders)}
+      ${buildSkippedOrdersHtml(skippedOrders, data.accountId || "single")}
 
       <!-- ALL ORDERS TABLE -->
       ${buildOrdersTableHtml(data.attemptedOrderRows || data.orderRows, t("results.all_attempted") || t("results.all_uploaded"))}
@@ -1198,6 +1214,7 @@ window.renderResults = function (data, dateFrom, dateTo, onRunAgain, onHome) {
   wireSharedSidebar(el);
   document.getElementById("btn-home")?.addEventListener("click", onHome);
   document.getElementById("btn-run-again")?.addEventListener("click", onRunAgain);
+  wireManualReview(data.accountId || "single", skippedOrders.rows || []);
 
   document.getElementById("btn-download-failed")?.addEventListener("click", async () => {
     const dateTag  = dateFrom.replace(/-/g, "");
@@ -1222,7 +1239,7 @@ window.renderResults = function (data, dateFrom, dateTo, onRunAgain, onHome) {
   if (buffer) {
     document.getElementById("btn-download")?.addEventListener("click", async () => {
       const dateTag  = dateFrom.replace(/-/g, "");
-      const filename = `khod-orders-${resultAccountTag(data._accountLabel)}-${dateTag}.xlsx`;
+      const filename = `KHOD-orders-${resultAccountTag(data._accountLabel)}-${dateTag}.xlsx`;
       const result   = await window.api.saveOutputFile({ buffer, filename });
       if (result.saved) { const fn = t("results.toast_saved"); showToast(typeof fn === "function" ? fn(result.path) : fn); }
     });

@@ -9,12 +9,17 @@
   };
   window.StaticDashboardUpdateState = state;
 
+  function ui() {
+    return window.KhodUI || window.TaagerUI || null;
+  }
+
   function tr(key, params) {
-    return window.dashboardI18n ? window.dashboardI18n.t(key, params) : key;
+    return window.dashboardI18n ? window.dashboardI18n.t(key, params || null) : key;
   }
 
   function esc(value) {
-    if (window.KhodUI && typeof window.KhodUI.esc === 'function') return window.KhodUI.esc(value);
+    var helper = ui();
+    if (helper && typeof helper.esc === 'function') return helper.esc(value);
     return String(value == null ? '' : value).replace(/[&<>"']/g, function (ch) {
       return ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[ch];
     });
@@ -89,7 +94,7 @@
     if (item.error) return item.error;
     if (item.inspect && item.inspect.ok) {
       var warning = item.inspect.warnings && item.inspect.warnings[0];
-      return tr('static.rows', { count: item.inspect.parsedRows || 0 }) +
+      return tr('static.rows', { count: item.inspect.rows || item.inspect.parsedRows || 0 }) +
         (warning ? ' - ' + tr('static.outsideIgnored', { count: warning.count || 0 }) : '');
     }
     if (item.fileName) return tr('static.choose');
@@ -108,26 +113,25 @@
   function renderCard(account) {
     var item = accountState(account.id);
     var identity = account.email || account.khodEmail || account.memberName || '';
-    var ready = item.inspect && item.inspect.ok;
+    var ready = item.inspect && item.inspect.ok && item.inspect.canApply !== false;
     return '<article class="static-update-card" data-account-id="' + esc(account.id) + '">' +
-      '<div class="static-update-account">' +
+      '<div class="static-update-card-head static-update-account">' +
         '<div><strong>' + esc(accountLabel(account)) + '</strong>' +
           (identity ? '<span>' + esc(identity) + '</span>' : '') +
         '</div>' +
-        '<span class="static-update-badge ' + (ready ? 'is-ready' : '') + '">' +
+        '<span class="static-update-country static-update-badge ' + (ready ? 'is-ready' : '') + '">' +
           (ready ? tr('static.ready') : tr('static.required')) +
         '</span>' +
       '</div>' +
-      '<label class="static-update-upload ' + statusClass(item) + '">' +
-        '<input type="file" data-static-file="' + esc(account.id) + '" accept=".xlsx,.xls,.csv" ' + (state.busy ? 'disabled' : '') + '>' +
-        '<span class="static-update-upload-icon">' + (window.icon ? window.icon('upload', { size: 22, color: 'currentColor' }) : '') + '</span>' +
-        '<span class="static-update-upload-copy">' +
-          '<strong>' + tr('static.khodSheet') + '</strong>' +
-          '<span class="static-update-file-name">' + esc(item.fileName || tr('static.choose')) + '</span>' +
-          '<small>' + esc(statusText(item)) + '</small>' +
-        '</span>' +
-        '<span class="static-update-upload-action">' + (item.fileName ? tr('static.replace') : tr('static.choose')) + '</span>' +
-      '</label>' +
+      '<div class="static-update-files is-single">' +
+        '<label class="static-file-box static-update-upload ' + statusClass(item) + '">' +
+          '<input type="file" data-static-file="' + esc(account.id) + '" accept=".xlsx,.xls,.csv" ' + (state.busy ? 'disabled' : '') + '>' +
+          '<span class="static-file-label"><span class="static-update-upload-icon">' + (window.icon ? window.icon('upload', { size: 18, color: 'currentColor' }) : '') + '</span>' + tr('static.khodSheet') + '</span>' +
+          '<strong class="static-update-file-name">' + esc(item.fileName || tr('static.choose')) + '</strong>' +
+          '<span class="static-update-upload-action">' + (item.fileName ? tr('static.replace') : tr('static.choose')) + '</span>' +
+        '</label>' +
+      '</div>' +
+      '<div class="static-update-status ' + statusClass(item) + '">' + esc(statusText(item)) + '</div>' +
     '</article>';
   }
 
@@ -145,7 +149,7 @@
           : result.status === 'skipped'
             ? (result.message || tr('static.skipped'))
             : tr('static.failed', { error: result.error || tr('static.notSaved') });
-        return '<div class="static-update-result ' + className + '"><strong>' +
+        return '<div class="static-update-result static-result ' + className + '"><strong>' +
           esc(labels[result.accountId] || result.accountId) + '</strong><span>' + esc(text) + '</span></div>';
       }).join('') +
     '</section>';
@@ -157,7 +161,8 @@
     var details = risky.map(function (item) {
       var validation = item.validation || {};
       return (labels[item.accountId] || item.accountId) + ': ' +
-        (validation.existingRows || 0) + ' -> ' + (validation.incomingRows || 0);
+        (validation.existing && validation.existing.rawOrders || validation.existingRows || 0) + ' -> ' +
+        (validation.incoming && validation.incoming.rawOrders || validation.incomingRows || 0);
     }).join('\n');
     var options = {
       title: tr('static.confirmTitle'),
@@ -166,7 +171,8 @@
       cancelText: tr('static.cancel'),
       danger: true
     };
-    if (window.KhodUI && typeof window.KhodUI.confirm === 'function') return window.KhodUI.confirm(options);
+    var helper = ui();
+    if (helper && typeof helper.confirm === 'function') return helper.confirm(options);
     return Promise.resolve(window.confirm(options.message));
   }
 
@@ -192,7 +198,7 @@
     function render() {
       var readyCount = accounts.filter(function (account) {
         var item = accountState(account.id);
-        return item.inspect && item.inspect.ok;
+        return item.inspect && item.inspect.ok && item.inspect.canApply !== false;
       }).length;
       mount.innerHTML =
         '<div class="static-update-section">' +
@@ -215,7 +221,8 @@
           renderResults(accounts) +
         '</div>';
       bind();
-      if (window.KhodUI) window.KhodUI.enhance(mount);
+      var helper = ui();
+      if (helper && typeof helper.enhance === 'function') helper.enhance(mount);
     }
 
     function inspectAccount(accountId) {
@@ -282,10 +289,12 @@
           return { account: account, result: { ok: false, error: error && error.message ? error.message : String(error) } };
         });
       })).then(function (inspections) {
-        var valid = inspections.filter(function (entry) { return entry.result && entry.result.ok; });
+        var valid = inspections.filter(function (entry) {
+          return entry.result && entry.result.ok && entry.result.canApply !== false;
+        });
         var risky = valid.filter(function (entry) { return entry.result.requiresConfirmation; }).map(function (entry) { return entry.result; });
-        var invalidResults = inspections.filter(function (entry) { return !entry.result || !entry.result.ok; }).map(function (entry) {
-          return { accountId: entry.account.id, status: 'failure', error: entry.result && entry.result.error || 'Sheet validation failed.' };
+        var invalidResults = inspections.filter(function (entry) { return !entry.result || !entry.result.ok || entry.result.canApply === false; }).map(function (entry) {
+          return { accountId: entry.account.id, status: 'failure', error: entry.result && (entry.result.blockedReason || entry.result.error) || 'Sheet validation failed.' };
         });
         return (risky.length ? confirmReplacement(risky, accounts) : Promise.resolve(true)).then(function (confirmed) {
           var allowed = valid.filter(function (entry) { return confirmed || !entry.result.requiresConfirmation; });
@@ -295,7 +304,7 @@
           return Promise.all(allowed.map(function (entry) {
             return window.api.applyStaticDashboardUpdate(payloadFor(entry.account.id, confirmed && entry.result.requiresConfirmation)).then(function (result) {
               if (result && result.ok && result.saved) {
-                return { accountId: entry.account.id, status: 'success', count: result.parsedRows || 0, warnings: result.warnings || [] };
+                return { accountId: entry.account.id, status: 'success', count: result.rows || result.parsedRows || 0, warnings: result.warnings || [] };
               }
               return { accountId: entry.account.id, status: 'failure', error: result && result.error || tr('static.notSaved') };
             }).catch(function (error) {
@@ -315,8 +324,13 @@
         state.busy = false;
         render();
         var succeeded = results.some(function (result) { return result.status === 'success'; });
-        if (succeeded && ctx && ctx.options && typeof ctx.options.onStaticUpdateComplete === 'function') {
-          ctx.options.onStaticUpdateComplete();
+        if (succeeded) {
+          if (window.invalidateDashboardCache) window.invalidateDashboardCache();
+          if (ctx && ctx.options && typeof ctx.options.onStaticUpdateComplete === 'function') {
+            ctx.options.onStaticUpdateComplete();
+          }
+          var helper = ui();
+          if (helper && typeof helper.toast === 'function') helper.toast(tr('static.complete'), { kind: 'success' });
         }
       }).catch(function (error) {
         state.results = [{ accountId: '', status: 'failure', error: error && error.message ? error.message : String(error) }];

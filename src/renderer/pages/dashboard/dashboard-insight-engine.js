@@ -1,13 +1,13 @@
-﻿/* â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•
+﻿/* ══════════════════════════════════════════════════════════════════════════════
    dashboard-insight-engine.js  (T-19)
-   Cross-dimensional insight engine â€” runs after Pass 2 geo data is available.
+   Cross-dimensional insight engine — runs after Pass 2 geo data is available.
    Produces a priority-sorted array of Insight objects.
 
    Depends on:
-     window.getDashboardThresholds() â€” from dashboard-aggregator.js (T-02)
+     window.getDashboardThresholds() — from dashboard-aggregator.js (T-02)
 
    Exposed on window:
-     runInsightEngine(geo, thresholds) â†’ Insight[]
+     runInsightEngine(geo, thresholds) → Insight[]
        geo = { cityStats, productStats, geoProductMap, provinceMap, kpis }
        thresholds = optional override (defaults to getDashboardThresholds())
 
@@ -15,10 +15,10 @@
      { id, type, level, priority, city?, product?, province?,
        title, body, recommendation, metric, tags }
 
-   Priority order: critical â†’ high â†’ medium â†’ low
+   Priority order: critical → high → medium → low
    Types: risk | opportunity | observation | recommendation
    Levels: global | province | city | product | product-city
-   â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â• */
+   ══════════════════════════════════════════════════════════════════════════════ */
 (function () {
   'use strict';
 
@@ -52,16 +52,25 @@
       body:           opts.body       || '',
       recommendation: opts.recommendation || '',
       metric:         opts.metric     || {},
+      evidence:       opts.evidence   || [],
+      trust:          opts.trust      || undefined,
+      confidence:     opts.confidence || undefined,
+      sampleSize:     opts.sampleSize || undefined,
       tags:           opts.tags       || []
     };
   }
 
-  /* â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•
+  /* ════════════════════════════════════════════════════════════════════════════
      MAIN ENGINE
-  â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â• */
+  ════════════════════════════════════════════════════════════════════════════ */
   window.runInsightEngine = function (geo, thresholds) {
   const isAr = window.dashboardI18n ? window.dashboardI18n.currentLocale === 'ar' : true;
-  function tx(en, ar) { return isAr ? ar : en; }
+  var SI = window.TaagerSmartInsights || null;
+  function tx(en, ar) {
+    return window.dashboardI18n && window.dashboardI18n.pick
+      ? window.dashboardI18n.pick(en, ar)
+      : (isAr ? ar : en);
+  }
 
     _insightCounter = 0;
     geo = geo || {};
@@ -86,9 +95,14 @@
     var nationalPrepaid = Number(kpis.prepaidPct) || 0;
     var MIN_SAMPLE      = T.INSIGHT_MIN_SAMPLE;
     var MIN_SCALING     = T.SCALING_MIN_ORDERS;
+    function ndrEvidence(delivered, eligible) {
+      return SI ? SI.rateEvidence('NDR', delivered, eligible) : ('NDR ' + pct(safeNdr(delivered, eligible)) + '% (' + delivered + '/' + eligible + ')');
+    }
+    function trustMeasured() { return 'measured'; }
+    function trustEstimated() { return 'estimated'; }
 
     function getProductName(key) {
-      if (!key) return tx('Unknown product', 'Ù…Ù†ØªØ¬ ØºÙŠØ± Ù…Ø¹Ø±ÙˆÙ');
+      if (!key) return tx('Unknown product', 'منتج غير معروف');
       var ps = productStats[key];
       if (ps && ps.name && ps.name !== key && ps.name !== 'Unknown') return ps.name;
       return key; // Fallback to key/sku if name is unavailable
@@ -96,30 +110,33 @@
 
     var insights = [];
 
-    /* â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
-       RISK RULE 1 â€” City NDR < danger threshold AND orders â‰¥ INSIGHT_MIN_SAMPLE
+    /* ──────────────────────────────────────────────────────────────────────────
+       RISK RULE 1 — City NDR < danger threshold AND orders ≥ INSIGHT_MIN_SAMPLE
        Level: city | Priority: critical
-    â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€ */
+    ────────────────────────────────────────────────────────────────────────── */
     Object.keys(cityStats).forEach(function (city) {
       var cs = cityStats[city];
       if ((cs.count || 0) < MIN_SAMPLE) return;
       var cityNdr  = safeNdr(cs.deliveredOrders || 0, cs.count || 0);
       if (cityNdr < T.NDR_DANGER) {
+        var cityEligible = cs.ndrBaseOrders || cs.count || 0;
         insights.push(makeInsight('risk', 'city', 'critical', {
           city:  city,
-          title: tx('âš ï¸ NDR Risk: ', 'âš ï¸ NDR Ø®Ø·Ø±: ') + city,
-          body:  tx('Returns rate ', 'Ù†Ø³Ø¨Ø© Ø§Ù„Ù…Ø±ØªØ¬Ø¹Ø§Øª ') + pct(cityNdr) + tx('% â€” much higher than the safe limit (', '% â€” Ø£Ø¹Ù„Ù‰ Ø¨ÙƒØ«ÙŠØ± Ù…Ù† Ø§Ù„Ø­Ø¯ Ø§Ù„Ø¢Ù…Ù† (') + pct(T.NDR_DANGER) + '%)',
-          recommendation: tx('Pause campaigns in ', 'Ø£ÙˆÙ‚Ù Ø§Ù„Ø­Ù…Ù„Ø§Øª ÙÙŠ ') + city + tx(' temporarily and review Orders quality', ' Ù…Ø¤Ù‚ØªØ§Ù‹ ÙˆØ±Ø§Ø¬Ø¹ Ø¬ÙˆØ¯Ø© Ø§Ù„Ø·Ù„Ø¨Ø§Øª'),
-          metric: { ndr: cityNdr, orders: cs.count },
+          title: tx('⚠️ NDR Risk: ', '⚠️ NDR خطر: ') + city,
+          body:  tx('Net delivery rate ', 'نسبة التسليم الصافية ') + pct(cityNdr) + tx('% is below the safe floor (', '% أقل من حد الأمان (') + pct(T.NDR_DANGER) + '%). ' + ndrEvidence(cs.deliveredOrders || 0, cityEligible),
+          recommendation: tx('Reduce or hold scaling in ', 'خفّض أو ثبّت التوسع في ') + city + tx(' until order quality and delivery recovery are reviewed.', ' حتى تتم مراجعة جودة الطلبات وتحسن التسليم.'),
+          metric: { ndr: cityNdr, orders: cs.count, delivered: cs.deliveredOrders || 0, eligible: cityEligible },
+          evidence: [ndrEvidence(cs.deliveredOrders || 0, cityEligible)],
+          trust: trustMeasured(),
           tags:   ['ndr', 'risk']
         }));
       }
     });
 
-    /* â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
-       RISK RULE 2 â€” Product NDR in specific city < danger threshold AND orders â‰¥ MIN_SAMPLE
+    /* ──────────────────────────────────────────────────────────────────────────
+       RISK RULE 2 — Product NDR in specific city < danger threshold AND orders ≥ MIN_SAMPLE
        Level: product-city | Priority: critical
-    â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€ */
+    ────────────────────────────────────────────────────────────────────────── */
     Object.keys(geoMap).forEach(function (city) {
       Object.keys(geoMap[city]).forEach(function (product) {
         var cell = geoMap[city][product];
@@ -128,20 +145,22 @@
           var pName = getProductName(product);
           insights.push(makeInsight('risk', 'product-city', 'critical', {
             city: city, product: product,
-            title: tx('ðŸ”´ NDR Warning: ', 'ðŸ”´ ØªØ­Ø°ÙŠØ± NDR: ') + pName + tx(' in ', ' ÙÙŠ ') + city,
-            body:  'NDR ' + pct(cell.ndr) + tx('% â€” very high risk for this product in this city', '% â€” Ø®Ø·Ø± Ø¹Ø§Ù„Ù Ø¬Ø¯Ø§Ù‹ Ù„Ù‡Ø°Ø§ Ø§Ù„Ù…Ù†ØªØ¬ ÙÙŠ Ù‡Ø°Ù‡ Ø§Ù„Ù…Ø¯ÙŠÙ†Ø©'),
-            recommendation: tx('Stop ads for this product in ', 'Ø£ÙˆÙ‚Ù Ø¥Ø¹Ù„Ø§Ù†Ø§Øª Ù‡Ø°Ø§ Ø§Ù„Ù…Ù†ØªØ¬ ÙÙŠ ') + city + tx(' immediately', ' ÙÙˆØ±Ø§Ù‹'),
+            title: tx('🔴 NDR Warning: ', '🔴 تحذير NDR: ') + pName + tx(' in ', ' في ') + city,
+            body:  tx('Net delivery rate ', 'نسبة التسليم الصافية ') + pct(cell.ndr) + tx('% is below the safe floor for this product-city pair. ', '% أقل من حد الأمان لهذا المنتج داخل المدينة. ') + ndrEvidence(cell.delivered || 0, cell.orders || 0),
+            recommendation: tx('Reduce or pause aggressive traffic for this product in ', 'خفّض أو أوقف الزيارات المكثفة لهذا المنتج في ') + city + tx(' until the product-city delivery signal recovers.', ' حتى تتحسن إشارة التسليم للمنتج داخل المدينة.'),
             metric: { ndr: cell.ndr, orders: cell.orders, delivered: cell.delivered },
+            evidence: [ndrEvidence(cell.delivered || 0, cell.orders || 0)],
+            trust: trustMeasured(),
             tags:   ['ndr', 'risk', 'product']
           }));
         }
       });
     });
 
-    /* â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
-       RISK RULE 3 â€” City prepaidNdr - codNdr > 15pp AND codCount â‰¥ 10
+    /* ──────────────────────────────────────────────────────────────────────────
+       RISK RULE 3 — City prepaidNdr - codNdr > 15pp AND codCount ≥ 10
        Level: city | Priority: high
-    â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€ */
+    ────────────────────────────────────────────────────────────────────────── */
     Object.keys(cityStats).forEach(function (city) {
       var cs = cityStats[city];
       if ((cs.codCount || 0) < 10) return;
@@ -163,38 +182,45 @@
       if (advantage > T.PREPAID_ADVANTAGE_THRESHOLD && (cs.prepaidCount || 0) >= 5) {
         insights.push(makeInsight('recommendation', 'city', 'high', {
           city: city,
-          title: tx('ðŸ’³ Apply Prepaid: ', 'ðŸ’³ ØªØ·Ø¨ÙŠÙ‚ Ø§Ù„Ø¯ÙØ¹ Ø§Ù„Ù…Ø³Ø¨Ù‚: ') + city,
-          body:  tx('COD NDR ', 'NDR Ø§Ù„Ø¯ÙØ¹ Ø¹Ù†Ø¯ Ø§Ù„Ø§Ø³ØªÙ„Ø§Ù… ') + pct(codNdr) + tx('% vs ', '% Ù…Ù‚Ø§Ø¨Ù„ ') + pct(prepNdr) + tx('% for Prepaid â€” gap of ', '% Ù„Ù„Ø¯ÙØ¹ Ø§Ù„Ù…Ø³Ø¨Ù‚ â€” ÙØ§Ø±Ù‚ ') + pct(advantage) + '%',
-          recommendation: tx('Switching campaigns in ', 'ØªØ­ÙˆÙŠÙ„ Ø­Ù…Ù„Ø§Øª ') + city + tx(' to Prepaid will significantly improve delivery rate', ' Ù„Ù„Ø¯ÙØ¹ Ø§Ù„Ù…Ø³Ø¨Ù‚ Ø³ÙŠØ­Ø³Ù† Ù†Ø³Ø¨Ø© Ø§Ù„ØªØ³Ù„ÙŠÙ… Ø¨Ø´ÙƒÙ„ Ù…Ù„Ø­ÙˆØ¸'),
+          title: tx('💳 Apply Prepaid: ', '💳 تطبيق الدفع المسبق: ') + city,
+          body:  tx('Estimated COD NDR ', 'NDR تقديري للدفع عند الاستلام ') + pct(codNdr) + tx('% vs ', '% مقابل ') + pct(prepNdr) + tx('% for Prepaid — gap of ', '% للدفع المسبق — فارق ') + pct(advantage) + '%',
+          recommendation: tx('Test prepaid-first traffic in ', 'اختبر زيارات تفضل الدفع المسبق في ') + city + tx(' and monitor whether measured NDR improves.', ' وراقب ما إذا كانت NDR المقاسة تتحسن.'),
           metric: { codNdr: codNdr, prepaidNdr: prepNdr, advantage: advantage },
+          evidence: [
+            ndrEvidence(codDelivered, cs.codCount || 0),
+            ndrEvidence(prepDelivered, cs.prepaidCount || 0)
+          ],
+          trust: trustEstimated(),
           tags:   ['prepaid', 'recommendation']
         }));
       }
     });
 
-    /* â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
-       RISK RULE 4 â€” Province NDR below danger threshold
+    /* ──────────────────────────────────────────────────────────────────────────
+       RISK RULE 4 — Province NDR below danger threshold
        Level: province | Priority: high
-    â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€ */
+    ────────────────────────────────────────────────────────────────────────── */
     Object.keys(provinceMap).forEach(function (pid) {
       var p = provinceMap[pid];
       if ((p.totalOrders || 0) < MIN_SCALING) return;
       if ((p.ndrPct || 0) < T.NDR_DANGER) {
         insights.push(makeInsight('risk', 'province', 'high', {
           province: pid,
-          title:    tx('ðŸ“ Region ', 'ðŸ“ Ù…Ù†Ø·Ù‚Ø© ') + p.name + tx(': High NDR', ': NDR Ù…Ø±ØªÙØ¹'),
-          body:     tx('Region NDR ', 'NDR Ø§Ù„Ù…Ù†Ø·Ù‚Ø© ') + pct(p.ndrPct) + tx('% is lower than national average ', '% Ø£Ù‚Ù„ Ù…Ù† Ø§Ù„Ù…ØªÙˆØ³Ø· Ø§Ù„ÙˆØ·Ù†ÙŠ ') + pct(nationalNdr) + '%',
-          recommendation: tx('Review order quality in cities of ', 'Ø±Ø§Ø¬Ø¹ Ø¬ÙˆØ¯Ø© Ø§Ù„Ø·Ù„Ø¨Ø§Øª ÙÙŠ Ù…Ø¯Ù† ') + p.name,
+          title:    tx('📍 Region ', '📍 منطقة ') + p.name + tx(': Low NDR', ': NDR منخفض'),
+          body:     tx('Region net delivery rate ', 'نسبة التسليم الصافية للمنطقة ') + pct(p.ndrPct) + tx('% is below the safe floor and lower than national average ', '% أقل من حد الأمان وأقل من المتوسط الوطني ') + pct(nationalNdr) + '%',
+          recommendation: tx('Review order quality in cities of ', 'راجع جودة الطلبات في مدن ') + p.name,
           metric: { provinceNdr: p.ndrPct, nationalNdr: nationalNdr },
+          evidence: [ndrEvidence(p.totalDelivered || 0, p.totalOrders || 0)],
+          trust: trustMeasured(),
           tags:   ['ndr', 'risk', 'province']
         }));
       }
     });
 
-    /* â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
-       RISK RULE 7 â€” City COD% > 85% AND city NDR < danger threshold
+    /* ──────────────────────────────────────────────────────────────────────────
+       RISK RULE 7 — City COD% > 85% AND city NDR < danger threshold
        Level: city | Priority: high
-    â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€ */
+    ────────────────────────────────────────────────────────────────────────── */
     Object.keys(cityStats).forEach(function (city) {
       var cs = cityStats[city];
       if ((cs.count || 0) < MIN_SAMPLE) return;
@@ -203,19 +229,21 @@
       if (codPct > T.COD_HEAVY_THRESHOLD && cityNdr < T.NDR_DANGER) {
         insights.push(makeInsight('risk', 'city', 'high', {
           city: city,
-          title: tx('ðŸš¨ Dangerous COD concentration: ', 'ðŸš¨ ØªØ±ÙƒÙŠØ² COD Ø®Ø·ÙŠØ±: ') + city,
-          body:  tx('COD rate ', 'Ù†Ø³Ø¨Ø© Ø§Ù„Ø¯ÙØ¹ Ø¹Ù†Ø¯ Ø§Ù„Ø§Ø³ØªÙ„Ø§Ù… ') + pct(codPct) + tx('% with NDR ', '% Ù…Ø¹ NDR ') + pct(cityNdr) + tx('% â€” high financial exposure', '% â€” ØªØ¹Ø±Ø¶ Ù…Ø§Ù„ÙŠ Ø¹Ø§Ù„Ù'),
-          recommendation: tx('Start converting part of orders in ', 'Ø§Ø¨Ø¯Ø£ Ø¨ØªØ­ÙˆÙŠÙ„ Ø¬Ø²Ø¡ Ù…Ù† Ø·Ù„Ø¨Ø§Øª ') + city + tx(' to prepaid gradually', ' Ø¥Ù„Ù‰ Ø¯ÙØ¹ Ù…Ø³Ø¨Ù‚ ØªØ¯Ø±ÙŠØ¬ÙŠØ§Ù‹'),
+          title: tx('🚨 COD-heavy low-NDR city: ', '🚨 مدينة COD مرتفع مع NDR منخفض: ') + city,
+          body:  tx('COD share ', 'نسبة الدفع عند الاستلام ') + pct(codPct) + tx('% with measured NDR ', '% مع NDR مقاسة ') + pct(cityNdr) + tx('% — high exposure if volume is scaled.', '% — تعرض عالٍ إذا تم توسيع الحجم.'),
+          recommendation: tx('Test gradual prepaid conversion in ', 'اختبر التحويل التدريجي للدفع المسبق في ') + city + tx(' before increasing COD traffic.', ' قبل زيادة زيارات COD.'),
           metric: { codPct: codPct, ndr: cityNdr },
+          evidence: [ndrEvidence(cs.deliveredOrders || 0, cs.ndrBaseOrders || cs.count || 0)],
+          trust: trustMeasured(),
           tags:   ['cod', 'risk']
         }));
       }
     });
 
-    /* â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
-       OPPORTUNITY RULE 9 â€” City prepaidPct > 50% AND excellent DR
+    /* ──────────────────────────────────────────────────────────────────────────
+       OPPORTUNITY RULE 9 — City prepaidPct > 50% AND excellent DR
        Level: city | Priority: high
-    â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€ */
+    ────────────────────────────────────────────────────────────────────────── */
     Object.keys(cityStats).forEach(function (city) {
       var cs = cityStats[city];
       if ((cs.count || 0) < MIN_SCALING) return;
@@ -225,20 +253,20 @@
       if (prepPct > 0.50 && drPct > T.DR_EXCELLENT) {
         insights.push(makeInsight('opportunity', 'city', 'high', {
           city: city,
-          title: tx('ðŸš€ Excellent expansion opportunity: ', 'ðŸš€ ÙØ±ØµØ© ØªÙˆØ³Ø¹ Ù…Ù…ØªØ§Ø²Ø©: ') + city,
-          body:  tx('Prepaid ', 'Ø¯ÙØ¹ Ù…Ø³Ø¨Ù‚ ') + pct(prepPct) + tx('% + delivery rate ', '% + Ù†Ø³Ø¨Ø© ØªØ³Ù„ÙŠÙ… ') + pct(drPct) + tx('% â€” ideal environment for expansion', '% â€” Ø¨ÙŠØ¦Ø© Ù…Ø«Ø§Ù„ÙŠØ© Ù„Ù„ØªÙˆØ³Ø¹'),
-          recommendation: tx('Increase campaign budget in ', 'Ø²ÙŠØ§Ø¯Ø© Ù…ÙŠØ²Ø§Ù†ÙŠØ© Ø§Ù„Ø­Ù…Ù„Ø§Øª ÙÙŠ ') + city + tx(' confidently', ' Ø¨Ø«Ù‚Ø©'),
+          title: tx('🚀 Excellent expansion opportunity: ', '🚀 فرصة توسع ممتازة: ') + city,
+          body:  tx('Prepaid ', 'دفع مسبق ') + pct(prepPct) + tx('% + delivery rate ', '% + نسبة تسليم ') + pct(drPct) + tx('% — ideal environment for expansion', '% — بيئة مثالية للتوسع'),
+          recommendation: tx('Increase campaign budget in ', 'زيادة ميزانية الحملات في ') + city + tx(' confidently', ' بثقة'),
           metric: { prepaidPct: prepPct, dr: drPct },
           tags:   ['prepaid', 'opportunity', 'scaling']
         }));
       }
     });
 
-    /* â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
-       OPPORTUNITY RULE 10 â€” Product prepaidNdr strong AND codNdr weak
+    /* ──────────────────────────────────────────────────────────────────────────
+       OPPORTUNITY RULE 10 — Product prepaidNdr strong AND codNdr weak
        Requires geoMap cells with enough prepaid data.
        Level: product | Priority: high
-    â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€ */
+    ────────────────────────────────────────────────────────────────────────── */
     // Aggregate per product across all cities
     var productPrepaidNdr = {};
     var productCodNdr     = {};
@@ -270,19 +298,19 @@
         var pName = getProductName(product);
         insights.push(makeInsight('opportunity', 'product', 'high', {
           product: product,
-          title:   tx('ðŸ’¡ Prepaid Candidate: ', 'ðŸ’¡ Ù…Ø±Ø´Ø­ Ù„Ù„Ø¯ÙØ¹ Ø§Ù„Ù…Ø³Ø¨Ù‚: ') + pName,
-          body:    tx('Prepaid NDR ', 'NDR Ø¯ÙØ¹ Ù…Ø³Ø¨Ù‚ ') + pct(avgPrepaidNdr) + tx('% vs ', '% Ù…Ù‚Ø§Ø¨Ù„ ') + pct(avgCodNdr) + tx('% for COD â€” advantage of ', '% Ù„Ù„Ù€COD â€” Ù…ÙŠØ²Ø© ') + pct(avgPrepaidNdr - avgCodNdr) + '%',
-          recommendation: tx('Converting this product to prepaid will significantly increase delivery rate', 'ØªØ­ÙˆÙŠÙ„ Ù‡Ø°Ø§ Ø§Ù„Ù…Ù†ØªØ¬ Ù„Ù„Ø¯ÙØ¹ Ø§Ù„Ù…Ø³Ø¨Ù‚ Ø³ÙŠØ±ÙØ¹ Ù†Ø³Ø¨Ø© Ø§Ù„ØªØ³Ù„ÙŠÙ… Ø¨Ø´ÙƒÙ„ ÙƒØ¨ÙŠØ±'),
+          title:   tx('💡 Prepaid Candidate: ', '💡 مرشح للدفع المسبق: ') + pName,
+          body:    tx('Prepaid NDR ', 'NDR دفع مسبق ') + pct(avgPrepaidNdr) + tx('% vs ', '% مقابل ') + pct(avgCodNdr) + tx('% for COD — advantage of ', '% للـCOD — ميزة ') + pct(avgPrepaidNdr - avgCodNdr) + '%',
+          recommendation: tx('Converting this product to prepaid will significantly increase delivery rate', 'تحويل هذا المنتج للدفع المسبق سيرفع نسبة التسليم بشكل كبير'),
           metric: { prepaidNdr: avgPrepaidNdr, codNdr: avgCodNdr, advantage: avgPrepaidNdr - avgCodNdr },
           tags:   ['prepaid', 'opportunity', 'product']
         }));
       }
     });
 
-    /* â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
-       OPPORTUNITY RULE 14 â€” City orders < 50 AND excellent DR (untapped)
+    /* ──────────────────────────────────────────────────────────────────────────
+       OPPORTUNITY RULE 14 — City orders < 50 AND excellent DR (untapped)
        Level: city | Priority: medium
-    â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€ */
+    ────────────────────────────────────────────────────────────────────────── */
     Object.keys(cityStats).forEach(function (city) {
       var cs = cityStats[city];
       if ((cs.count || 0) < 5 || (cs.count || 0) >= 50) return;     // skip tiny or large
@@ -291,19 +319,19 @@
       if (drPct > T.DR_EXCELLENT) {
         insights.push(makeInsight('opportunity', 'city', 'medium', {
           city: city,
-          title: tx('ðŸ“ Untapped City: ', 'ðŸ“ Ù…Ø¯ÙŠÙ†Ø© ØºÙŠØ± Ù…Ø³ØªØºÙ„Ø©: ') + city,
-          body:  city + tx(' achieves ', ' ØªØ­Ù‚Ù‚ ') + pct(drPct) + tx('% delivery with low volume â€” high growth potential', '% ØªØ³Ù„ÙŠÙ… Ø¨Ø­Ø¬Ù… Ù…Ù†Ø®ÙØ¶ â€” Ø¥Ù…ÙƒØ§Ù†ÙŠØ© Ù†Ù…Ùˆ ÙƒØ¨ÙŠØ±Ø©'),
-          recommendation: tx('Try gradually increasing order volume in ', 'Ø¬Ø±Ø¨ Ø²ÙŠØ§Ø¯Ø© Ø­Ø¬Ù… Ø§Ù„Ø·Ù„Ø¨Ø§Øª ÙÙŠ ') + city + tx(' gradually', ' ØªØ¯Ø±ÙŠØ¬ÙŠØ§Ù‹'),
+          title: tx('📍 Untapped City: ', '📍 مدينة غير مستغلة: ') + city,
+          body:  city + tx(' achieves ', ' تحقق ') + pct(drPct) + tx('% delivery with low volume — high growth potential', '% تسليم بحجم منخفض — إمكانية نمو كبيرة'),
+          recommendation: tx('Try gradually increasing order volume in ', 'جرب زيادة حجم الطلبات في ') + city + tx(' gradually', ' تدريجياً'),
           metric: { orders: cs.count, dr: drPct },
           tags:   ['opportunity', 'scaling']
         }));
       }
     });
 
-    /* â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
-       OPPORTUNITY RULE 15 â€” Product with scalingScore > 80 in its best city
+    /* ──────────────────────────────────────────────────────────────────────────
+       OPPORTUNITY RULE 15 — Product with scalingScore > 80 in its best city
        Level: product | Priority: medium
-    â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€ */
+    ────────────────────────────────────────────────────────────────────────── */
     Object.keys(geoMap).forEach(function (city) {
       Object.keys(geoMap[city]).forEach(function (product) {
         var cell = geoMap[city][product];
@@ -316,9 +344,9 @@
           var pName = getProductName(product);
           insights.push(makeInsight('recommendation', 'product-city', 'medium', {
             city: city, product: product,
-            title: tx('ðŸ“ˆ Expand now: ', 'ðŸ“ˆ ØªÙˆØ³Ø¹ Ø§Ù„Ø¢Ù†: ') + pName + tx(' in ', ' ÙÙŠ ') + city,
-            body:  tx('Best product in ', 'Ø£ÙØ¶Ù„ Ù…Ù†ØªØ¬ ÙÙŠ ') + city + tx(' with delivery rate ', ' Ø¨Ù†Ø³Ø¨Ø© ØªØ³Ù„ÙŠÙ… ') + pct(drPct) + tx('% â€” ready for expansion', '% â€” Ø¬Ø§Ù‡Ø² Ù„Ù„ØªÙˆØ³Ø¹'),
-            recommendation: tx('Increase campaign budget for this product in ', 'Ø²ÙŠØ§Ø¯Ø© Ù…ÙŠØ²Ø§Ù†ÙŠØ© Ø§Ù„Ø­Ù…Ù„Ø§Øª Ù„Ù‡Ø°Ø§ Ø§Ù„Ù…Ù†ØªØ¬ ÙÙŠ ') + city,
+            title: tx('📈 Expand now: ', '📈 توسع الآن: ') + pName + tx(' in ', ' في ') + city,
+            body:  tx('Best product in ', 'أفضل منتج في ') + city + tx(' with delivery rate ', ' بنسبة تسليم ') + pct(drPct) + tx('% — ready for expansion', '% — جاهز للتوسع'),
+            recommendation: tx('Increase campaign budget for this product in ', 'زيادة ميزانية الحملات لهذا المنتج في ') + city,
             metric: { dr: drPct, orders: cell.orders, commission: cell.commission },
             tags:   ['scaling', 'opportunity']
           }));
@@ -326,9 +354,9 @@
       });
     });
 
-    /* â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+    /* ──────────────────────────────────────────────────────────────────────────
        Sort by priority then by metric severity
-    â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€ */
+    ────────────────────────────────────────────────────────────────────────── */
     insights.sort(function (a, b) {
       var pa = PRIORITY_ORDER[a.priority] !== undefined ? PRIORITY_ORDER[a.priority] : 99;
       var pb = PRIORITY_ORDER[b.priority] !== undefined ? PRIORITY_ORDER[b.priority] : 99;

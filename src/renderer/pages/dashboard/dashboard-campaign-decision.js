@@ -1,18 +1,24 @@
 (function (root, factory) {
   "use strict";
 
-  var api = factory();
+  var api = factory(root);
   if (typeof module !== "undefined" && module.exports) module.exports = api;
-  if (root) root.KhodCampaignDecision = api;
-})(typeof window !== "undefined" ? window : null, function () {
+  if (root) {
+    root.KhodCampaignDecision = api;
+    root.TaagerCampaignDecision = api;
+  }
+})(typeof window !== "undefined" ? window : null, function (root) {
   "use strict";
 
+  var shared = root && root.TaagerSmartInsights && typeof root.TaagerSmartInsights.thresholds === "function"
+    ? root.TaagerSmartInsights.thresholds()
+    : {};
   var THRESHOLDS = {
-    minimumEvidenceOrders: 15,
-    scaleOrders: 50,
-    scaleDelivered: 10,
-    dangerNdrPct: 20,
-    scaleNdrPct: 40,
+    minimumEvidenceOrders: shared.insightMinSample || 15,
+    scaleOrders: shared.scaleMinOrders || 50,
+    scaleDelivered: shared.scaleMinDelivered || 10,
+    dangerNdrPct: shared.dangerNdrPct || 20,
+    scaleNdrPct: shared.scaleNdrPct || 40,
     dangerCancelPct: 40
   };
 
@@ -34,21 +40,21 @@
 
   function evaluate(input) {
     input = input || {};
-    var orders = number(input.orders != null ? input.orders : input.khodOrders);
-    var delivered = number(input.delivered != null ? input.delivered : input.khodDelivered);
-    var ndrPct = number(input.ndrPct != null ? input.ndrPct : (input.ndr != null ? input.ndr : input.khodNdrPct));
+    var orders = number(input.orders != null ? input.orders : input.taagerOrders);
+    var delivered = number(input.delivered != null ? input.delivered : input.taagerDelivered);
+    var ndrPct = number(input.ndrPct != null ? input.ndrPct : (input.ndr != null ? input.ndr : input.taagerNdrPct));
     var cancelPct = number(input.cancelPct != null ? input.cancelPct : input.cancelRate);
-    var cpa = number(input.cpa != null ? input.cpa : input.khodCpaSar);
-    var breakEvenCpa = number(input.breakEvenCpa != null ? input.breakEvenCpa : input.breakEvenCpaSar);
-    var deliveredCpa = number(input.deliveredCpa != null ? input.deliveredCpa : input.deliveredCpaSar);
-    var avgDeliveredProfit = number(input.avgDeliveredProfit != null ? input.avgDeliveredProfit : input.avgCommissionSar);
-    var netProfitValue = input.netProfit != null ? input.netProfit : (input.netProfitSar != null ? input.netProfitSar : input.profit);
+    var cpa = number(input.cpa != null ? input.cpa : input.taagerCpa);
+    var breakEvenCpa = number(input.breakEvenCpa);
+    var deliveredCpa = number(input.deliveredCpa);
+    var avgDeliveredCommission = number(input.avgDeliveredCommission != null ? input.avgDeliveredCommission : input.avgDeliveredProfit);
+    var netProfitValue = input.netProfit != null ? input.netProfit : input.profit;
     var netProfitKnown = netProfitValue != null && netProfitValue !== "";
     var netProfit = number(netProfitValue);
     var cpaKnown = cpa > 0 && breakEvenCpa > 0;
     var cpaUnsafe = cpaKnown && cpa > breakEvenCpa;
-    var deliveredCpaKnown = deliveredCpa > 0 && avgDeliveredProfit > 0;
-    var deliveredCpaUnsafe = deliveredCpaKnown && deliveredCpa > avgDeliveredProfit;
+    var deliveredCpaKnown = deliveredCpa > 0 && avgDeliveredCommission > 0;
+    var deliveredCpaUnsafe = deliveredCpaKnown && deliveredCpa > avgDeliveredCommission;
     var tinySample = orders < THRESHOLDS.minimumEvidenceOrders;
     var deliveryDanger = !tinySample && (delivered <= 0 || ndrPct < THRESHOLDS.dangerNdrPct);
     var cancellationDanger = cancelPct >= THRESHOLDS.dangerCancelPct;
@@ -162,7 +168,7 @@
         cpa: cpa,
         breakEvenCpa: breakEvenCpa,
         deliveredCpa: deliveredCpa,
-        avgDeliveredProfit: avgDeliveredProfit,
+        avgDeliveredCommission: avgDeliveredCommission,
         netProfit: netProfitKnown ? netProfit : null,
         campaignCount: number(input.campaignCount),
         periodLabel: String(input.periodLabel || "")

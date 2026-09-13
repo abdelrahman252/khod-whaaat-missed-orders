@@ -16,7 +16,7 @@ function renderOpsHistory(container, allRuns, onSelectRun, selectedRunId) {
       <div class="ops-history-card">
         <div class="ops-history-header">
           <div class="ops-section-title">🕒 ${window.t_ops('history.title')}</div>
-          <span style="font-size:11px;color:var(--text3)">${sorted.length} ${window.t_ops('history.total')}</span>
+          <span style="font-size:var(--type-caption);color:var(--text3)">${sorted.length} ${window.t_ops('history.total')}</span>
         </div>
         <div class="ops-history-list" id="ops-history-list">
           ${_opsHistoryListHTML(pageRuns, selectedRunId)}
@@ -68,7 +68,7 @@ function _opsHistoryListHTML(runs, selectedRunId) {
           <div class="ops-history-row-status ${statusCls}">
             ${hasFail ? "✗ " + window.t_ops('history.failed') : "✓ " + window.t_ops('history.completed')}
           </div>
-          <div class="ops-history-row-count">${(r.ordersSubmitted || 0).toLocaleString()} ${window.t_ops('history.ordersCount')}</div>
+          <div class="ops-history-row-count">${(r.ordersSubmitted || 0).toLocaleString("en-US")} ${window.t_ops('history.ordersCount')}</div>
         </div>
       </div>`;
   }).join("");

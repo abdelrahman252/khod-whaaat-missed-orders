@@ -1,530 +1,471 @@
-"use strict";
-
-// ════════════════════════════════════════════════════════════════
-// DASHBOARD FETCH — Khod Whaat-only lightweight mode
-// Spawned by main.js to fetch the dashboard snapshot.
-// Does NOT touch Easy-Orders. No bot submission.
-// Sends { type: "result", rows } or { type: "error", error } back.
-// ════════════════════════════════════════════════════════════════
+﻿"use strict";
 
 const { chromium } = require("playwright-core");
-const fs   = require("fs");
+const fs = require("fs");
 const path = require("path");
-const { buildChromeLaunchOptions } = require("./chrome-launch-options");
-const { resolveSafeKhodExportRange } = require("./khod-date-range");
+const {
+  addChromeFingerprintSpoofing,
+  getOrCreateAutomationPage,
+  installUnexpectedBlankPageGuard,
+  launchPersistentChromeContext,
+} = require("./chrome-launch");
+const { formatDataDay, resolveSafeKhodExportRange } = require("./khod-date-range");
 
 const config = JSON.parse(process.env.BOT_CONFIG || "{}");
-const log = (msg) => process.stdout.write(msg + "\n");
+const log = (message) => process.stdout.write(String(message || "") + "\n");
+const emitStage = (stage, status, message, extra = {}) => {
+  if (process.send) process.send({ type: "stage", flow: "dashboard", stage, status, message, ...extra });
+};
 
-// ── Find real Chrome install ──────────────────────────────────────────────
+const LOGIN_URL = "https://khod-whaat.com/affiliate/auth/login";
+const ORDERS_URL = "https://khod-whaat.com/affiliate/orders/list/all";
+const LANGUAGE_URL = "https://khod-whaat.com/lang/sa";
+const DOWNLOAD_TIMEOUT_MS = 15 * 60 * 1000;
+const MAX_EXPORT_ATTEMPTS = 3;
+const RETRY_WAIT_SECONDS = 6 * 60;
+const MONTH_NAMES = ["January", "February", "March", "April", "May", "June", "July", "August", "September", "October", "November", "December"];
+
 function findChrome() {
   const { execSync } = require("child_process");
   if (process.platform === "win32") {
-    const paths = [
+    const candidates = [
       "C:\\Program Files\\Google\\Chrome\\Application\\chrome.exe",
       "C:\\Program Files (x86)\\Google\\Chrome\\Application\\chrome.exe",
       process.env.LOCALAPPDATA && path.join(process.env.LOCALAPPDATA, "Google\\Chrome\\Application\\chrome.exe"),
     ].filter(Boolean);
-    for (const p of paths) if (fs.existsSync(p)) return p;
-    try { return execSync("where chrome", { encoding: "utf8" }).trim().split("\n")[0]; } catch {}
+    for (const candidate of candidates) if (fs.existsSync(candidate)) return candidate;
+    try { return execSync("where chrome", { encoding: "utf8" }).trim().split(/\r?\n/)[0]; } catch (_) {}
   } else if (process.platform === "darwin") {
-    const p = "/Applications/Google Chrome.app/Contents/MacOS/Google Chrome";
-    if (fs.existsSync(p)) return p;
+    const chrome = "/Applications/Google Chrome.app/Contents/MacOS/Google Chrome";
+    if (fs.existsSync(chrome)) return chrome;
   } else {
-    try { return execSync("which google-chrome || which chromium-browser || which chromium", { encoding: "utf8" }).trim(); } catch {}
+    try { return execSync("which google-chrome || which chromium-browser || which chromium", { encoding: "utf8" }).trim().split(/\r?\n/)[0]; } catch (_) {}
   }
-  throw new Error("Chrome not found — install Google Chrome and try again.");
-}
-
-// ── Khod Whaat login ────────────────────────────────────────────────────────────
-const MAX_KHOD_ATTEMPTS = 3;
-const KHOD_DOWNLOAD_TIMEOUT_MS = 15 * 60 * 1000;
-
-async function khodLogin(page) {
-  log(`[NAV] → https://khod-whaat.com/affiliate/auth/login`);
-  await page.goto("https://khod-whaat.com/affiliate/auth/login", { waitUntil: "domcontentloaded" });
-  try { await page.waitForLoadState("networkidle", { timeout: 5000 }); } catch (e) {}
-
-  const currentUrl = page.url();
-  const isOnLogin = currentUrl.includes("/login") || currentUrl.includes("/auth");
-
-  if (!isOnLogin) {
-    log("✅ Khod Whaat: already logged in (session active)");
-    return;
-  }
-
-  const method = config.khodLoginMethod || "email";
-  log(`🔐 Khod Whaat: logging in via ${method}...`);
-
-  if (!config.khodEmail || !config.khodPassword) {
-    throw new Error("Khod Whaat credentials missing in config.");
-  }
-
-  if (method === "phone") {
-    try {
-      const phoneBtn = await page.locator('button:has-text("هاتف"), button:has-text("Phone"), a:has-text("هاتف")').first();
-      if (await phoneBtn.isVisible({ timeout: 3000 })) await phoneBtn.click();
-    } catch {}
-  }
-
-  let passInput;
-  try {
-    const emailInput = await page.locator('input[type="email"], input[name="email"], input[placeholder*="email" i], input[placeholder*="بريد" i]').first();
-    await emailInput.waitFor({ state: "visible", timeout: 15000 });
-    await emailInput.fill(config.khodEmail);
-    passInput = await page.locator('input[type="password"]').first();
-    await passInput.fill(config.khodPassword);
-    
-    const submitBtn = await page.locator('button[type="submit"], button:has-text("دخول"), button:has-text("Login"), button:has-text("تسجيل")').first();
-    await submitBtn.click({ noWaitAfter: true });
-  } catch (e) {
-    throw new Error(`Khod Whaat login form interaction failed: ${e.message}`);
-  }
-
-  log("⏳ Waiting for login to process...");
-  try {
-    // Smart wait: wait until URL doesn't contain login/auth
-    await page.waitForURL(url => !url.href.includes("/login") && !url.href.includes("/auth"), { timeout: 45000 });
-  } catch (err) {
-    log("⚠️ URL didn't change after click. Checking for errors or retrying via Enter key...");
-    const currentUrlAfter = page.url();
-    if (currentUrlAfter.includes("/login") || currentUrlAfter.includes("/auth")) {
-      const errorLoc = page.locator('.invalid-feedback, .text-danger, .alert-danger, .alert').first();
-      if (await errorLoc.isVisible({ timeout: 2000 })) {
-        const errText = await errorLoc.innerText();
-        throw new Error(`Login rejected by server: ${errText.trim()}`);
-      }
-      
-      log("🔄 Fallback: pressing Enter on password field...");
-      try {
-        await passInput.press("Enter");
-        await page.waitForURL(url => !url.href.includes("/login") && !url.href.includes("/auth"), { timeout: 45000 });
-      } catch (fallbackErr) {
-        throw new Error("Khod Whaat login failed — still on login page after multiple submit attempts.");
-      }
-    }
-  }
-
-  log("✅ Khod Whaat: login successful");
-}
-
-// ── Flatpickr date range picker (same as runner.js) ──────────────────────
-const FLATPICKR_MONTH_NAMES = ["January","February","March","April","May","June","July","August","September","October","November","December"];
-
-function _fpAriaLabel(d) {
-  return `${FLATPICKR_MONTH_NAMES[d.getMonth()]} ${d.getDate()}, ${d.getFullYear()}`;
-}
-
-async function _fpNavigateToMonth(page, targetDate) {
-  for (let i = 0; i < 24; i++) {
-    const monthVal = await page.$eval(
-      ".flatpickr-calendar.open .flatpickr-monthDropdown-months",
-      (el) => parseInt(el.value)
-    ).catch(() => -1);
-    const yearVal = await page.$eval(
-      ".flatpickr-calendar.open .numInput.cur-year",
-      (el) => parseInt(el.value)
-    ).catch(() => -1);
-
-    if (monthVal === targetDate.getMonth() && yearVal === targetDate.getFullYear()) break;
-
-    const shownTotal  = yearVal  * 12 + monthVal;
-    const targetTotal = targetDate.getFullYear() * 12 + targetDate.getMonth();
-
-    if (targetTotal < shownTotal) {
-      await page.click(".flatpickr-calendar.open .flatpickr-prev-month");
-    } else {
-      await page.click(".flatpickr-calendar.open .flatpickr-next-month");
-    }
-    await page.waitForTimeout(300);
-  }
-}
-
-async function pickDateRangeInFlatpickr(page, dateFrom, dateTo) {
-  log(`📅 Flatpickr: ${_fpAriaLabel(dateFrom)} → ${_fpAriaLabel(dateTo)}`);
-
-  try {
-    await page.locator("#from_date + input").click({ timeout: 10000 });
-    await page.waitForSelector(".flatpickr-calendar.open", { timeout: 10000 });
-  } catch (e) {
-    log("⚠️ Normal date picker click failed. Trying force click...");
-    await page.locator("#from_date + input").click({ force: true });
-    await page.waitForSelector(".flatpickr-calendar.open", { timeout: 10000 });
-  }
-
-  await _fpNavigateToMonth(page, dateFrom);
-  const fromDaySel = `span.flatpickr-day[aria-label="${_fpAriaLabel(dateFrom)}"]:not(.prevMonthDay):not(.nextMonthDay)`;
-  try {
-    await page.locator(fromDaySel).click({ timeout: 5000 });
-  } catch (e) {
-    log("⚠️ Could not click FROM date normally. Trying force click...");
-    await page.locator(fromDaySel).click({ force: true });
-  }
-  log(`✅ From date clicked: ${_fpAriaLabel(dateFrom)}`);
-
-  if (dateFrom.getMonth() !== dateTo.getMonth() || dateFrom.getFullYear() !== dateTo.getFullYear()) {
-    await _fpNavigateToMonth(page, dateTo);
-  }
-  const toDaySel = `span.flatpickr-day[aria-label="${_fpAriaLabel(dateTo)}"]:not(.prevMonthDay):not(.nextMonthDay)`;
-  try {
-    await page.locator(toDaySel).click({ timeout: 5000 });
-  } catch (e) {
-    log("⚠️ Could not click TO date normally. Trying force click...");
-    await page.locator(toDaySel).click({ force: true });
-  }
-  log(`✅ To date clicked: ${_fpAriaLabel(dateTo)}`);
-
-  await page.keyboard.press("Escape");
-  try {
-    await page.waitForSelector(".flatpickr-calendar.open", { state: "hidden", timeout: 2000 });
-  } catch (e) {
-    log("⚠️ Calendar didn't close with Escape. Clicking outside...");
-    await page.mouse.click(0, 0); 
-  }
+  throw new Error("Chrome not found - install Google Chrome and try again.");
 }
 
 function parseConfigDate(value) {
   if (!value || !/^\d{4}-\d{2}-\d{2}$/.test(String(value))) return null;
-  const [y, m, d] = String(value).split("-").map(Number);
-  const parsed = new Date(y, m - 1, d);
+  const [year, month, day] = String(value).split("-").map(Number);
+  const parsed = new Date(year, month - 1, day);
   return isNaN(parsed.getTime()) ? null : parsed;
 }
 
-function toDateKey(value) {
-  if (!value || isNaN(value.getTime())) return "";
-  return `${value.getFullYear()}-${String(value.getMonth() + 1).padStart(2, "0")}-${String(value.getDate()).padStart(2, "0")}`;
+function toDateKey(date) {
+  if (!date || isNaN(date.getTime())) return "";
+  return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, "0")}-${String(date.getDate()).padStart(2, "0")}`;
 }
 
-function isOnLoginPage(url) {
-  return String(url || "").includes("/login") || String(url || "").includes("/auth");
-}
-
-function normalizeEmail(value) {
+function normalizedEmail(value) {
   return String(value || "").trim().toLowerCase();
 }
 
-function normalizeAffiliateCode(value) {
+function normalizedCode(value) {
   return String(value || "").replace(/[^\dA-Za-z_-]/g, "").trim();
 }
 
-function assertIdentityMatch(site, expectedLabel, expected, actual) {
-  if (expected !== actual) {
-    throw new Error(`${site}_IDENTITY_MISMATCH: expected ${expectedLabel} "${expected}", detected "${actual || "unknown"}"`);
+function isLoginUrl(url) {
+  return String(url || "").includes("/login") || String(url || "").includes("/auth");
+}
+
+function isNetworkError(error) {
+  const message = String(error && error.message || error || "").toLowerCase();
+  return message.includes("err_connection") || message.includes("net::") || message.includes("timeout");
+}
+
+function isBrowserClosedError(error) {
+  const message = String(error && error.message || error || "");
+  const lower = message.toLowerCase();
+  return message.includes("Target page, context or browser has been closed") ||
+    lower.includes("target closed") ||
+    lower.includes("page closed") ||
+    lower.includes("browser has been closed") ||
+    lower.includes("browser closed");
+}
+
+function dashboardAccountClosedMessage() {
+  return "DASHBOARD_ACCOUNT_BROWSER_CLOSED: Chrome was closed for this account. Skipping to the next account.";
+}
+
+async function gotoWithRetries(page, url, label, options = {}) {
+  const attempts = options.attempts || 3;
+  const timeout = options.timeout || 45000;
+  const waitMs = options.waitMs || 5000;
+  for (let attempt = 1; attempt <= attempts; attempt++) {
+    try {
+      log(`[NAV] -> ${url}${attempt > 1 ? ` (retry ${attempt}/${attempts})` : ""}`);
+      await page.goto(url, { waitUntil: "domcontentloaded", timeout });
+      return;
+    } catch (error) {
+      if (!isNetworkError(error) || attempt >= attempts) throw error;
+      log(`Network issue while loading ${label}: ${error.message}; retrying in ${Math.round(waitMs / 1000)}s`);
+      await page.waitForTimeout(waitMs);
+    }
   }
 }
 
-async function readKhodIdentity(page) {
-  const trigger = page.locator('[data-hs-unfold-target="#accountNavbarDropdown"], .navbar-dropdown-account-wrapper').first();
-  if (await trigger.count().catch(() => 0)) {
-    await trigger.click({ timeout: 2000 }).catch(() => {});
-    await page.waitForTimeout(500);
-  }
-  return page.evaluate(() => {
-    const root = document.querySelector("#accountNavbarDropdown") || document.body;
-    const text = root.innerText || root.textContent || "";
-    const email = (text.match(/[A-Z0-9._%+-]+@[A-Z0-9.-]+\.[A-Z]{2,}/i) || [])[0] || "";
-    const codeMatch = text.match(/(?:كود|code)\s*:?\s*([0-9A-Za-z_-]+)/i);
-    return { email: email.trim().toLowerCase(), affiliateCode: codeMatch ? codeMatch[1].trim() : "" };
-  });
-}
-
-async function verifyKhodIdentity(page, where = "dashboard-fetch") {
-  const expectedEmail = normalizeEmail(config.khodEmail);
-  const expectedCode = normalizeAffiliateCode(config.khodAffiliateCode);
-  if (!expectedEmail) throw new Error("KHOD_IDENTITY_CONFIG_MISSING: khodEmail is not set");
-  const identity = await readKhodIdentity(page);
-  const actualEmail = normalizeEmail(identity.email);
-  const actualCode = normalizeAffiliateCode(identity.affiliateCode);
-  log(`[IDENTITY][Khod Dashboard] expected email=${expectedEmail}, expected code=${expectedCode || "(first-bind)"}, detected email=${actualEmail || "unknown"}, detected code=${actualCode || "unknown"}, where=${where}`);
-  assertIdentityMatch("KHOD", "email", expectedEmail, actualEmail);
-  if (expectedCode) assertIdentityMatch("KHOD", "affiliate code", expectedCode, actualCode);
-  if (!actualCode) throw new Error("KHOD_IDENTITY_UNVERIFIED: affiliate code was not visible in the account dropdown");
-  process.send && process.send({ type: "session-event", site: "khod", event: "identity-verified", email: actualEmail, affiliateCode: actualCode, where });
-}
-
-async function isLoginDomVisible(page) {
-  return await page.locator('input[type="password"], input[name="email"], input[name="phone"]').first()
+async function loginFormVisible(page) {
+  return page.locator('input[type="password"], input[name="email"], input[name="phone"]').first()
     .isVisible({ timeout: 1000 })
     .catch(() => false);
 }
 
-async function waitForOrdersPage(page, attempt) {
+async function khodAuthDomPresent(page) {
+  return page.evaluate(() => {
+    const specific = [
+      'a[href*="/affiliate/orders"]',
+      'a[href*="/affiliate/statistics"]',
+      '[class*="affiliate-header"]',
+      '[data-affiliate-id]',
+      '[data-user]',
+      '.user-dropdown',
+      '[class*="welcome"]',
+      'a[href*="statistics"]',
+      'header a[href]:not([href*="login"]):not([href*="auth"])',
+    ];
+    return specific.some((selector) => document.querySelector(selector) !== null);
+  }).catch(() => false);
+}
+
+async function assertKhodSession(page) {
+  const url = page.url();
+  if (isLoginUrl(url) || await loginFormVisible(page)) {
+    throw new Error(`SESSION_EXPIRED: on login page (${url})`);
+  }
+  if (!(await khodAuthDomPresent(page))) {
+    const title = await page.title().catch(() => "");
+    throw new Error(`SESSION_UNVERIFIED: URL ok (${url}) but no auth DOM found | title: "${title}"`);
+  }
+}
+
+async function openKhodAccountDropdown(page, where) {
+  const triggerSelectors = [
+    '[data-hs-unfold-target="#accountNavbarDropdown"]',
+    '[aria-controls="accountNavbarDropdown"]',
+    '.navbar-dropdown-account-wrapper',
+    '.navbar-dropdown-account-wrapper a',
+    '.navbar-dropdown-account-wrapper button',
+    '.js-hs-unfold-invoker',
+    'button.dropdown-toggle',
+    'a.dropdown-toggle',
+    '[data-bs-toggle="dropdown"]',
+    '[data-toggle="dropdown"]',
+  ];
+  for (const selector of triggerSelectors) {
+    const trigger = page.locator(selector).first();
+    const count = await trigger.count().catch(() => 0);
+    if (!count) continue;
+    const visible = await trigger.isVisible({ timeout: 800 }).catch(() => false);
+    log(`[IDENTITY][KHOD WHAAT Dashboard] dropdown candidate selector=${selector}, visible=${visible ? "yes" : "no"}, where=${where}`);
+    if (visible) {
+      await trigger.click({ timeout: 2500 }).catch(async () => trigger.click({ timeout: 2500, force: true }).catch(() => {}));
+      await page.waitForTimeout(500);
+      return true;
+    }
+    await trigger.click({ timeout: 2500, force: true }).catch(() => {});
+    await page.waitForTimeout(500);
+    return true;
+  }
+  log(`[IDENTITY][KHOD WHAAT Dashboard] dropdown trigger not found, where=${where}`);
+  return false;
+}
+
+async function assertKhodIdentity(page, where) {
+  const expectedEmail = normalizedEmail(config.khodEmail || config.khod_email);
+  const expectedCode = normalizedCode(config.khodAffiliateCode || config.khod_affiliate_code);
+  if (!expectedEmail) throw new Error("KHOD_IDENTITY_CONFIG_MISSING: khodEmail is not set");
+
+  await openKhodAccountDropdown(page, where);
+
+  const identity = await page.evaluate(() => {
+    const roots = [document.querySelector("#accountNavbarDropdown"), document.body].filter(Boolean);
+    let matchedText = "";
+    let email = "";
+    for (const root of roots) {
+      const text = root.innerText || root.textContent || "";
+      const match = text.match(/[A-Z0-9._%+-]+@[A-Z0-9.-]+\.[A-Z]{2,}/i);
+      if (match && match[0]) {
+        matchedText = text;
+        email = match[0];
+        break;
+      }
+      if (!matchedText && text) matchedText = text;
+    }
+    const text = matchedText || "";
+    const codeMatch = text.match(/(?:\u0643\u0648\u062f|code)\s*:?\s*([0-9A-Za-z_-]+)/i);
+    return { email: email.trim().toLowerCase(), affiliateCode: codeMatch ? codeMatch[1].trim() : "" };
+  });
+
+  const actualEmail = normalizedEmail(identity.email);
+  const actualCode = normalizedCode(identity.affiliateCode);
+  log(`[IDENTITY][KHOD WHAAT Dashboard] expected email=${expectedEmail}, detected email=${actualEmail || "unknown"}, detected code=${actualCode || "unknown"}, where=${where}`);
+  if (actualEmail !== expectedEmail) throw new Error(`KHOD_IDENTITY_MISMATCH: expected email "${expectedEmail}", detected "${actualEmail || "unknown"}"`);
+  if (expectedCode && actualCode && actualCode !== expectedCode) throw new Error(`KHOD_IDENTITY_MISMATCH: expected affiliate code "${expectedCode}", detected "${actualCode}"`);
+  if (process.send) process.send({ type: "session-event", site: "khod", event: "identity-verified", email: actualEmail, affiliateCode: actualCode, where });
+}
+
+function isKhodIdentityFailure(error) {
+  const message = String(error && error.message || error || "");
+  return message.includes("KHOD_IDENTITY_MISMATCH") || message.includes("KHOD_IDENTITY_UNVERIFIED");
+}
+
+function isKhodSessionFailure(error) {
+  const message = String(error && error.message || error || "");
+  return message.includes("SESSION_EXPIRED") || message.includes("SESSION_UNVERIFIED");
+}
+
+async function resetKhodSession(context, page, reason) {
+  log(`KHOD WHAAT reused session failed identity check (${reason}). Clearing KHOD WHAAT session and logging in again.`);
+  await context.clearCookies().catch(() => {});
+  await page.goto(LOGIN_URL, { waitUntil: "domcontentloaded", timeout: 30000 }).catch(() => {});
+  await page.evaluate(() => {
+    try { localStorage.clear(); } catch (_) {}
+    try { sessionStorage.clear(); } catch (_) {}
+  }).catch(() => {});
+  await gotoWithRetries(page, LOGIN_URL, "KHOD WHAAT login after session reset", { attempts: 2, timeout: 30000, waitMs: 2500 });
+  await page.waitForLoadState("networkidle", { timeout: 5000 }).catch(() => {});
+}
+
+async function ensureKhodArabic(page, where) {
+  try {
+    await gotoWithRetries(page, LANGUAGE_URL, "KHOD WHAAT language", { attempts: 2, timeout: 30000, waitMs: 2500 });
+    await page.waitForLoadState("networkidle", { timeout: 5000 }).catch(() => {});
+    log(`KHOD WHAAT Arabic language confirmed (${where})`);
+  } catch (error) {
+    log(`KHOD WHAAT language confirmation skipped (${where}): ${error.message}`);
+  }
+}
+
+async function khodLogin(context, page) {
+  emitStage("khod.login", "started", "Logging into KHOD WHAAT");
+  await gotoWithRetries(page, LOGIN_URL, "KHOD WHAAT login");
+  await page.waitForLoadState("networkidle", { timeout: 8000 }).catch(() => {});
+
+  const landedUrl = page.url();
+  const landedTitle = await page.title().catch(() => "");
+  log(`[NAV] landed: ${landedUrl} | title: ${landedTitle}`);
+
+  if (!isLoginUrl(landedUrl) && !(await loginFormVisible(page))) {
+    if (await khodAuthDomPresent(page)) {
+      log("KHOD WHAAT session reused after URL and DOM verification");
+      if (process.send) process.send({ type: "session-event", site: "khod", event: "session-reused", method: "dom-verified", url: landedUrl });
+      emitStage("khod.login", "ok", "KHOD WHAAT session confirmed");
+      return page;
+    }
+    await resetKhodSession(context, page, `SESSION_UNVERIFIED: URL ok (${landedUrl}) but no auth DOM found`);
+  }
+
+  const email = config.khodEmail || config.khod_email || "";
+  const password = config.khodPassword || config.khod_password || "";
+  if (!email || !password) throw new Error("KHOD WHAAT credentials missing for this account.");
+
+  const emailSelectors = ['input[type="email"]', 'input[name="email"]', 'input[placeholder*="email" i]', 'input[placeholder*="\u0628\u0631\u064a\u062f" i]'];
+  let passwordInput = null;
+  for (const selector of emailSelectors) {
+    const input = page.locator(selector).first();
+    if (await input.isVisible({ timeout: 3000 }).catch(() => false)) {
+      await input.fill(email);
+      passwordInput = page.locator('input[type="password"], input[name="password"]').first();
+      await passwordInput.fill(password);
+      break;
+    }
+  }
+  if (!passwordInput) throw new Error("KHOD WHAAT login form was not found.");
+
+  const submitSelectors = ['button[type="submit"]', 'button:has-text("\u062f\u062e\u0648\u0644")', 'button:has-text("Login")', 'button:has-text("\u062a\u0633\u062c\u064a\u0644")', 'input[type="submit"]'];
+  let submitted = false;
+  for (const selector of submitSelectors) {
+    const submit = page.locator(selector).first();
+    if (await submit.isVisible({ timeout: 1500 }).catch(() => false)) {
+      await submit.click({ noWaitAfter: true });
+      submitted = true;
+      break;
+    }
+  }
+  if (!submitted) await passwordInput.press("Enter");
+
+  const started = Date.now();
+  while (Date.now() - started < 5 * 60 * 1000) {
+    await page.waitForTimeout(2500);
+    const currentUrl = page.url();
+    if (!isLoginUrl(currentUrl) && !(await loginFormVisible(page))) {
+      await page.waitForTimeout(1500);
+      if (!(await khodAuthDomPresent(page))) {
+        log(`KHOD WHAAT URL left login but auth DOM is not ready yet: ${currentUrl}`);
+        continue;
+      }
+      log(`KHOD WHAAT login confirmed after URL and DOM verification: ${currentUrl}`);
+      if (process.send) process.send({ type: "session-event", site: "khod", event: "login-confirmed", method: "dom-verified", url: currentUrl });
+      emitStage("khod.login", "ok", "KHOD WHAAT login confirmed");
+      return page;
+    }
+    const errorText = await page.locator(".invalid-feedback, .text-danger, .alert-danger, .alert").first().innerText({ timeout: 1000 }).catch(() => "");
+    if (errorText) throw new Error(`KHOD WHAAT login rejected: ${errorText.trim()}`);
+  }
+  throw new Error("KHOD WHAAT login timeout after 5 minutes.");
+}
+
+function flatpickrLabel(date) {
+  return `${MONTH_NAMES[date.getMonth()]} ${date.getDate()}, ${date.getFullYear()}`;
+}
+
+async function navigateFlatpickr(page, targetDate) {
+  for (let i = 0; i < 24; i++) {
+    const month = await page.$eval(".flatpickr-calendar.open .flatpickr-monthDropdown-months", (el) => parseInt(el.value, 10)).catch(() => -1);
+    const year = await page.$eval(".flatpickr-calendar.open .numInput.cur-year", (el) => parseInt(el.value, 10)).catch(() => -1);
+    if (month === targetDate.getMonth() && year === targetDate.getFullYear()) return;
+    const selector = targetDate.getFullYear() * 12 + targetDate.getMonth() < year * 12 + month
+      ? ".flatpickr-calendar.open .flatpickr-prev-month"
+      : ".flatpickr-calendar.open .flatpickr-next-month";
+    await page.click(selector);
+    await page.waitForTimeout(250);
+  }
+}
+
+async function pickDateRange(page, from, to) {
+  emitStage("khod.orders.filter", "started", `Selecting ${formatDataDay(from)} to ${formatDataDay(to)}`);
+  await page.locator("#from_date + input").click({ timeout: 10000 }).catch(async () => page.locator("#from_date + input").click({ force: true }));
+  await page.waitForSelector(".flatpickr-calendar.open", { timeout: 10000 });
+  await navigateFlatpickr(page, from);
+  const fromSelector = `span.flatpickr-day[aria-label="${flatpickrLabel(from)}"]:not(.prevMonthDay):not(.nextMonthDay)`;
+  await page.locator(fromSelector).click({ timeout: 5000 }).catch(async () => page.locator(fromSelector).click({ force: true }));
+  if (from.getMonth() !== to.getMonth() || from.getFullYear() !== to.getFullYear()) await navigateFlatpickr(page, to);
+  const toSelector = `span.flatpickr-day[aria-label="${flatpickrLabel(to)}"]:not(.prevMonthDay):not(.nextMonthDay)`;
+  await page.locator(toSelector).click({ timeout: 5000 }).catch(async () => page.locator(toSelector).click({ force: true }));
+  await page.keyboard.press("Escape").catch(() => {});
+}
+
+async function waitForOrdersPage(context, page, attempt) {
   for (let reload = 1; reload <= 3; reload++) {
     try {
-      log(`[NAV] → https://khod-whaat.com/affiliate/orders/list/all (load ${reload}/3, attempt ${attempt})`);
-      await page.goto("https://khod-whaat.com/affiliate/orders/list/all", { waitUntil: "domcontentloaded" });
+      await gotoWithRetries(page, ORDERS_URL, `KHOD WHAAT orders page ${reload}`, { attempts: 2, timeout: 45000, waitMs: 3000 });
       await page.waitForLoadState("networkidle", { timeout: 10000 }).catch(() => {});
-
-      if (isOnLoginPage(page.url()) || await isLoginDomVisible(page)) {
-        log("🔐 Khod Whaat session expired before dashboard export — re-logging in...");
-        await khodLogin(page);
-        await page.goto("https://khod-whaat.com/affiliate/orders/list/all", { waitUntil: "domcontentloaded" });
+      try {
+        await assertKhodSession(page);
+        await assertKhodIdentity(page, `orders-page-${attempt}`);
+      } catch (sessionError) {
+        if (!isKhodSessionFailure(sessionError) && !isKhodIdentityFailure(sessionError)) throw sessionError;
+        log(`KHOD WHAAT session/identity probe failed before export: ${sessionError.message}. Re-logging in.`);
+        if (process.send) process.send({ type: "session-event", site: "khod", event: "session-probe-failed", url: page.url(), error: sessionError.message });
+        page = await khodLogin(context, page);
+        await gotoWithRetries(page, ORDERS_URL, "KHOD WHAAT orders page after re-login", { attempts: 2, timeout: 45000, waitMs: 3000 });
         await page.waitForLoadState("networkidle", { timeout: 10000 }).catch(() => {});
+        await assertKhodSession(page);
+        await assertKhodIdentity(page, `orders-page-${attempt}-post-login`);
       }
-
-      log("⌛ Waiting for date filter input...");
-      await verifyKhodIdentity(page, `dashboard-fetch-${attempt}`);
       await page.waitForSelector("#from_date + input", { timeout: 20000 });
-      return;
-    } catch (e) {
-      log(`⚠️ Khod Whaat orders page not ready (${reload}/3): ${e.message}`);
-      if (reload >= 3) throw new Error(`Khod Whaat orders page failed to load: ${e.message}`);
+      return page;
+    } catch (error) {
+      log(`KHOD WHAAT orders page not ready (${reload}/3): ${error.message}`);
+      if (reload >= 3) throw new Error(`KHOD WHAAT orders page failed to load: ${error.message}`);
       await page.waitForTimeout(3000);
     }
   }
+  return page;
 }
 
-// ── Dashboard export ───────────────────────────────────────────────────────
-async function khodExportFullMonth(context, page, exportDateFrom, exportDateTo) {
-  log(`📅 Khod dashboard export: ${_fpAriaLabel(exportDateFrom)} → ${_fpAriaLabel(exportDateTo)}`);
-
-  try {
-    await page.goto("https://khod-whaat.com/lang/sa", { waitUntil: "domcontentloaded" });
-    await page.waitForLoadState("networkidle", { timeout: 5000 }).catch(() => {});
-    log("🌐 Khod Whaat: Arabic language confirmed");
-  } catch (e) {
-    log(`⚠️ Language set failed (non-fatal): ${e.message}`);
+async function clickFirstVisible(page, selectors, label) {
+  for (const selector of selectors) {
+    const item = page.locator(selector).first();
+    if (await item.isVisible({ timeout: 1500 }).catch(() => false)) {
+      await item.click({ noWaitAfter: true });
+      log(`${label} clicked via ${selector}`);
+      return true;
+    }
   }
+  return false;
+}
 
+async function downloadToBuffer(download) {
+  const stream = await download.createReadStream();
+  const chunks = [];
+  await new Promise((resolve, reject) => {
+    stream.on("data", (chunk) => chunks.push(chunk));
+    stream.on("end", resolve);
+    stream.on("error", reject);
+  });
+  return Buffer.concat(chunks);
+}
+
+async function exportKhodOrders(context, page, from, to) {
+  await ensureKhodArabic(page, "before-export");
   let lastError = null;
-
-  async function ensureOpenPage() {
+  const ensurePage = async () => {
     if (page && !page.isClosed()) return page;
-    log("⚠️ Khod Whaat page was closed — opening a fresh dashboard page before retry...");
+    throw new Error(dashboardAccountClosedMessage());
+  };
+  const openFreshPage = async () => {
     page = await context.newPage();
     await page.setViewportSize({ width: 1400, height: 900 }).catch(() => {});
     return page;
-  }
+  };
 
-  for (let attempt = 1; attempt <= MAX_KHOD_ATTEMPTS; attempt++) {
+  for (let attempt = 1; attempt <= MAX_EXPORT_ATTEMPTS; attempt++) {
     try {
-      page = await ensureOpenPage();
-      log(`\n🔄 Export attempt ${attempt}/${MAX_KHOD_ATTEMPTS}...`);
-      await waitForOrdersPage(page, attempt);
-
-      await pickDateRangeInFlatpickr(page, exportDateFrom, exportDateTo);
-
-      log("🔍 Clicking فلترة (filter)...");
-      let filtered = false;
-      const filterSelectors = [
-        'button[name="filter"]',
-        'button:has-text("فلترة")',
-        'button:has-text("Filter")',
-        'input[type="submit"][value*="فلتر"]',
-        'form button[type="submit"]',
-      ];
-      for (const sel of filterSelectors) {
-        try {
-          const count = await page.locator(sel).count();
-          if (count > 0) {
-            await page.locator(sel).first().click({ noWaitAfter: true });
-            filtered = true;
-            log(`✅ Filter clicked via: ${sel}`);
-            break;
-          }
-        } catch (e) {
-          log(`⚠️ Filter selector "${sel}" failed: ${e.message}`);
-        }
-      }
-      if (!filtered) {
-        const allBtns = await page.evaluate(() =>
-          Array.from(document.querySelectorAll("button, input[type=submit]"))
-            .map(el => (el.innerText || el.value || "").trim().slice(0, 60))
-            .filter(Boolean)
-        );
-        throw new Error(`Filter button not found. Buttons: ${allBtns.join(" | ")}`);
-      }
-
+      page = await ensurePage();
+      emitStage("khod.orders.export", "started", `Export attempt ${attempt}/${MAX_EXPORT_ATTEMPTS}`);
+      log(`KHOD WHAAT dashboard export attempt ${attempt}/${MAX_EXPORT_ATTEMPTS}: ${formatDataDay(from)} -> ${formatDataDay(to)}`);
+      page = await waitForOrdersPage(context, page, attempt);
+      await pickDateRange(page, from, to);
+      const filtered = await clickFirstVisible(page, ['button[name="filter"]', 'button:has-text("\u0641\u0644\u062a\u0631\u0629")', 'button:has-text("Filter")', 'input[type="submit"][value*="\u0641\u0644\u062a\u0631"]', 'form button[type="submit"]'], "KHOD WHAAT filter");
+      if (!filtered) throw new Error("KHOD WHAAT filter button not found.");
       await page.waitForLoadState("domcontentloaded").catch(() => {});
       await page.waitForTimeout(4000);
 
-      let countAfter = "?";
-      try { countAfter = await page.$eval(".badge.badge-soft-dark", (el) => el.innerText.trim()); } catch {}
-      log(`📊 Orders after filter: ${countAfter}`);
-
-      log("📥 Looking for استخراج اكسل (export) button...");
-      process.send && process.send({ type: "cooldown", seconds: 600, attempt, maxAttempts: MAX_KHOD_ATTEMPTS });
-      const exportSelectors = [
-        'button[name="export"]',
-        'button:has-text("استخراج")',
-        'button:has-text("اكسل")',
-        'button:has-text("Excel")',
-        'a[href*="export"]',
-        'button:has-text("تصدير")',
-        'input[type="submit"][value*="استخراج"]',
-        'input[type="submit"][value*="اكسل"]',
-      ];
-
-      let buffer = null;
-      let exportFound = false;
-      for (const sel of exportSelectors) {
-        try {
-          const count = await page.locator(sel).count();
-          if (count <= 0) continue;
-          log(`✅ Export button found via: ${sel}`);
-          exportFound = true;
-
-          const dlPromise = page.waitForEvent("download", { timeout: KHOD_DOWNLOAD_TIMEOUT_MS });
-          await page.locator(sel).first().click({ noWaitAfter: true });
-          log("⏳ Waiting for Khod Whaat to generate file (page may reload — normal)...");
-          
-          const dl = await dlPromise;
-          log("✅ Download started, reading file stream...");
-          const stream = await dl.createReadStream();
-          const chunks = [];
-          await new Promise((res, rej) => {
-            stream.on("data", (c) => chunks.push(c));
-            stream.on("end", res);
-            stream.on("error", rej);
-          });
-          buffer = Buffer.concat(chunks);
-          log(`✅ Khod Whaat export success — ${buffer.length} bytes downloaded`);
-          process.send && process.send({ type: "export-timestamp", timestamp: Date.now() });
-          break;
-        } catch (e) {
-          log(`⚠️ Selector "${sel}" failed: ${e.message}`);
-          if (page.isClosed()) throw new Error(`Khod Whaat page closed while waiting for export download: ${e.message}`);
-        }
+      const exportSelectors = ['button[name="export"]', 'button:has-text("\u0627\u0633\u062a\u062e\u0631\u0627\u062c")', 'button:has-text("\u0627\u0643\u0633\u0644")', 'button:has-text("Excel")', 'a[href*="export"]', 'button:has-text("\u062a\u0635\u062f\u064a\u0631")', 'input[type="submit"][value*="\u0627\u0633\u062a\u062e\u0631\u0627\u062c"]', 'input[type="submit"][value*="\u0627\u0643\u0633\u0644"]'];
+      for (const selector of exportSelectors) {
+        const item = page.locator(selector).first();
+        if (!(await item.isVisible({ timeout: 1500 }).catch(() => false))) continue;
+        emitStage("khod.orders.download", "started", "Waiting for KHOD WHAAT export download");
+        if (process.send) process.send({ type: "cooldown", seconds: Math.round(DOWNLOAD_TIMEOUT_MS / 1000), attempt, maxAttempts: MAX_EXPORT_ATTEMPTS, site: "khod" });
+        const downloadPromise = page.waitForEvent("download", { timeout: DOWNLOAD_TIMEOUT_MS });
+        await item.click({ noWaitAfter: true });
+        const buffer = await downloadToBuffer(await downloadPromise);
+        if (!buffer.length) throw new Error("KHOD WHAAT export file was empty.");
+        emitStage("khod.orders.download", "ok", `KHOD WHAAT export downloaded ${buffer.length} bytes`, { bytes: buffer.length });
+        if (process.send) process.send({ type: "export-timestamp", timestamp: Date.now() });
+        return buffer;
       }
-
-      if (!exportFound) {
-        const allButtonTexts = await page.evaluate(() => {
-          return Array.from(document.querySelectorAll("button, input[type=submit], a"))
-            .map((el, i) => ({ i, text: (el.innerText || el.value || el.textContent || "").trim().slice(0, 60) }))
-            .filter(b => b.text);
-        });
-        log(`📋 Buttons found: ${JSON.stringify(allButtonTexts.slice(0, 20))}`);
-        throw new Error(`Export button not found. Buttons on page: ${allButtonTexts.map(b => b.text).join(" | ")}`);
+      throw new Error("KHOD WHAAT export button not found.");
+    } catch (error) {
+      lastError = error;
+      const message = isBrowserClosedError(error) ? dashboardAccountClosedMessage() : (error.message || String(error));
+      emitStage("khod.orders.export", "error", message, { attempt, maxAttempts: MAX_EXPORT_ATTEMPTS });
+      log(`KHOD WHAAT export attempt ${attempt} failed: ${message}`);
+      if (message.includes("DASHBOARD_ACCOUNT_BROWSER_CLOSED")) throw new Error(message);
+      if (attempt >= MAX_EXPORT_ATTEMPTS) break;
+      if (process.send) process.send({ type: "khod-restart", reason: message, attempt, maxAttempts: MAX_EXPORT_ATTEMPTS, waitSeconds: RETRY_WAIT_SECONDS });
+      for (let remaining = RETRY_WAIT_SECONDS; remaining > 0; remaining -= 15) {
+        await new Promise((resolve) => setTimeout(resolve, Math.min(15, remaining) * 1000));
+        if (process.send && remaining > 15) process.send({ type: "khod-restart", reason: message, attempt, maxAttempts: MAX_EXPORT_ATTEMPTS, waitSeconds: remaining - 15 });
       }
-
-      if (!buffer) {
-        throw new Error("Export button was found, but no dashboard export file was downloaded.");
-      }
-
-      return buffer;
-
-    } catch (err) {
-      lastError = err;
-      log(`❌ Export attempt ${attempt} failed: ${err.message}`);
-      if (attempt < MAX_KHOD_ATTEMPTS) {
-        const waitSec = 6 * 60;
-        log(`⚠️ Please wait — restarting dashboard export in ${Math.floor(waitSec / 60)}m ${waitSec % 60}s...`);
-        process.send && process.send({
-          type: "khod-restart",
-          reason: err.message,
-          attempt,
-          maxAttempts: MAX_KHOD_ATTEMPTS,
-          waitSeconds: waitSec,
-        });
-        if (!page.isClosed()) {
-          await page.waitForLoadState("networkidle", { timeout: 15000 }).catch(() => {});
-        }
-        for (let remaining = waitSec; remaining > 0; remaining -= 15) {
-          await new Promise(resolve => setTimeout(resolve, Math.min(15, remaining) * 1000));
-          if (remaining > 15) {
-            process.send && process.send({
-              type: "khod-restart",
-              reason: err.message,
-              attempt,
-              maxAttempts: MAX_KHOD_ATTEMPTS,
-              waitSeconds: remaining - 15,
-            });
-          }
-        }
-        page = await ensureOpenPage();
-        try {
-          await page.goto("https://khod-whaat.com/lang/sa", { waitUntil: "domcontentloaded" });
-          await page.waitForTimeout(2000);
-          log("🌐 Khod Whaat: Arabic language re-confirmed before next attempt");
-        } catch (_) {}
-      }
+      page = await openFreshPage();
+      await ensureKhodArabic(page, `retry-${attempt + 1}`);
     }
   }
-
-  throw new Error(`Khod Whaat dashboard export failed after ${MAX_KHOD_ATTEMPTS} attempts. Last error: ${lastError ? lastError.message : "unknown error"}`);
+  throw new Error(`KHOD WHAAT dashboard export failed after ${MAX_EXPORT_ATTEMPTS} attempts. Last error: ${lastError ? lastError.message : "unknown error"}`);
 }
 
-// ── Main ──────────────────────────────────────────────────────────────────
 (async () => {
   const profilePath = config.profilePath;
-  if (!profilePath) {
-    process.send && process.send({ type: "error", error: "profilePath not set in config" });
-    return;
+  if (!profilePath) return process.send && process.send({ type: "error", error: "profilePath not set in config" });
+  if (!(config.khodEmail || config.khod_email) || !(config.khodPassword || config.khod_password)) {
+    return process.send && process.send({ type: "error", error: "KHOD WHAAT credentials missing for this account. Re-save the account credentials, then retry dashboard update." });
   }
 
-  if (!config.khodEmail || !config.khodPassword) {
-    process.send && process.send({ type: "error", error: "Khod Whaat credentials missing for this account. Re-save the account credentials, then retry dashboard update." });
-    return;
-  }
-
-  if (!fs.existsSync(profilePath)) {
-    fs.mkdirSync(profilePath, { recursive: true });
-  }
-
+  if (!fs.existsSync(profilePath)) fs.mkdirSync(profilePath, { recursive: true });
   const chromePath = config.chromePath || findChrome();
-  log(`🌐 Using Chrome: ${chromePath}`);
-
-  const context = await chromium.launchPersistentContext(profilePath, {
-    executablePath: chromePath,
-    headless: false,
-    ignoreDefaultArgs: ["--enable-automation"],
-    chromiumSandbox: true,
-    args: [
-      "--no-first-run",
-      "--no-default-browser-check",
-      "--disable-background-networking",
-      "--disable-client-side-phishing-detection",
-      "--disable-default-apps",
-      "--disable-hang-monitor",
-      "--disable-popup-blocking",
-      "--disable-prompt-on-repost",
-      "--disable-sync",
-      "--disable-translate",
-      "--disk-cache-size=52428800",
-      "--no-pings",
-      "--disable-background-timer-throttling",
-      "--disable-renderer-backgrounding",
-      "--disable-component-extensions-with-background-pages",
-      "--disable-v8-idle-tasks",
-      "--hide-crash-restore-bubble",
-      "--force-device-scale-factor=1",
-      "--window-size=1400,900",
-      "--lang=en-US",
-      "--accept-lang=en-US,en",
-      // ── Speed-up flags (safe, no anti-bot impact) ──
-      "--disable-ipc-flooding-protection", // faster IPC between renderer/browser process
-      "--disable-features=TranslateUI,InterestFeedContentSuggestions", // skip feature init
-    ],
-    locale: "en-US",
-    waitForInitialPage: false,
-    ...buildChromeLaunchOptions(chromePath, {
-      args: [
-        "--force-device-scale-factor=1",
-        "--window-size=1400,900",
-      ],
-    }),
-  });
-
-  await context.addInitScript(() => {
-    Object.defineProperty(navigator, "webdriver", { get: () => undefined });
-    delete window.__playwright;
-    delete window.__pw_manual;
-    delete window.__PW_inspect;
-    Object.defineProperty(navigator, "plugins", { get: () => [1, 2, 3, 4, 5] });
-    Object.defineProperty(navigator, "languages", { get: () => ["en-US", "en"] });
-  });
-
-  const page = context.pages()[0] || (await context.newPage());
-  page.setViewportSize({ width: 1400, height: 900 }).catch(() => {});
+  log(`Using Chrome: ${chromePath}`);
+  const context = await launchPersistentChromeContext(chromium, profilePath, { executablePath: chromePath, windowSize: "1400,900" });
+  let page = null;
+  installUnexpectedBlankPageGuard(context, { getActivePage: () => page, log });
+  await addChromeFingerprintSpoofing(context);
+  page = await getOrCreateAutomationPage(context, { log });
+  await page.setViewportSize({ width: 1400, height: 900 }).catch(() => {});
 
   try {
-    log("\n═══════════════════════════════════════");
-    log("  DASHBOARD FETCH — Khod Whaat Full Month");
-    log("═══════════════════════════════════════\n");
-
-    await khodLogin(page);
-    log("");
-
+    emitStage("dashboard.fetch.start", "started", "Preparing KHOD WHAAT dashboard fetch");
+    page = await khodLogin(context, page);
     const now = new Date();
     const today = new Date(now.getFullYear(), now.getMonth(), now.getDate());
     const requestedFrom = parseConfigDate(config.dashboardDateFrom);
@@ -532,23 +473,17 @@ async function khodExportFullMonth(context, page, exportDateFrom, exportDateTo) 
     const dateFrom = requestedFrom || new Date(today.getFullYear(), today.getMonth() - 2, 1);
     const dateTo = requestedTo || today;
     const { exportDateFrom, exportDateTo } = resolveSafeKhodExportRange(dateFrom, dateTo, { today });
-
-    log(`📅 Dashboard fetch selected range: ${_fpAriaLabel(dateFrom)} → ${_fpAriaLabel(dateTo)}`);
-    log(`📅 Dashboard fetch export range: ${_fpAriaLabel(exportDateFrom)} → ${_fpAriaLabel(exportDateTo)}`);
-
-    const buffer = await khodExportFullMonth(context, page, exportDateFrom, exportDateTo);
-    const { processDashboardSheet } = require("./dashboard-sheet-processing");
-    const processed = processDashboardSheet({
-      khodBuffer: buffer,
-      dateFrom: toDateKey(dateFrom),
-      dateTo: toDateKey(dateTo),
-    });
-
-    log(`\n✅ Dashboard snapshot ready — ${processed.rows.length} rows for ${processed.snapshotMonth}`);
-
-    process.send && process.send({
+    log(`Dashboard fetch - KHOD WHAAT ${formatDataDay(exportDateFrom)} -> ${formatDataDay(exportDateTo)} (saving created-date range ${formatDataDay(dateFrom)} -> ${formatDataDay(dateTo)})`);
+    const buffer = await exportKhodOrders(context, page, exportDateFrom, exportDateTo);
+    emitStage("khod.sheet.parse", "started", "Parsing KHOD WHAAT export");
+    const { processDashboardSheets } = require("./dashboard-sheet-processing");
+    const processed = processDashboardSheets({ khodBuffer: buffer, dateFrom: toDateKey(dateFrom), dateTo: toDateKey(dateTo) });
+    emitStage("khod.sheet.parse", "ok", `Parsed ${processed.rows.length} dashboard rows`, { rows: processed.rows.length });
+    if (process.send) process.send({
       type: "dashboard-result",
       rows: processed.rows,
+      learnedSkuNameMap: processed.learnedSkuNameMap || {},
+      enrichmentDiagnostics: processed.enrichmentDiagnostics || null,
       parseDiagnostics: processed.parseDiagnostics,
       snapshotMonth: processed.snapshotMonth,
       dateFrom: processed.dateFrom,
@@ -556,11 +491,11 @@ async function khodExportFullMonth(context, page, exportDateFrom, exportDateTo) 
       exportDateFrom: toDateKey(exportDateFrom),
       exportDateTo: toDateKey(exportDateTo),
     });
-
-  } catch (err) {
-    log(`❌ FATAL: ${err.message}`);
-    process.send && process.send({ type: "error", error: err.message });
+  } catch (error) {
+    const fatalMessage = isBrowserClosedError(error) ? dashboardAccountClosedMessage() : (error.message || String(error));
+    log(`FATAL: ${fatalMessage}`);
+    if (process.send) process.send({ type: "error", error: fatalMessage });
   } finally {
-    await context.close();
+    await context.close().catch(() => {});
   }
 })();

@@ -1,29 +1,38 @@
-﻿/* â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•
+/* ══════════════════════════════════════════════════════════════════════════════
    section1-overview.js
-   Renders Section 1 â€” Ù†Ø¸Ø±Ø© Ø¹Ø§Ù…Ø© (Overview)
+   Renders Section 1 — نظرة عامة (Overview)
 
    window.renderSection1(mountEl, data, ctx)
-     mountEl  â€” the <div> to inject HTML into (cleared first)
-     data     â€” data.overview  (shape = overviewData from mockData)
-     ctx      â€” { onNavigate, accent, formatSAR }
+     mountEl  — the <div> to inject HTML into (cleared first)
+     data     — data.overview  (shape = overviewData from mockData)
+     ctx      — { onNavigate, accent, formatSAR }
 
    Depends on (loaded before this via <script>):
-     dashboard-shared.js  â†’ kpiCard, sparklineSvg, deltaBadge,
+     dashboard-shared.js  → kpiCard, sparklineSvg, deltaBadge,
                             sectionTopBar, animateNumber, runKpiAnimations,
                             formatSAR, COLOR_MAP
-     dashboard-styles.css â†’ .fade-up, @keyframes fadeUp
-   â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â• */
+     dashboard-styles.css → .fade-up, @keyframes fadeUp
+   ══════════════════════════════════════════════════════════════════════════════ */
 
 window.renderSection1 = function (mountEl, data, ctx) {
   'use strict';
 
-  /* â”€â”€ i18n helpers â€” must be defined before any label/card arrays â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€ */
+  /* ── i18n helpers — must be defined before any label/card arrays ─────────── */
   var tr = window.dashboardI18n;
   var isAr = tr ? tr.isRtl() : true;
-  function s1Txt(en, ar) { return isAr ? ar : en; }
+  function s1Txt(en, ar) {
+    var value = tr && tr.pick ? tr.pick(en, ar) : (isAr ? ar : en);
+    return String(value == null ? '' : value)
+      .replace(/\bTaager Profit(?: After Tax)?\b/g, 'Marketer Commission')
+      .replace(/\bTaager profit(?: after tax)?\b/g, 'marketer commission')
+      .replace(/\bTiger Profit(?: After Tax)?\b/g, 'Marketer Commission')
+      .replace(/\bTiger profit(?: after tax)?\b/g, 'marketer commission')
+      .replace(/ربح تاجر(?: بعد الضريبة)?/g, 'عمولة المسوق');
+  }
   function tx(key, fallback) {
     var value = tr ? tr.t(key) : key;
-    return value && value !== key ? value : (fallback || key);
+    var output = value && value !== key ? value : (fallback || key);
+    return tr && tr.clean ? tr.clean(output) : output;
   }
   function esc(value) {
     return String(value == null ? '' : value)
@@ -36,77 +45,41 @@ window.renderSection1 = function (mountEl, data, ctx) {
   function raw(value) {
     return tr ? tr.raw(value) : value;
   }
+  var fullData = (ctx && ctx.data) || window.dashboardGeoData || {};
+  var khodFinancials = fullData.financials || {};
+  var defaultCurrency = (data && data.meta && data.meta.activeCurrency) || window.dashboardActiveCurrency || 'SAR';
 
-  /* â”€â”€ Fallback data (mock shape) so the section renders during development â”€â”€ */
+  /* ── Safe empty data so missing slices never look like real business results ── */
   var d = data || {
-    earnedCommission:   { value: 31150, delta: 78.0,  unit: 'SAR' },
-    incomingCommission: { value: 24631, delta: 146.4,   unit: 'SAR' },
-    lostCommission:     { value: 100963,  delta: -61.5,  unit: 'SAR' },
-    totalOrders:        { value: 4500,  delta: -49.3,  unit: 'Orders' },
+    earnedCommission:   { value: 0, delta: 0, unit: defaultCurrency },
+    incomingCommission: { value: 0, delta: 0, unit: defaultCurrency },
+    lostCommission:     { value: 0, delta: 0, unit: defaultCurrency },
+    totalOrders:        { value: 0, rawValue: 0, delta: 0, unit: 'Orders' },
     sparklines: {
-      earned:   [15000, 18000, 22000, 26000, 28000, 30000, 31150],
-      incoming: [10000, 12000, 15000, 18000, 20000, 22000, 24631],
-      lost:     [40000, 50000, 60000, 75000, 85000, 95000, 100963 ],
-      orders:   [2000,  2500,  3000,  3500,  4000,  4200,  4500 ],
+      earned:   [0],
+      incoming: [0],
+      lost:     [0],
+      orders:   [0],
     },
     health: {
-      earned:   { pct: 19.9, sar: 31150 },
-      incoming: { pct: 15.7, sar: 24631 },
-      lost:     { pct: 64.4, sar: 100963  },
+      earned:   { pct: 0, sar: 0 },
+      incoming: { pct: 0, sar: 0 },
+      lost:     { pct: 0, sar: 0 },
     },
-    insights: [
-      { text: 'Lost commission is high due to order cancellations. Focus on product quality and descriptions.', type: 'warning' }
-    ],
-    lostBreakdown: [
-      { label: 'Customer Cancel', pct: 45, color: '#ef4444' },
-      { label: 'Out of Stock', pct: 30, color: '#f59e0b' },
-      { label: 'Delivery Failed', pct: 15, color: '#3b82f6' },
-      { label: 'Returned', pct: 10, color: '#a855f7' }
-    ],
-    topContributors: [
-      { name: 'Riyadh', value: 12500, unit: 'SAR' },
-      { name: 'Jeddah', value: 8300, unit: 'SAR' },
-      { name: 'Dammam', value: 5400, unit: 'SAR' }
-    ],
-    goal: { current: 31150, target: 50000 }
+    insights: [],
+    lostBreakdown: [],
+    topContributors: [],
+    goal: { current: 0, target: 0 }
   };
 
-  var fullData = (ctx && ctx.data) || window.dashboardGeoData || {};
-  var accountCod = fullData.cod || {};
-  var accountPipeline = fullData.pipeline || {};
-  var accountStages = Array.isArray(accountPipeline.stages) ? accountPipeline.stages : [];
-  function s1StageById(id) {
-    for (var i = 0; i < accountStages.length; i++) {
-      if (accountStages[i] && accountStages[i].id === id) return accountStages[i];
-    }
-    return null;
-  }
-  var accountAwaitingStage = s1StageById('awaiting');
-  var accountTotalOrders = accountPipeline.metrics && accountPipeline.metrics.totalOrders != null
-    ? Number(accountPipeline.metrics.totalOrders || 0)
-    : Number(d.totalOrders && d.totalOrders.value || 0);
-  var accountPendingOrders = accountAwaitingStage ? Number(accountAwaitingStage.count || 0) : 0;
-  var accountConfirmationPct = d.confirmationRate && d.confirmationRate.value != null
-    ? Number(d.confirmationRate.value || 0)
-    : accountAwaitingStage && accountAwaitingStage.conv != null
-    ? Number(accountAwaitingStage.conv || 0)
-    : (accountTotalOrders > 0 ? parseFloat((((accountTotalOrders - accountPendingOrders) / accountTotalOrders) * 100).toFixed(1)) : 0);
-  var accountNdrPct = accountCod.ndrPct != null
-    ? Number(accountCod.ndrPct || 0)
-    : (fullData.roi && fullData.roi.ndrPct != null ? Number(fullData.roi.ndrPct || 0) : 0);
-  var accountDrPct = accountCod.drPct != null
-    ? Number(accountCod.drPct || 0)
-    : (accountCod.collectionRate != null ? Number(accountCod.collectionRate || 0) : 0);
-
-  /* â”€â”€ KPI card definitions (RTL array order: index 0 = visual RIGHT) â”€â”€â”€â”€â”€â”€â”€ */
-  var cards = [
-    { label: s1Txt('Earned Commission', 'Ø§Ù„Ø¹Ù…ÙˆÙ„Ø© Ø§Ù„Ù…Ø­Ù‚Ù‚Ø©'), value: d.earnedCommission.value,   unit: d.earnedCommission.unit,   delta: d.earnedCommission.delta,   color: 'green',  spark: d.sparklines.earned,   iconType: 'green', tooltip: tx('kpi.earned.tooltip', 'Ø§Ù„Ø¹Ù…ÙˆÙ„Ø© Ù…Ù† Ø§Ù„Ø·Ù„Ø¨Ø§Øª Ø§Ù„ØªÙŠ ØªÙ… ØªØ³Ù„ÙŠÙ…Ù‡Ø§ Ø¨Ù†Ø¬Ø§Ø­.') },
-    { label: s1Txt('Incoming Commission', 'Ø¹Ù…ÙˆÙ„Ø© Ù‚Ø§Ø¯Ù…Ø©'),    value: d.incomingCommission.value,  unit: d.incomingCommission.unit,  delta: d.incomingCommission.delta,  color: 'orange', spark: d.sparklines.incoming,  iconType: 'orange', tooltip: tx('kpi.incoming.tooltip', 'Ø¹Ù…ÙˆÙ„Ø© Ù…ØªÙˆÙ‚Ø¹Ø© Ù…Ù† Ø§Ù„Ø·Ù„Ø¨Ø§Øª Ø§Ù„ØªÙŠ Ù…Ø§ Ø²Ø§Ù„Øª Ù‚ÙŠØ¯ Ø§Ù„ØªÙ†ÙÙŠØ° Ø£Ùˆ Ù„Ù… ØªØªÙ… ØªØ³ÙˆÙŠØªÙ‡Ø§ Ø¨Ø§Ù„ÙƒØ§Ù…Ù„.') },
-    { label: s1Txt('Lost Commission', 'Ø¹Ù…ÙˆÙ„Ø© Ø¶Ø§Ø¦Ø¹Ø©'),   value: d.lostCommission.value,      unit: d.lostCommission.unit,      delta: d.lostCommission.delta,      color: 'red',    spark: d.sparklines.lost,      iconType: 'red', tooltip: tx('kpi.lost.tooltip', 'Ø¹Ù…ÙˆÙ„Ø© ØºØ§Ù„Ø¨Ø§ Ø¶Ø§Ø¹Øª Ø¨Ø³Ø¨Ø¨ Ø·Ù„Ø¨Ø§Øª ÙØ§Ø´Ù„Ø© Ø£Ùˆ Ù…Ù„ØºØ§Ø© Ø£Ùˆ ØºÙŠØ± Ù…Ø³Ù„Ù…Ø©.') },
-    { label: s1Txt('Total Orders', 'Ø¥Ø¬Ù…Ø§Ù„ÙŠ Ø§Ù„Ø·Ù„Ø¨Ø§Øª'), value: d.totalOrders.value,         unit: d.totalOrders.unit,         delta: d.totalOrders.delta,         color: 'blue',   spark: d.sparklines.orders,    iconType: 'blue', tooltip: tx('kpi.orders.tooltip', 'Ø¥Ø¬Ù…Ø§Ù„ÙŠ Ø§Ù„Ø·Ù„Ø¨Ø§Øª Ø¯Ø§Ø®Ù„ Ù„Ù‚Ø·Ø© Ù„ÙˆØ­Ø© Ø§Ù„ØªØ­ÙƒÙ… Ø§Ù„Ø­Ø§Ù„ÙŠØ© Ø­Ø³Ø¨ Ø§Ù„Ø­Ø³Ø§Ø¨ Ø§Ù„Ù…Ø­Ø¯Ø¯.') },
-    { label: s1Txt('Confirmation Rate', 'معدل التأكيد'), value: accountConfirmationPct, unit: '%', delta: 0, color: 'purple', spark: [], iconType: 'purple', tooltip: tx('kpi.confirmationRate.tooltip', s1Txt('Account-wide confirmation rate across all orders in the current dashboard period.', 'معدل التأكيد على مستوى الحساب لكل الطلبات في الفترة الحالية.')) },
-    { label: s1Txt('Net Delivery Rate (NDR)', 'معدل التسليم الصافي (NDR)'), value: accountNdrPct, unit: '%', delta: 0, color: 'green', spark: [], iconType: 'green', tooltip: tx('kpi.ndr.tooltip', s1Txt('Account-wide net delivery rate based on delivered orders divided by total placed orders.', 'معدل التسليم الصافي على مستوى الحساب: الطلبات المسلمة مقارنة بإجمالي الطلبات.')) },
-  ];
+  /* ── KPI card definitions (RTL array order: index 0 = visual RIGHT) ─────── */
+  var totalOrders = Number((d.totalOrders && d.totalOrders.value != null) ? d.totalOrders.value : 0) || 0;
+  var salesValue = Number(khodFinancials.salesValue != null ? khodFinancials.salesValue : (d.totalSales && d.totalSales.value)) || 0;
+  var codValue = Number(khodFinancials.codValue != null ? khodFinancials.codValue : (d.codValue && d.codValue.value)) || 0;
+  var commissionValue = Number(khodFinancials.commissionValue != null ? khodFinancials.commissionValue : (d.earnedCommission && d.earnedCommission.value)) || 0;
+  var deliveredSales = Number(khodFinancials.deliveredSales != null ? khodFinancials.deliveredSales : (d.totalDeliveredSales && d.totalDeliveredSales.value)) || 0;
+  var failedSales = Number(khodFinancials.failedSales != null ? khodFinancials.failedSales : (d.failedSales && d.failedSales.value)) || 0;
+  var canceledSales = Number(khodFinancials.canceledSales != null ? khodFinancials.canceledSales : (d.canceledSales && d.canceledSales.value)) || 0;
 
   var activeAccId = (window.getActiveAccountId ? window.getActiveAccountId() : '__all__') || '__all__';
   var roiLiveRaw = (window.DashboardRoiState && window.DashboardRoiState.get(activeAccId)) || {};
@@ -121,54 +94,110 @@ window.renderSection1 = function (mountEl, data, ctx) {
     ? marketingState.summary.sourceBreakdown
     : [];
   var targetCurrency = roiLiveRaw.currency || 'SAR';
+  var egpRate = roiLiveRaw.egpRate != null ? roiLiveRaw.egpRate : 52.0;
 
   function convertCurrency(val, from, to) {
+    if (window.TaagerCurrency && typeof window.TaagerCurrency.convert === 'function') {
+      return window.TaagerCurrency.convert(val, from, to);
+    }
     if (from === to) return val;
     var sar = val;
     if (from === "USD") sar = val * 3.75;
+    else if (from === "EGP") sar = (val / egpRate) * 3.75;
     if (to === "SAR") return sar;
     if (to === "USD") return sar / 3.75;
+    if (to === "EGP") return (sar / 3.75) * egpRate;
     return val;
   }
 
   var finalAdSpend = roiLiveRaw.adSpend != null ? roiLiveRaw.adSpend : 250;
   if (syncedSpendActive) {
-    if (!sourceBreakdown.length) {
+    if (window.DashboardMarketingSpend && typeof window.DashboardMarketingSpend.aggregateSummary === "function") {
+      finalAdSpend = Number(window.DashboardMarketingSpend.aggregateSummary(marketingState.summary, targetCurrency, {
+        egpRate: egpRate,
+      }).spend || 0);
+    } else if (!sourceBreakdown.length) {
       finalAdSpend = Number((marketingState.summary && marketingState.summary.adSpend) || 0);
     } else {
       var convertedTotal = sourceBreakdown.reduce(function (total, source) {
-        return total + convertCurrency(Number(source.rawSpend || 0), source.currency || "SAR", targetCurrency);
+        var rawSpend = Number(source.rawSpend || source.nativeRawSpend || 0);
+        var convertedSpend = Number(source.convertedSpend || 0);
+        if (convertedSpend > 0 && rawSpend <= 0) {
+          return total + convertCurrency(convertedSpend, source.targetCurrency || marketingState.summary.currency || targetCurrency, targetCurrency);
+        }
+        return total + convertCurrency(rawSpend, source.currency || source.rawCurrency || "SAR", targetCurrency);
       }, 0);
       finalAdSpend = Number(convertedTotal.toFixed(2));
     }
   }
 
-  var deliveredSalesInTarget = convertCurrency((d.totalDeliveredSales && d.totalDeliveredSales.value) || 0, "SAR", targetCurrency);
-  var netRoas = finalAdSpend > 0 ? (deliveredSalesInTarget / finalAdSpend) : 0;
+  var nativeCurrency = (data && data.meta && data.meta.activeCurrency) || window.dashboardActiveCurrency || targetCurrency || 'SAR';
+  var deliveredSalesInTarget = convertCurrency((d.totalDeliveredSales && d.totalDeliveredSales.value) || 0, nativeCurrency, targetCurrency);
+  var netRoasUnavailable = !(finalAdSpend > 0);
+  var netRoas = netRoasUnavailable ? 0 : (deliveredSalesInTarget / finalAdSpend);
   var netRoasDelta = d.netRoas && d.netRoas.delta != null ? Number(d.netRoas.delta || 0) : 0;
 
+  var pipelineMetrics = (((fullData || {}).pipeline || {}).metrics || {});
+  var roiData = (fullData && fullData.roi) || {};
+  var ndrValue = d.ndrRate ? d.ndrRate.value : (pipelineMetrics.deliveryRate != null ? pipelineMetrics.deliveryRate : (roiData.ndrPct || 0));
+  var drValue = d.drRate ? d.drRate.value : (pipelineMetrics.drPct != null ? pipelineMetrics.drPct : (roiData.drPct || 0));
+  var confirmationValue = d.confirmationRate ? d.confirmationRate.value : (pipelineMetrics.confirmationRate != null ? pipelineMetrics.confirmationRate : (roiData.confirmationRate || 0));
+  var overallAovValue = d.overallAov ? d.overallAov.value : (totalOrders > 0 ? salesValue / totalOrders : 0);
+  var deliveredAovValue = d.deliveredAov ? d.deliveredAov.value : 0;
+
+  var cards = [
+    { label: s1Txt('Earned Commission', 'العمولة المكتسبة'), value: commissionValue, unit: nativeCurrency, delta: d.earnedCommission ? d.earnedCommission.delta : 0, color: 'green', spark: d.sparklines.earned, iconType: 'green', tooltip: s1Txt('Earned Commission uses KHOD marketer commission for delivered orders.', 'العمولة المكتسبة تستخدم عمولة المسوق في KHOD للطلبات المسلمة.') },
+    { label: s1Txt('Incoming Commission', 'العمولة القادمة'), value: d.incomingCommission ? d.incomingCommission.value : 0, unit: nativeCurrency, delta: d.incomingCommission ? d.incomingCommission.delta : 0, color: 'orange', spark: d.sparklines.incoming, iconType: 'orange', tooltip: s1Txt('Incoming Commission is the commission still progressing through the order pipeline.', 'العمولة القادمة هي عمولة الطلبات التي ما زالت قيد التنفيذ.') },
+    { label: s1Txt('Lost Commission', 'العمولة المفقودة'), value: d.lostCommission ? d.lostCommission.value : 0, unit: nativeCurrency, delta: d.lostCommission ? d.lostCommission.delta : 0, color: 'red', spark: d.sparklines.lost, iconType: 'red', tooltip: s1Txt('Lost Commission is the commission attached to failed orders.', 'العمولة المفقودة هي عمولة الطلبات الفاشلة.') },
+    { label: s1Txt('Total Orders', 'إجمالي الطلبات'), value: totalOrders, unit: s1Txt('orders', 'طلب'), delta: d.totalOrders ? d.totalOrders.delta : 0, color: 'blue', spark: d.sparklines.orders, iconType: 'blue', tooltip: s1Txt('Total orders in the selected range.', 'إجمالي الطلبات في الفترة المحددة.') },
+    { label: s1Txt('Confirmation Rate', 'نسبة التأكيد'), value: confirmationValue, unit: '%', delta: d.confirmationRate ? d.confirmationRate.delta : 0, color: 'blue', spark: [], iconType: 'blue', tooltip: tx('kpi.confirmationRate.tooltip', 'Confirmation Rate = progressed statuses / all orders. Confirmation + cancel + pending = 100%.') },
+    { label: s1Txt('Net Delivery Rate (NDR)', 'معدل التسليم الصافي (NDR)'), value: ndrValue, unit: '%', delta: d.ndrRate ? d.ndrRate.delta : 0, color: 'orange', spark: [], iconType: 'orange', tooltip: tx('kpi.ndrRate.tooltip', 'NDR = delivered orders / net placed orders.') }
+  ];
+
   var newCards = [
-    { label: s1Txt('Total Sales', 'Ø¥Ø¬Ù…Ø§Ù„ÙŠ Ø§Ù„Ù…Ø¨ÙŠØ¹Ø§Øª'), value: d.totalSales ? d.totalSales.value : 0, unit: 'SAR', delta: d.totalSales ? d.totalSales.delta : 0, color: 'green', spark: [], iconType: 'green', tooltip: tx('kpi.totalSales.tooltip', 'Ø¥Ø¬Ù…Ø§Ù„ÙŠ Ù…Ø¨Ø§Ù„Øº Ø§Ù„Ù…Ø¨ÙŠØ¹Ø§Øª (Ù…Ø¬Ù…ÙˆØ¹ Ø§Ù„Ø³Ø¹Ø± Ø§Ù„ÙƒÙ„ÙŠ Ø¨Ø§Ù„Ø´Ø­Ù†) Ù„Ø¬Ù…ÙŠØ¹ Ø§Ù„Ø·Ù„Ø¨Ø§Øª ÙÙŠ Ø§Ù„ÙØªØ±Ø© Ø§Ù„Ø­Ø§Ù„ÙŠØ©ØŒ Ø¨Ø¹Ø¯ Ø¥ØµÙ„Ø§Ø­ ÙˆØªØ¹Ø¨Ø¦Ø© Ø§Ù„Ø®Ù„Ø§ÙŠØ§ Ø§Ù„Ù…ÙÙ‚ÙˆØ¯Ø©.') },
-    { label: s1Txt('Average Order Value (AOV)', 'Ù…ØªÙˆØ³Ø· Ù‚ÙŠÙ…Ø© Ø§Ù„Ø·Ù„Ø¨ (AOV)'), value: d.overallAov ? d.overallAov.value : 0, unit: 'SAR', delta: d.overallAov ? d.overallAov.delta : 0, color: 'blue', spark: [], iconType: 'blue', tooltip: tx('kpi.overallAov.tooltip', 'Ù…ØªÙˆØ³Ø· Ù‚ÙŠÙ…Ø© Ø§Ù„Ø·Ù„Ø¨ Ø§Ù„Ø¥Ø¬Ù…Ø§Ù„ÙŠ ÙˆÙŠØ­Ø³Ø¨ Ø¨Ù‚Ø³Ù…Ø© Ø¥Ø¬Ù…Ø§Ù„ÙŠ Ø§Ù„Ù…Ø¨ÙŠØ¹Ø§Øª Ø¹Ù„Ù‰ Ø¥Ø¬Ù…Ø§Ù„ÙŠ Ø§Ù„Ø·Ù„Ø¨Ø§Øª.') },
-    { label: s1Txt('Total Delivered Sales', 'Ø¥Ø¬Ù…Ø§Ù„ÙŠ Ø§Ù„Ù…Ø¨ÙŠØ¹Ø§Øª Ø§Ù„Ù…Ø³ØªÙ„Ù…Ø©'), value: d.totalDeliveredSales ? d.totalDeliveredSales.value : 0, unit: 'SAR', delta: d.totalDeliveredSales ? d.totalDeliveredSales.delta : 0, color: 'green', spark: [], iconType: 'green', tooltip: tx('kpi.totalDeliveredSales.tooltip', 'Ø¥Ø¬Ù…Ø§Ù„ÙŠ Ù…Ø¨Ø§Ù„Øº Ø§Ù„Ù…Ø¨ÙŠØ¹Ø§Øª (Ù…Ø¬Ù…ÙˆØ¹ Ø§Ù„Ø³Ø¹Ø± Ø§Ù„ÙƒÙ„ÙŠ Ø¨Ø§Ù„Ø´Ø­Ù†) Ù„Ù„Ø·Ù„Ø¨Ø§Øª Ø§Ù„Ù…Ø³ØªÙ„Ù…Ø© ÙÙ‚Ø· ÙÙŠ Ø§Ù„ÙØªØ±Ø© Ø§Ù„Ø­Ø§Ù„ÙŠØ©ØŒ Ù…ÙÙ„ØªØ±Ø© Ø¨Ø§Ù„ØªØ­Ø¯ÙŠØ« Ø§Ù„Ø£Ø®ÙŠØ±.') },
-    { label: s1Txt('Average Order Value (Delivered)', 'Ù…ØªÙˆØ³Ø· Ù‚ÙŠÙ…Ø© Ø§Ù„Ø·Ù„Ø¨ Ø§Ù„Ù…Ø³ØªÙ„Ù…'), value: d.deliveredAov ? d.deliveredAov.value : 0, unit: 'SAR', delta: d.deliveredAov ? d.deliveredAov.delta : 0, color: 'blue', spark: [], iconType: 'blue', tooltip: tx('kpi.deliveredAov.tooltip', 'Ù…ØªÙˆØ³Ø· Ù‚ÙŠÙ…Ø© Ø§Ù„Ø·Ù„Ø¨ Ø§Ù„Ù…Ø³ØªÙ„Ù… ÙˆÙŠØ­Ø³Ø¨ Ø¨Ù‚Ø³Ù…Ø© Ø¥Ø¬Ù…Ø§Ù„ÙŠ Ø§Ù„Ù…Ø¨ÙŠØ¹Ø§Øª Ø§Ù„Ù…Ø³ØªÙ„Ù…Ø© Ø¹Ù„Ù‰ Ø¹Ø¯Ø¯ Ø§Ù„Ø·Ù„Ø¨Ø§Øª Ø§Ù„Ù…Ø³ØªÙ„Ù…Ø©.') },
-    { label: s1Txt('Net ROAS', 'Ø§Ù„Ø¹Ø§Ø¦Ø¯ Ø§Ù„ØµØ§ÙÙŠ Ø¹Ù„Ù‰ Ø§Ù„Ø¥Ø¹Ù„Ø§Ù†'), value: netRoas.toFixed(2), unit: 'x', delta: netRoasDelta, color: 'purple', spark: [], iconType: 'purple', tooltip: tx('kpi.netRoas.tooltip', s1Txt('Net ROAS = delivered sales divided by ad spend. It uses only successfully delivered order revenue, so pending, canceled, and returned orders do not inflate ad performance.', 'Ø§Ù„Ø¹Ø§Ø¦Ø¯ Ø§Ù„ØµØ§ÙÙŠ Ø¹Ù„Ù‰ Ø§Ù„Ø¥Ø¹Ù„Ø§Ù† = Ù…Ø¨ÙŠØ¹Ø§Øª Ø§Ù„Ø·Ù„Ø¨Ø§Øª Ø§Ù„Ù…Ø³Ù„Ù…Ø© Ù…Ù‚Ø³ÙˆÙ…Ø© Ø¹Ù„Ù‰ Ø§Ù„Ø¥Ù†ÙØ§Ù‚ Ø§Ù„Ø¥Ø¹Ù„Ø§Ù†ÙŠ. ÙŠØ³ØªØ®Ø¯Ù… Ù…Ø¨ÙŠØ¹Ø§Øª Ø§Ù„Ø·Ù„Ø¨Ø§Øª Ø§Ù„Ù…Ø³Ù„Ù…Ø© ÙÙ‚Ø· Ø­ØªÙ‰ Ù„Ø§ ØªØ±ÙØ¹ Ø§Ù„Ø·Ù„Ø¨Ø§Øª Ø§Ù„Ù…Ø¹Ù„Ù‚Ø© Ø£Ùˆ Ø§Ù„Ù…Ù„ØºØ§Ø© Ø£Ùˆ Ø§Ù„Ù…Ø±ØªØ¬Ø¹Ø© Ù†ØªÙŠØ¬Ø© Ø§Ù„Ø¥Ø¹Ù„Ø§Ù†.')) },
-    { label: s1Txt('Delivery Rate (DR)', 'معدل التسليم (DR)'), value: accountDrPct, unit: '%', delta: 0, color: 'blue', spark: [], iconType: 'blue', tooltip: tx('kpi.dr.tooltip', s1Txt('Account-wide delivery rate based on delivered orders divided by active delivery base.', 'معدل التسليم على مستوى الحساب حسب الطلبات المسلمة مقارنة بقاعدة التسليم النشطة.')) }
+    { label: s1Txt('Total Sales', 'إجمالي المبيعات'), value: salesValue, unit: nativeCurrency, delta: d.totalSales ? d.totalSales.delta : 0, color: 'green', spark: [], iconType: 'green', tooltip: s1Txt('Total sales value from KHOD order amounts.', 'إجمالي قيمة المبيعات من مبالغ طلبات KHOD.') },
+    { label: s1Txt('AOV', 'متوسط قيمة الطلب'), value: overallAovValue, unit: nativeCurrency, delta: d.overallAov ? d.overallAov.delta : 0, color: 'blue', spark: [], iconType: 'blue', tooltip: tx('kpi.overallAov.tooltip', 'Average order value = total sales / total orders.') },
+    { label: s1Txt('Total Delivered Sales', 'إجمالي مبيعات الطلبات المسلمة'), value: deliveredSales, unit: nativeCurrency, delta: d.totalDeliveredSales ? d.totalDeliveredSales.delta : 0, color: 'green', spark: [], iconType: 'green', tooltip: s1Txt('Sales value for delivered orders only.', 'قيمة المبيعات للطلبات المسلمة فقط.') },
+    { label: s1Txt('Delivered AOV', 'متوسط قيمة الطلب المسلم'), value: deliveredAovValue, unit: nativeCurrency, delta: d.deliveredAov ? d.deliveredAov.delta : 0, color: 'blue', spark: [], iconType: 'blue', tooltip: tx('kpi.deliveredAov.tooltip', 'Delivered AOV = net delivered sales / delivered orders.') },
+    { label: s1Txt('Net ROAS', 'العائد الصافي على الإعلان'), value: netRoasUnavailable ? 0 : netRoas.toFixed(2), displayValue: netRoasUnavailable ? '—' : netRoas.toFixed(2), unit: 'x', delta: netRoasDelta, hideDelta: netRoasUnavailable, color: 'purple', spark: [], iconType: 'purple', tooltip: s1Txt('Net ROAS = delivered sales divided by ad spend.', 'العائد الصافي على الإعلان = مبيعات الطلبات المسلمة مقسومة على الإنفاق الإعلاني.') },
+    { label: s1Txt('Delivery Rate (DR)', 'معدل التسليم (DR)'), value: drValue, unit: '%', delta: d.drRate ? d.drRate.delta : 0, color: 'blue', spark: [], iconType: 'blue', tooltip: tx('kpi.drRate.tooltip', 'DR = delivered orders / confirmed orders.') }
   ];
 
-  /* â”€â”€ Health bar data â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€ */
+  var averageCommission = Number(roiLiveRaw.avgCommission != null ? roiLiveRaw.avgCommission : (roiData.avgCommission != null ? roiData.avgCommission : (roiData.averageCommission || 0))) || 0;
+  var accountOrders = window.DashboardOrderMetrics ? window.DashboardOrderMetrics.netOrders(roiLiveRaw) : totalOrders;
+  if (!(accountOrders > 0)) accountOrders = totalOrders;
+  var accountDeliveredOrders = roiLiveRaw.deliveredCount != null ? Number(roiLiveRaw.deliveredCount || 0) : (roiData.deliveredCount != null ? Number(roiData.deliveredCount || 0) : Math.round(accountOrders * ndrValue / 100));
+  var averageCommissionInTarget = convertCurrency(averageCommission, nativeCurrency, targetCurrency);
+  var accountCpa = accountOrders > 0 ? finalAdSpend / accountOrders : 0;
+  var accountBreakEvenCpa = averageCommissionInTarget * (ndrValue / 100);
+  var accountRevenue = accountDeliveredOrders * averageCommissionInTarget;
+  var accountNetProfit = accountRevenue - finalAdSpend;
+  var financialCards = [
+    { label: s1Txt('Average Commission', 'متوسط العمولة'), value: averageCommissionInTarget, unit: targetCurrency, color: 'green', iconType: 'green', tooltip: s1Txt('Average Commission = average KHOD marketer commission per delivered order.', 'متوسط العمولة = متوسط عمولة المسوق في KHOD لكل طلب مسلم.') },
+    { label: s1Txt('Account CPA', 'تكلفة الطلب للحساب'), value: accountCpa, unit: targetCurrency, color: 'purple', iconType: 'purple', tooltip: s1Txt('Account CPA = total spend divided by net total orders.', 'تكلفة الطلب للحساب = إجمالي الإنفاق مقسوما على صافي إجمالي الطلبات.') },
+    { label: s1Txt('Account Break-even CPA', 'تكلفة التعادل للحساب'), value: accountBreakEvenCpa, unit: targetCurrency, color: 'orange', iconType: 'orange', tooltip: s1Txt('Account Break-even CPA = average commission multiplied by account NDR.', 'تكلفة التعادل للحساب = متوسط العمولة مضروبا في معدل التسليم الصافي.') },
+    { label: s1Txt('Total Spend', 'إجمالي الإنفاق'), value: finalAdSpend, unit: targetCurrency, color: 'blue', iconType: 'blue', tooltip: s1Txt('Total Spend uses connected marketing spend or the current calculator spend.', 'إجمالي الإنفاق يستخدم الإنفاق التسويقي المتصل أو إنفاق الحاسبة الحالي.') },
+    { label: s1Txt('Total Revenue', 'إجمالي الإيرادات'), value: accountRevenue, unit: targetCurrency, color: 'green', iconType: 'green', tooltip: s1Txt('Total Revenue = delivered orders multiplied by average commission.', 'إجمالي الإيرادات = الطلبات المسلمة مضروبة في متوسط العمولة.') },
+    { label: s1Txt('Net Profit', 'صافي الربح'), value: accountNetProfit, unit: targetCurrency, color: accountNetProfit >= 0 ? 'green' : 'red', iconType: accountNetProfit >= 0 ? 'green' : 'red', tooltip: s1Txt('Net Profit = total revenue minus total spend.', 'صافي الربح = إجمالي الإيرادات ناقص إجمالي الإنفاق.') }
+  ];
+
+  var outcomeSalesTotal = deliveredSales + failedSales + canceledSales;
+  function outcomeShare(value) {
+    return outcomeSalesTotal > 0 ? parseFloat(((value / outcomeSalesTotal) * 100).toFixed(1)) : 0;
+  }
   var barSegments = [
-    { pct: d.health.earned.pct,   color: '#00e676', label: s1Txt('Earned', 'Ø¹Ù…ÙˆÙ„Ø© Ù…Ø­Ù‚Ù‚Ø©'),  sar: d.health.earned.sar   },
-    { pct: d.health.incoming.pct, color: '#f59e0b', label: s1Txt('Incoming', 'Ø¹Ù…ÙˆÙ„Ø© Ù‚Ø§Ø¯Ù…Ø©'),  sar: d.health.incoming.sar },
-    { pct: d.health.lost.pct,     color: '#ef4444', label: s1Txt('Lost', 'Ø¹Ù…ÙˆÙ„Ø© Ø¶Ø§Ø¦Ø¹Ø©'), sar: d.health.lost.sar     },
+    { pct: outcomeShare(deliveredSales), color: '#00e676', label: s1Txt('Delivered', 'مسلمة'), sar: deliveredSales },
+    { pct: outcomeShare(failedSales), color: '#ef4444', label: s1Txt('Failed', 'فاشلة'), sar: failedSales },
+    { pct: outcomeShare(canceledSales), color: '#94a3b8', label: s1Txt('Canceled', 'ملغاة'), sar: canceledSales },
   ];
-  var join1 = d.health.earned.pct;
-  var join2 = d.health.earned.pct + d.health.incoming.pct;
+  var join1 = barSegments[0].pct;
+  var join2 = barSegments[0].pct + barSegments[1].pct;
 
-  /* â”€â”€ formatSAR helper â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€ */
+  /* ── formatSAR helper ────────────────────────────────────────────────────── */
   var fmt = (ctx && ctx.formatSAR) ? ctx.formatSAR : (window.formatSAR || function (n) { return Number(n).toLocaleString('en-US'); });
   var trendPeriod = mountEl._s1TrendPeriod || '30';
   var cityMetric = mountEl._s1CityMetric || 'commission';
+  if (cityMetric === 'lost') cityMetric = 'failed';
 
   function getTrendSeries(period) {
     var trend = fullData.commissionTrend || {};
@@ -206,7 +235,7 @@ window.renderSection1 = function (mountEl, data, ctx) {
       return idx === pts.length - 1 || idx === Math.floor((pts.length - 1) / 2) || idx === Math.floor((pts.length - 1) * 0.75);
     }).map(function (p) {
       return '<circle cx="' + p.x.toFixed(1) + '" cy="' + p.y.toFixed(1) + '" r="5" fill="#fff" stroke="#3b82f6" stroke-width="2" style="filter:drop-shadow(0 0 6px #3b82f6)"/>';
-    }).join('');
+    }).join('') || '<div style="font-size:13px;color:rgba(255,255,255,0.55);font-weight:600;line-height:1.6;">' + s1Txt('No city performance data is available for this range.', 'لا توجد بيانات أداء للمدن في هذه الفترة.') + '</div>';
     return '<svg viewBox="0 0 ' + W + ' ' + H + '" preserveAspectRatio="none" style="width:100%;height:140px;display:block;margin-top:20px;overflow:visible;">' +
       '<defs><linearGradient id="trendGradS1" x1="0" y1="0" x2="0" y2="1">' +
         '<stop offset="0%" stop-color="#3b82f6" stop-opacity="0.25"/>' +
@@ -219,38 +248,46 @@ window.renderSection1 = function (mountEl, data, ctx) {
   }
 
   function statusBucket(status) {
-    var s = String(status || '').toLowerCase();
-    if (s.indexOf('delivered') !== -1 || s.indexOf('Ù…Ø³Ù„Ù…') !== -1 || s.indexOf('ØªØ³Ù„ÙŠÙ…') !== -1) return 'delivered';
-    if (s.indexOf('shipping') !== -1 || s.indexOf('confirmed') !== -1 || s.indexOf('processing') !== -1 || s.indexOf('Ø´Ø­Ù†') !== -1 || s.indexOf('Ù…Ø¤ÙƒØ¯') !== -1 || s.indexOf('Ù…Ø¹Ø§Ù„Ø¬Ø©') !== -1) return 'incoming';
-    if (s.indexOf('failed') !== -1 || s.indexOf('cancel') !== -1 || s.indexOf('Ù…Ù„Øº') !== -1 || s.indexOf('ÙØ´Ù„') !== -1 || s.indexOf('Ù…Ø±ØªØ¬Ø¹') !== -1) return 'lost';
+    if (window.KhodDashboardLogic) {
+      return window.KhodDashboardLogic.normalize(status).bucket;
+    }
+    var s = String(status || '').trim().toLowerCase();
+    if (s === 'delivered') return 'delivered';
+    if (s === 'failed') return 'failed';
+    if (s === 'canceled' || s === 'cancelled') return 'canceled';
+    if (s === 'pending' || s === 'confirmed' || s === 'processing' || s === 'under processing' || s === 'waiting' || s === 'shipping' || s === 'in shipping') return s === 'under processing' ? 'processing' : (s === 'in shipping' ? 'shipping' : s);
     return 'other';
   }
 
-  function lostBreakdownFromData() {
+  function outcomeBreakdownFromData() {
+    var statusRows = (fullData.pipeline && Array.isArray(fullData.pipeline.statusSummary) ? fullData.pipeline.statusSummary : null) ||
+      (Array.isArray(fullData.statusSummary) ? fullData.statusSummary : []);
+    var outcomeRows = statusRows.filter(function (row) { return row.bucket === 'failed' || row.bucket === 'canceled'; });
+    if (outcomeRows.length) {
+      var exactTotal = outcomeRows.reduce(function (sum, row) { return sum + Number(row.count || 0); }, 0);
+      if (!exactTotal) return [];
+      return outcomeRows.map(function (row) {
+        return {
+          id: row.bucket || row.id,
+          label: row.bucket === 'failed' ? s1Txt('Failed', 'فاشلة') : s1Txt('Canceled', 'ملغاة'),
+          count: Number(row.count || 0),
+          value: Number(row.salesValue || row.sales || 0),
+          color: row.color || (row.bucket === 'failed' ? '#ef4444' : '#94a3b8'),
+          pct: exactTotal ? Math.round((Number(row.count || 0) / exactTotal) * 100) : 0
+        };
+      });
+    }
     var orders = Array.isArray(fullData.orders) ? fullData.orders : [];
-    if (!orders.length && d.lostBreakdown) return d.lostBreakdown;
     var buckets = {
-      cancel: { label: raw('Customer Cancel'), pct: 0, count: 0, color: '#ef4444' },
-      stock: { label: raw('Out of Stock'), pct: 0, count: 0, color: '#f59e0b' },
-      delivery: { label: raw('Delivery Failed'), pct: 0, count: 0, color: '#3b82f6' },
-      returned: { label: raw('Returned'), pct: 0, count: 0, color: '#a855f7' }
+      failed: { label: s1Txt('Failed', 'فاشلة'), pct: 0, count: 0, color: '#ef4444' },
+      canceled: { label: s1Txt('Canceled', 'ملغاة'), pct: 0, count: 0, color: '#94a3b8' }
     };
     orders.forEach(function (order) {
-      if (statusBucket(order.orderStatus || order.status) !== 'lost') return;
-      var text = [
-        order.cancelReason,
-        order.reason,
-        order.notes,
-        order.orderStatus,
-        order.status
-      ].join(' ').toLowerCase();
-      if (/stock|inventory|Ù…Ø®Ø²ÙˆÙ†|Ù†ÙØ§Ø¯/.test(text)) buckets.stock.count += 1;
-      else if (/return|returned|Ù…Ø±ØªØ¬Ø¹|Ø±Ø§Ø¬Ø¹/.test(text)) buckets.returned.count += 1;
-      else if (/deliver|shipping|courier|ÙØ´Ù„|Ø´Ø­Ù†|ØªÙˆØµÙŠÙ„/.test(text)) buckets.delivery.count += 1;
-      else buckets.cancel.count += 1;
+      var bucket = statusBucket(order.orderStatus || order.status);
+      if (buckets[bucket]) buckets[bucket].count += 1;
     });
     var total = Object.keys(buckets).reduce(function (sum, key) { return sum + buckets[key].count; }, 0);
-    if (!total && d.lostBreakdown) return d.lostBreakdown;
+    if (!total) return [];
     return Object.keys(buckets).map(function (key) {
       var item = buckets[key];
       return Object.assign({}, item, { pct: total ? Math.round((item.count / total) * 100) : 0 });
@@ -263,13 +300,13 @@ window.renderSection1 = function (mountEl, data, ctx) {
     return cities.slice().map(function (city) {
       var commission = Number(city.earnedCommission || city.collected || city.sar || city.gap || 0);
       var orders = Number(city.count || city.orders || city.deliveredOrders || 0);
-      var lost = Number(city.lostCommission || city.gap || 0);
+      var failedCommission = Number(city.lostCommission || city.gap || 0);
       var delivered = Number(city.deliveredOrders || 0);
-      var value = metric === 'orders' ? orders : (metric === 'lost' ? lost : (metric === 'delivery' ? delivered : commission));
+      var value = metric === 'orders' ? orders : (metric === 'failed' ? failedCommission : (metric === 'delivery' ? delivered : commission));
       return {
         name: city.name,
         value: value,
-        unit: metric === 'orders' || metric === 'delivery' ? raw('orders') : 'SAR'
+        unit: metric === 'orders' || metric === 'delivery' ? raw('orders') : nativeCurrency
       };
     }).sort(function (a, b) { return b.value - a.value; }).slice(0, 3);
   }
@@ -278,25 +315,30 @@ window.renderSection1 = function (mountEl, data, ctx) {
     var context = window.getDashboardAiContext ? window.getDashboardAiContext({ data: fullData, section: 'overview' }) : null;
     if (context && context.localSummary && context.localSummary.message) return context.localSummary.message;
     if (d.insights && d.insights[0] && d.insights[0].text) return d.insights[0].text;
-    var lostPct = d.health && d.health.lost ? Number(d.health.lost.pct || 0) : 0;
-    if (lostPct >= 45) return 'Lost commission is high. Ask AI to identify the products and cities causing the most leakage.';
-    return 'Commission health is stable. Ask AI for the next best growth move from this dashboard snapshot.';
+    var unsuccessfulPct = outcomeShare(failedSales) + outcomeShare(canceledSales);
+    if (unsuccessfulPct >= 45) return s1Txt('Failed and canceled sales are high. Ask AI to identify the products and cities driving these outcomes.', 'مبيعات الطلبات الفاشلة والملغاة مرتفعة. اطلب من الذكاء تحليل المنتجات والمدن التي تقود هذه النتائج.');
+    return s1Txt('No unusual overview signal is available yet. Update the dashboard to generate live insights.', 'لا توجد إشارة غير معتادة في النظرة العامة حتى الآن. حدّث لوحة التحكم لتوليد رؤى مباشرة.');
   }
 
-  /* â”€â”€ Build KPI card row HTML â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€ */
+  /* ── Build KPI card row HTML ─────────────────────────────────────────────── */
   var cardsHtml = cards.map(function (c, i) {
-    return '<div class="fade-up" style="flex:1 1 0;min-width:0;animation-delay:' + (i * 100) + 'ms;">' +
-      window.kpiCard({ label: c.label, value: c.value, unit: c.unit, delta: c.delta, color: c.color, sparklineData: c.spark, iconType: c.iconType, tooltip: c.tooltip }) +
+    return '<div class="fade-up" style="flex:1 1 calc((100% - 70px) / 6);min-width:170px;animation-delay:' + (i * 100) + 'ms;">' +
+      window.kpiCard({ label: c.label, value: c.value, displayValue: c.displayValue, staticDisplay: c.staticDisplay, unit: c.unit, delta: c.delta, hideDelta: c.hideDelta, color: c.color, sparklineData: c.spark, iconType: c.iconType, tooltip: c.tooltip }) +
       '</div>';
   }).join('');
 
   var newCardsHtml = newCards.map(function (c, i) {
-    return '<div class="fade-up" style="flex:1 1 0;min-width:0;animation-delay:' + ((i + 4) * 100) + 'ms;">' +
-      window.kpiCard({ label: c.label, value: c.value, unit: c.unit, delta: c.delta, color: c.color, sparklineData: c.spark, iconType: c.iconType, tooltip: c.tooltip }) +
+    return '<div class="fade-up" style="flex:1 1 calc((100% - 70px) / 6);min-width:170px;animation-delay:' + ((i + 6) * 100) + 'ms;">' +
+      window.kpiCard({ label: c.label, value: c.value, displayValue: c.displayValue, staticDisplay: c.staticDisplay, unit: c.unit, delta: c.delta, hideDelta: c.hideDelta, color: c.color, sparklineData: c.spark, iconType: c.iconType, tooltip: c.tooltip }) +
+      '</div>';
+  }).join('');
+  var financialCardsHtml = financialCards.map(function (c, i) {
+    return '<div class="fade-up" style="flex:1 1 calc((100% - 70px) / 6);min-width:170px;animation-delay:' + ((i + 12) * 100) + 'ms;">' +
+      window.kpiCard({ label: c.label, value: c.value, unit: c.unit, delta: 0, hideDelta: true, color: c.color, sparklineData: [], iconType: c.iconType, tooltip: c.tooltip }) +
       '</div>';
   }).join('');
 
-  /* â”€â”€ Build health bar segments HTML â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€ */
+  /* ── Build health bar segments HTML ─────────────────────────────────────── */
   var segmentsHtml = barSegments.map(function (s, i) {
     return '<div class="health-seg" data-pct="' + s.pct + '" style="' +
       'width:0%;height:100%;flex-shrink:0;' +
@@ -315,7 +357,7 @@ window.renderSection1 = function (mountEl, data, ctx) {
   var sarLabelsHtml = barSegments.map(function (s) {
     return '<div style="width:' + s.pct + '%;text-align:center;white-space:nowrap;display:flex;flex-direction:column;align-items:center;">' +
       '<div style="font-size:17px;font-weight:800;color:' + s.color + ';line-height:1.2;font-family:\'DM Mono\', monospace;white-space:nowrap;">' +
-        fmt(s.sar) + ' <span style="font-size:13px;font-weight:700;">SAR</span>' +
+        fmt(s.sar) +
       '</div>' +
       '<div style="font-size:12px;color:rgba(255,255,255,0.42);margin-top:5px;font-weight:500; font-family:\'Tajawal\', sans-serif;white-space:nowrap;">' +
         s.label +
@@ -323,8 +365,8 @@ window.renderSection1 = function (mountEl, data, ctx) {
     '</div>';
   }).join('');
 
-  /* â”€â”€ Dynamic Performance evaluation based on lost commission percentage â”€â”€ */
-  var lostPct = (d.health && d.health.lost) ? Number(d.health.lost.pct || 0) : 0;
+  /* Dynamic performance evaluation based on Failed and Canceled sales share. */
+  var lostPct = outcomeShare(failedSales) + outcomeShare(canceledSales);
   var perfStatus = 'excellent';
   if (lostPct >= 50) {
     perfStatus = 'critical';
@@ -335,8 +377,8 @@ window.renderSection1 = function (mountEl, data, ctx) {
   var perfColor, perfTitle, perfSub, perfIcon;
   if (perfStatus === 'critical') {
     perfColor = '#ef4444';
-    perfTitle = s1Txt('Needs Attention', 'ØªØ­Ø°ÙŠØ±: Ø£Ø¯Ø§Ø¡ Ø­Ø±Ø¬');
-    perfSub = s1Txt('High leakage rate', 'Ù†Ø³Ø¨Ø© Ø¹Ù…ÙˆÙ„Ø© Ø¶Ø§Ø¦Ø¹Ø© Ù…Ø±ØªÙØ¹Ø©');
+    perfTitle = s1Txt('Needs Attention', 'تحذير: أداء حرج');
+    perfSub = s1Txt('High failed/canceled sales share', 'نسبة مبيعات فاشلة وملغاة مرتفعة');
     perfIcon = '<svg viewBox="0 0 24 24" fill="none" stroke="' + perfColor + '" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" width="30" height="30">' +
       '<path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/>' +
       '<line x1="12" y1="9" x2="12" y2="13"/>' +
@@ -344,8 +386,8 @@ window.renderSection1 = function (mountEl, data, ctx) {
       '</svg>';
   } else if (perfStatus === 'warning') {
     perfColor = '#f59e0b';
-    perfTitle = s1Txt('Fair Performance', 'Ø£Ø¯Ø§Ø¡ Ù…Ù‚Ø¨ÙˆÙ„');
-    perfSub = s1Txt('Review leakage causes', 'Ø±Ø§Ø¬Ø¹ Ø£Ø³Ø¨Ø§Ø¨ Ø§Ù„ÙÙ‚Ø¯');
+    perfTitle = s1Txt('Fair Performance', 'أداء مقبول');
+    perfSub = s1Txt('Review failed and canceled orders', 'راجع الطلبات الفاشلة والملغاة');
     perfIcon = '<svg viewBox="0 0 24 24" fill="none" stroke="' + perfColor + '" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" width="30" height="30">' +
       '<path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/>' +
       '<path d="M12 8v4"/>' +
@@ -353,57 +395,56 @@ window.renderSection1 = function (mountEl, data, ctx) {
       '</svg>';
   } else {
     perfColor = '#00e676';
-    perfTitle = s1Txt('Excellent Performance', 'Ø£Ø¯Ø§Ø¡ Ù…Ù…ØªØ§Ø²');
-    perfSub = s1Txt('Keep it up!', 'Ø§Ø³ØªÙ…Ø± Ø¹Ù„Ù‰ Ù‡Ø°Ø§ Ø§Ù„Ù…Ù†ÙˆØ§Ù„!');
+    perfTitle = s1Txt('Excellent Performance', 'أداء ممتاز');
+    perfSub = s1Txt('Keep it up!', 'استمر على هذا المنوال!');
     perfIcon = '<svg viewBox="0 0 24 24" fill="none" stroke="' + perfColor + '" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" width="30" height="30">' +
       '<path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/>' +
       '<path d="m9 11 2 2 4-4"/>' +
       '</svg>';
   }
 
-  /* â”€â”€ Interactive Trend Chart â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€ */
+  /* ── Interactive Trend Chart ──────────────────────────────────────────────── */
   var trendSvg = trendSvgFor(trendPeriod);
 
   var trendWidgetHtml = '<div style="background:#0d1220;border:1px solid rgba(255,255,255,0.07);border-radius:16px;padding:24px;display:flex;flex-direction:column;flex:1;">' +
     '<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:10px;">' +
-      '<div style="font-size:16px;font-weight:800;color:#fff;">Profits & Orders Trend</div>' +
+      '<div style="font-size:16px;font-weight:800;color:#fff;">' + s1Txt('Commission & Orders Trend', 'اتجاه العمولة والطلبات') + '</div>' +
       '<div id="s1-trend-select" class="s1-select-wrap" style="width:138px;"></div>' +
     '</div>' +
     '<div id="s1-trend-chart">' + trendSvg + '</div>' +
   '</div>';
 
-  /* â”€â”€ AI Insights â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€ */
+  /* ── AI Insights ─────────────────────────────────────────────────────────── */
   var insightText = overviewInsight();
   var insightsHtml = '<div style="background:linear-gradient(145deg, rgba(59,130,246,0.1), rgba(168,85,247,0.05));border:1px solid rgba(59,130,246,0.2);border-radius:16px;padding:20px;position:relative;overflow:hidden;flex:1;display:flex;flex-direction:column;">' +
     '<div style="position:absolute;top:-20px;right:-20px;width:120px;height:120px;background:#3b82f6;filter:blur(50px);opacity:0.25;border-radius:50%;"></div>' +
     '<div style="display:flex;align-items:center;gap:10px;margin-bottom:14px;z-index:2;direction:ltr;">' +
-      '<span style="color:#a855f7;font-size:20px;filter:drop-shadow(0 0 6px rgba(168,85,247,0.5));">âœ¦</span>' +
-      '<span style="font-size:16px;font-weight:800;color:#fff;">AI Insights</span>' +
+      '<span style="color:#a855f7;font-size:20px;filter:drop-shadow(0 0 6px rgba(168,85,247,0.5));">✦</span>' +
+      '<span style="font-size:16px;font-weight:800;color:#fff;">' + s1Txt('AI Insights', 'رؤى الذكاء') + '</span>' +
     '</div>' +
     '<div style="font-size:13px;color:rgba(255,255,255,0.75);line-height:1.7;z-index:2;flex:1;font-weight:500;direction:ltr;">' +
       insightText +
     '</div>' +
     '<div style="margin-top:16px;z-index:2;direction:ltr;">' +
-      '<button id="s1-ask-ai-btn" type="button" style="background:rgba(59,130,246,0.15);color:#3b82f6;border:1px solid rgba(59,130,246,0.3);border-radius:8px;padding:6px 12px;font-size:11px;font-weight:700;cursor:pointer;transition:all 0.2s ease;height:30px;min-height:30px;" onmouseover="this.style.background=\'rgba(59,130,246,0.25)\'" onmouseout="this.style.background=\'rgba(59,130,246,0.15)\'">Ask AI</button>' +
+      '<button id="s1-ask-ai-btn" type="button" style="background:rgba(59,130,246,0.15);color:#3b82f6;border:1px solid rgba(59,130,246,0.3);border-radius:8px;padding:6px 12px;font-size:11px;font-weight:700;cursor:pointer;transition:all 0.2s ease;height:30px;min-height:30px;" onmouseover="this.style.background=\'rgba(59,130,246,0.25)\'" onmouseout="this.style.background=\'rgba(59,130,246,0.15)\'">' + s1Txt('Ask AI', 'اسأل الذكاء') + '</button>' +
     '</div>' +
   '</div>';
 
-  /* â”€â”€ Lost Commission Breakdown â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€ */
+  /* Failed and Canceled remain distinct KHOD outcomes. */
+  var lostArr = outcomeBreakdownFromData() || [];
+  var donutOffset = 0;
+  var donutSegments = lostArr.map(function (item) {
+    var length = Math.max(0, Math.min(251, (Number(item.pct || 0) / 100) * 251));
+    var segment = '<circle cx="50" cy="50" r="40" fill="none" stroke="' + item.color + '" stroke-width="12" stroke-dasharray="' + length + ' 251" stroke-dashoffset="-' + donutOffset + '"/>';
+    donutOffset += length;
+    return segment;
+  }).join('');
   var donutSvg = '<svg viewBox="0 0 100 100" width="90" height="90" style="transform:rotate(-90deg);overflow:visible;">' +
     '<circle cx="50" cy="50" r="40" fill="none" stroke="rgba(255,255,255,0.05)" stroke-width="12"/>' +
-    '<circle cx="50" cy="50" r="40" fill="none" stroke="#ef4444" stroke-width="12" stroke-dasharray="113 251" stroke-dashoffset="0" style="filter:drop-shadow(0 0 4px rgba(239,68,68,0.5))"/>' +
-    '<circle cx="50" cy="50" r="40" fill="none" stroke="#f59e0b" stroke-width="12" stroke-dasharray="75 251" stroke-dashoffset="-113"/>' +
-    '<circle cx="50" cy="50" r="40" fill="none" stroke="#3b82f6" stroke-width="12" stroke-dasharray="38 251" stroke-dashoffset="-188"/>' +
-    '<circle cx="50" cy="50" r="40" fill="none" stroke="#a855f7" stroke-width="12" stroke-dasharray="25 251" stroke-dashoffset="-226"/>' +
+    donutSegments +
   '</svg>';
 
-  var lostArr = lostBreakdownFromData() || [
-    { label: 'Customer Cancel', pct: 45, color: '#ef4444' },
-    { label: 'Out of Stock', pct: 30, color: '#f59e0b' },
-    { label: 'Delivery Failed', pct: 15, color: '#3b82f6' },
-    { label: 'Returned', pct: 10, color: '#a855f7' }
-  ];
-  var breakdownListHtml = lostArr.map(function(item) {
+  var breakdownListHtml = lostArr.length ? lostArr.map(function(item) {
     return '<div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:10px;">' +
       '<div style="display:flex;align-items:center;gap:10px;">' +
         '<div style="width:10px;height:10px;border-radius:50%;background:' + item.color + ';box-shadow:0 0 8px ' + item.color + '88;"></div>' +
@@ -411,28 +452,24 @@ window.renderSection1 = function (mountEl, data, ctx) {
       '</div>' +
       '<div style="font-size:14px;font-weight:800;color:#fff;">' + item.pct + '%</div>' +
     '</div>';
-  }).join('');
+  }).join('') : '<div style="font-size:13px;color:rgba(255,255,255,0.55);font-weight:600;line-height:1.6;">' + s1Txt('No failed or canceled orders are available for this range.', 'لا توجد طلبات فاشلة أو ملغاة في هذه الفترة.') + '</div>';
 
   var lostWidgetHtml = '<div style="background:#0d1220;border:1px solid rgba(255,255,255,0.07);border-radius:16px;padding:24px;display:flex;align-items:center;gap:32px;height:100%;direction:ltr;">' +
     '<div style="position:relative;flex-shrink:0;">' +
       donutSvg +
       '<div style="position:absolute;inset:0;display:flex;align-items:center;justify-content:center;flex-direction:column;">' +
-        '<div style="font-size:11px;color:rgba(255,255,255,0.4);font-weight:600;">Lost</div>' +
+        '<div style="font-size:11px;color:rgba(255,255,255,0.4);font-weight:600;">' + s1Txt('Outcomes', 'النتائج') + '</div>' +
       '</div>' +
     '</div>' +
     '<div style="flex:1;">' +
-      '<div style="font-size:16px;font-weight:800;color:#fff;margin-bottom:16px;">Lost Commission Analysis</div>' +
+      '<div style="font-size:16px;font-weight:800;color:#fff;margin-bottom:16px;">' + s1Txt('Failed & Canceled Orders', 'الطلبات الفاشلة والملغاة') + '</div>' +
       breakdownListHtml +
     '</div>' +
   '</div>';
 
-  /* â”€â”€ Top Contributors â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€ */
-  var topArr = topCities(cityMetric) || [
-    { name: 'Riyadh', value: 12500, unit: 'SAR' },
-    { name: 'Jeddah', value: 8300, unit: 'SAR' },
-    { name: 'Dammam', value: 5400, unit: 'SAR' }
-  ];
-  var topListHtml = topArr.map(function(item, index) {
+  /* ── Top Contributors ────────────────────────────────────────────────────── */
+  var topArr = topCities(cityMetric) || [];
+  var topListHtml = topArr.length ? topArr.map(function(item, index) {
     var colors = ['#00e676', '#f59e0b', '#3b82f6'];
     var c = colors[index] || '#fff';
     return '<div style="display:flex;align-items:center;justify-content:space-between;padding:12px 14px;background:rgba(255,255,255,0.02);border-radius:10px;margin-bottom:10px;border:1px solid rgba(255,255,255,0.02);">' +
@@ -442,22 +479,23 @@ window.renderSection1 = function (mountEl, data, ctx) {
       '</div>' +
       '<div style="font-size:14px;font-weight:800;color:' + c + ';font-family:\'DM Mono\', monospace;">' + fmt(item.value) + ' <span style="font-size:11px;font-weight:700;">' + item.unit + '</span></div>' +
     '</div>';
-  }).join('');
+  }).join('') : '<div style="font-size:13px;color:rgba(255,255,255,0.55);font-weight:600;line-height:1.6;">' + s1Txt('No city performance data is available for this range.', 'لا توجد بيانات أداء للمدن في هذه الفترة.') + '</div>';
 
   var topWidgetHtml = '<div style="background:#0d1220;border:1px solid rgba(255,255,255,0.07);border-radius:16px;padding:24px;height:100%;direction:ltr;">' +
     '<div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:20px;">' +
-      '<div style="font-size:16px;font-weight:800;color:#fff;">Top Performing Cities</div>' +
+      '<div style="font-size:16px;font-weight:800;color:#fff;">' + s1Txt('Top Performing Cities', 'أفضل المدن أداءً') + '</div>' +
       '<div id="s1-city-select" class="s1-select-wrap" style="width:132px;"></div>' +
     '</div>' +
     '<div id="s1-city-list">' + topListHtml + '</div>' +
   '</div>';
 
-  /* â”€â”€ Goal Tracker â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€ */
+  /* ── Goal Tracker ────────────────────────────────────────────────────────── */
   var activeAccId = (window.getActiveAccountId ? window.getActiveAccountId() : '__all__') || '__all__';
-  var savedTarget = localStorage.getItem('khod_commission_goal_target_' + activeAccId);
+  var goalStorageKey = 'khod_commission_goal_target_' + activeAccId;
+  var savedTarget = localStorage.getItem(goalStorageKey) || localStorage.getItem('taager_commission_goal_target_' + activeAccId);
   var targetVal = savedTarget ? parseInt(savedTarget, 10) : 0;
   if (!targetVal || isNaN(targetVal) || targetVal <= 0) {
-    var currentVal = d.earnedCommission.value || 0;
+    var currentVal = commissionValue;
     if (currentVal <= 10000) {
       targetVal = 10000;
     } else if (currentVal <= 25000) {
@@ -472,7 +510,7 @@ window.renderSection1 = function (mountEl, data, ctx) {
       targetVal = Math.ceil(currentVal / 100000) * 100000;
     }
   }
-  var goalObj = { current: d.earnedCommission.value || 0, target: targetVal };
+  var goalObj = { current: commissionValue, target: targetVal };
   var goalPct = Math.min(100, Math.round((goalObj.current / goalObj.target) * 100));
   var dashOffset = 251 - (251 * goalPct / 100);
   var goalSvg = '<svg viewBox="0 0 100 100" width="76" height="76" style="transform:rotate(-90deg);overflow:visible;">' +
@@ -488,16 +526,16 @@ window.renderSection1 = function (mountEl, data, ctx) {
       '</div>' +
     '</div>' +
     '<div style="flex:1;">' +
-      '<div style="font-size:15px;font-weight:800;color:#fff;margin-bottom:6px;">' + s1Txt('Monthly Commission Goal', 'Ù‡Ø¯Ù Ø§Ù„Ø¹Ù…ÙˆÙ„Ø© Ø§Ù„Ø´Ù‡Ø±ÙŠ') + '</div>' +
+      '<div style="font-size:15px;font-weight:800;color:#fff;margin-bottom:6px;">' + s1Txt('Monthly Commission Goal', 'هدف العمولة الشهري') + '</div>' +
       '<div style="font-size:13px;color:rgba(255,255,255,0.5);font-weight:500;display:flex;align-items:center;gap:6px;flex-wrap:wrap;">' +
-        '<span>' + s1Txt('Target:', 'Ø§Ù„Ù‡Ø¯Ù:') + '</span>' +
-        '<span id="s1-goal-target" style="color:#fff;font-weight:800;font-family:\'DM Mono\', monospace;cursor:pointer;border-bottom:1px dashed rgba(255,255,255,0.4);padding-bottom:1px;transition:color 0.2s;" onmouseover="this.style.color=\'#00e676\'" onmouseout="this.style.color=\'#fff\'" title="' + s1Txt('Click to edit goal', 'Ø§Ù†Ù‚Ø± Ù„ØªØ¹Ø¯ÙŠÙ„ Ø§Ù„Ù‡Ø¯Ù') + '">' + fmt(goalObj.target) + ' SAR</span>' +
-        '<span style="color:rgba(255,255,255,0.3);font-size:11px;direction:ltr;">(Remaining: <span style="color:#00e676;font-weight:800;" id="s1-goal-remaining">' + fmt(Math.max(0, goalObj.target - goalObj.current)) + ' SAR</span>)</span>' +
+        '<span>' + s1Txt('Target:', 'الهدف:') + '</span>' +
+        '<span id="s1-goal-target" style="color:#fff;font-weight:800;font-family:\'DM Mono\', monospace;cursor:pointer;border-bottom:1px dashed rgba(255,255,255,0.4);padding-bottom:1px;transition:color 0.2s;" onmouseover="this.style.color=\'#00e676\'" onmouseout="this.style.color=\'#fff\'" title="' + s1Txt('Click to edit goal', 'انقر لتعديل الهدف') + '">' + fmt(goalObj.target) + '</span>' +
+        '<span style="color:rgba(255,255,255,0.3);font-size:11px;direction:ltr;">(Remaining: <span style="color:#00e676;font-weight:800;" id="s1-goal-remaining">' + fmt(Math.max(0, goalObj.target - goalObj.current)) + '</span>)</span>' +
       '</div>' +
     '</div>' +
   '</div>';
 
-  /* â”€â”€ Full section HTML â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€ */
+  /* ── Full section HTML ───────────────────────────────────────────────────── */
   var html =
     '<div class="dash-scroll" style="flex:1;overflow-y:auto;display:flex;flex-direction:column;background:#080b12; " id="s1-root">' +
 
@@ -510,11 +548,11 @@ window.renderSection1 = function (mountEl, data, ctx) {
           /* Title block (visual right in RTL = first child) */
           '<div id="s1-title-block">' +
             '<h1 id="s1-h1" style="font-size:clamp(20px,2.5vw,28px);font-weight:900;color:#fff;margin:0;line-height:1.15;opacity:0;transform:translateY(-8px);transition:opacity 0.4s ease,transform 0.4s ease;">' +
-              s1Txt('Performance Overview', 'Ù†Ø¸Ø±Ø© Ø¹Ø§Ù…Ø© Ø¹Ù„Ù‰ Ø§Ù„Ø£Ø¯Ø§Ø¡') +
+              s1Txt('Performance Overview', 'نظرة عامة على الأداء') +
             '</h1>' +
             '<p id="s1-subtitle" style="font-size:13px;color:rgba(255,255,255,0.4);margin:7px 0 0;display:flex;align-items:center;gap:6px;opacity:0;transition:opacity 0.4s ease 0.12s;">' +
-              s1Txt('Comprehensive overview of your store performance on Khod Whaat platform', 'Ù…Ù„Ø®Øµ Ø´Ø§Ù…Ù„ Ù„Ø£Ø¯Ø§Ø¡ Ù…ØªØ¬Ø±Ùƒ Ø¹Ù„Ù‰ Ù…Ù†ØµØ© Khod Whaat') +
-              '<span style="color:#3b82f6;font-size:15px;margin-right:6px;filter:drop-shadow(0 0 4px rgba(59,130,246,0.5));">âœ¦</span>' +
+              s1Txt('Comprehensive overview of your KHOD order performance', 'ملخص شامل لأداء طلباتك على KHOD') +
+              '<span style="color:#3b82f6;font-size:15px;margin-right:6px;filter:drop-shadow(0 0 4px rgba(59,130,246,0.5));">✦</span>' +
             '</p>' +
           '</div>' +
 
@@ -525,7 +563,7 @@ window.renderSection1 = function (mountEl, data, ctx) {
             '<svg width="12" height="8" viewBox="0 0 20 12" fill="none" style="flex-shrink:0;">' +
               '<polyline points="1,11 5,5 9,9 13,2 17,6 19,4" stroke="#3b82f6" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" fill="none"/>' +
             '</svg>' +
-            s1Txt('vs previous month', 'Ù…Ù‚Ø§Ø±Ù†Ø© Ù…Ø¹ Ø§Ù„Ø´Ù‡Ø± Ø§Ù„Ø³Ø§Ø¨Ù‚') +
+            s1Txt('vs previous month', 'مقارنة مع الشهر السابق') +
           '</span>' +
 
         '</div>' +
@@ -539,11 +577,15 @@ window.renderSection1 = function (mountEl, data, ctx) {
         '<div class="s1-kpi-row" style="display:flex;flex-wrap:wrap;gap:12px;margin-bottom:16px;">' +
           newCardsHtml +
         '</div>' +
+        /* Financial KPI cards row */
+        '<div class="s1-kpi-row" style="display:flex;flex-wrap:wrap;gap:12px;margin-bottom:16px;">' +
+          financialCardsHtml +
+        '</div>' +
 
         /* New Grid Layout */
         '<div class="fade-up" style="display:flex;flex-direction:column;gap:18px;margin-bottom:18px;animation-delay:200ms;">' +
 
-          /* Row 1: Commission Health Index & AI Insights side-by-side (stacks on small screens) */
+          /* Row 1: KHOD sales outcomes and AI Insights side-by-side. */
           '<div style="display:flex;flex-wrap:wrap;gap:18px;">' +
             '<div style="flex:2;min-width:280px;display:flex;">' +
               '<div class="s1-health-row" style="background:#0d1220;border:1px solid rgba(255,255,255,0.07);border-radius:16px;padding:24px 28px;direction:ltr;display:flex;flex-wrap:wrap;align-items:center;gap:32px;width:100%;">' +
@@ -556,12 +598,12 @@ window.renderSection1 = function (mountEl, data, ctx) {
                     '<svg width="26" height="16" viewBox="0 0 28 16" fill="none">' +
                       '<polyline points="1,8 4,2 8,14 12,4 16,12 20,2 24,10 27,7" stroke="#3b82f6" stroke-width="2.2" fill="none" stroke-linecap="round" stroke-linejoin="round"/>' +
                     '</svg>' +
-                    '<span style="font-size:18px;font-weight:800;color:#fff;">' + s1Txt('Commission Health Index', 'Ù…Ø¤Ø´Ø± ØµØ­Ø© Ø§Ù„Ø¹Ù…ÙˆÙ„Ø©') + '</span>' +
+                    '<span style="font-size:18px;font-weight:800;color:#fff;">' + s1Txt('Sales Outcome Distribution', 'توزيع نتائج المبيعات') + '</span>' +
                   '</div>' +
 
                   /* Subtitle */
                   '<div class="health-subtitle" style="font-size:13px;color:rgba(255,255,255,0.45);margin-bottom:18px;">' +
-                    s1Txt('Distribution of commission between earned, incoming, and lost', 'ØªÙˆØ²ÙŠØ¹ Ø§Ù„Ø¹Ù…ÙˆÙ„Ø© Ø¨ÙŠÙ† Ø§Ù„Ù…Ø­Ù‚Ù‚Ø© ÙˆØ§Ù„Ù‚Ø§Ø¯Ù…Ø© ÙˆØ§Ù„Ø¶Ø§Ø¦Ø¹Ø©') +
+                    s1Txt('Delivered, Failed, and Canceled sales remain separate', 'تظهر مبيعات الطلبات المسلمة والفاشلة والملغاة بشكل منفصل') +
                   '</div>' +
 
                   /* Bar */
@@ -572,14 +614,14 @@ window.renderSection1 = function (mountEl, data, ctx) {
                       segmentsHtml +
                     '</div>' +
 
-                    /* Spark dot â€” green|orange boundary */
+                    /* Spark dot — green|orange boundary */
                     '<div id="s1-dot1" style="position:absolute;left:' + join1 + '%;top:50%;transform:translate(-50%,-50%);' +
                       'width:10px;height:10px;border-radius:50%;background:#fff;z-index:4;' +
                       'box-shadow:0 0 10px 4px #f59e0bdd,0 0 22px 10px #f59e0b55;' +
                       'opacity:0;transform:translate(-50%,-50%) scale(0);' +
                       'transition:opacity 0.3s ease 0.35s,transform 0.3s ease 0.35s;"></div>' +
 
-                    /* Spark dot â€” orange|red boundary */
+                    /* Spark dot — orange|red boundary */
                     '<div id="s1-dot2" style="position:absolute;left:' + join2 + '%;top:50%;transform:translate(-50%,-50%);' +
                       'width:10px;height:10px;border-radius:50%;background:#fff;z-index:4;' +
                       'box-shadow:0 0 10px 4px #ef4444dd,0 0 22px 10px #ef444455;' +
@@ -589,15 +631,15 @@ window.renderSection1 = function (mountEl, data, ctx) {
                   '</div>' +
 
                   /* Legend Grid (Responsive & non-overlapping) */
-                  '<div style="display:flex;flex-wrap:wrap;gap:16px;justify-content:space-between;margin-top:14px;">' +
+                  '<div class="health-legend-grid" style="display:flex;flex-wrap:wrap;gap:12px 18px;justify-content:space-between;margin-top:14px;">' +
                     barSegments.map(function (s) {
-                      return '<div style="display:flex;align-items:center;gap:8px;min-width:120px;flex:1;">' +
+                      return '<div class="health-legend-item" style="display:flex;align-items:center;gap:8px;min-width:112px;flex:1;">' +
                         '<div style="width:12px;height:12px;border-radius:3px;background:' + s.color + ';box-shadow:0 0 6px ' + s.color + '88;flex-shrink:0;"></div>' +
                         '<div style="display:flex;flex-direction:column;">' +
-                          '<span style="font-size:12px;color:rgba(255,255,255,0.5);font-weight:500;">' + s.label + '</span>' +
-                          '<span style="font-size:10px;font-weight:800;color:#fff;font-family:\'DM Mono\', monospace;margin-top:2px;white-space:nowrap;">' +
-                            fmt(s.sar) + ' <span style="font-size:8px;color:rgba(255,255,255,0.4);">SAR</span>' +
-                            ' <span style="font-size:9px;font-weight:700;color:' + s.color + ';margin-left:4px;">(' + s.pct + '%)</span>' +
+                          '<span class="health-legend-label" style="font-size:12px;color:rgba(255,255,255,0.5);font-weight:500;">' + s.label + '</span>' +
+                          '<span class="health-legend-value" style="font-size:11px;font-weight:700;color:#fff;font-family:\'DM Mono\', monospace;margin-top:2px;white-space:nowrap;line-height:1.2;">' +
+                            fmt(s.sar) +
+                            ' <span class="health-legend-pct" style="font-size:9.5px;font-weight:700;color:' + s.color + ';margin-left:4px;">(' + s.pct + '%)</span>' +
                           '</span>' +
                         '</div>' +
                       '</div>';
@@ -606,7 +648,7 @@ window.renderSection1 = function (mountEl, data, ctx) {
 
                 '</div>' +
 
-                /* Badge â€” Dynamic Performance */
+                /* Badge — Dynamic Performance */
                 '<div style="flex:1;min-width:140px;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:10px;">' +
                   '<div style="width:62px;height:62px;border-radius:14px;background:' + perfColor + '1f;border:1.5px solid ' + perfColor + '59;box-shadow:0 0 22px 7px ' + perfColor + '4d;display:flex;align-items:center;justify-content:center;">' +
                     perfIcon +
@@ -642,7 +684,7 @@ window.renderSection1 = function (mountEl, data, ctx) {
 
         /* Footnote */
         '<p style="text-align:center;font-size:11px;color:rgba(255,255,255,0.35);margin-top:22px;display:flex;align-items:center;justify-content:center;gap:6px; ">' +
-          s1Txt('Earned commission is calculated from delivered orders only', 'ØªØ­Ø³Ø¨ Ø§Ù„Ø¹Ù…ÙˆÙ„Ø© Ø§Ù„Ù…Ø­Ù‚Ù‚Ø© Ù…Ù† Ø§Ù„Ø·Ù„Ø¨Ø§Øª Ø§Ù„ØªÙŠ ØªÙ… ØªØ³Ù„ÙŠÙ…Ù‡Ø§ ÙÙ‚Ø·') +
+          s1Txt('Sales, COD, and commission use KHOD order fields; source labels are not statuses', 'تستخدم المبيعات والتحصيل والعمولة حقول طلبات KHOD، وتسميات المصدر ليست حالات') +
           '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#3b82f6" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" style="display:inline-block;vertical-align:middle;margin-right:4px;">' +
             '<circle cx="12" cy="12" r="10"/>' +
             '<line x1="12" y1="16" x2="12" y2="12"/>' +
@@ -653,10 +695,10 @@ window.renderSection1 = function (mountEl, data, ctx) {
       '</div>' + /* /body */
     '</div>'; /* /s1-root */
 
-  /* â”€â”€ Inject HTML â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€ */
+  /* ── Inject HTML ─────────────────────────────────────────────────────────── */
   mountEl.innerHTML = html;
 
-  /* â”€â”€ Post-injection wiring â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€ */
+  /* ── Post-injection wiring ───────────────────────────────────────────────── */
 
   /* 1. Animate h1 + subtitle (CSS transition, trigger by adding opacity) */
   requestAnimationFrame(function () {
@@ -687,7 +729,7 @@ window.renderSection1 = function (mountEl, data, ctx) {
     }).join('');
   }
 
-  var dropdown = window.renderKhodDropdown || window.renderCustomSelect;
+  var dropdown = window.renderTaagerDropdown || window.renderCustomSelect;
   if (typeof dropdown === 'function') {
     var trendWrap = mountEl.querySelector('#s1-trend-select');
     if (trendWrap) {
@@ -700,28 +742,28 @@ window.renderSection1 = function (mountEl, data, ctx) {
         trendPeriod = value;
         var chart = mountEl.querySelector('#s1-trend-chart');
         if (chart) chart.innerHTML = trendSvgFor(value);
-      }, { ariaLabel: 'Trend period' });
+      }, { ariaLabel: s1Txt('Trend period', 'فترة الاتجاه') });
     }
     var cityWrap = mountEl.querySelector('#s1-city-select');
     if (cityWrap) {
       dropdown(cityWrap, [
-        { value: 'commission', label: 'Commissions' },
-        { value: 'orders', label: 'Orders' },
-        { value: 'delivery', label: 'Delivered' },
-        { value: 'lost', label: 'Lost' }
+        { value: 'commission', label: s1Txt('Commission', 'العمولة') },
+        { value: 'orders', label: s1Txt('Orders', 'الطلبات') },
+        { value: 'delivery', label: s1Txt('Delivered', 'المسلمة') },
+        { value: 'failed', label: s1Txt('Failed Commission', 'عمولة الطلبات الفاشلة') }
       ], cityMetric, function (value) {
         mountEl._s1CityMetric = value;
         cityMetric = value;
         var list = mountEl.querySelector('#s1-city-list');
         if (list) list.innerHTML = cityListHtml(value);
-      }, { ariaLabel: 'City metric' });
+      }, { ariaLabel: s1Txt('City metric', 'مؤشر المدن') });
     }
   }
 
   var askAiBtn = mountEl.querySelector('#s1-ask-ai-btn');
   if (askAiBtn) {
     askAiBtn.addEventListener('click', function () {
-      if (ctx && typeof ctx.onNavigate === 'function') ctx.onNavigate('khodAi');
+      if (ctx && typeof ctx.onNavigate === 'function') ctx.onNavigate('taagerAi');
     });
   }
 
@@ -767,7 +809,7 @@ window.renderSection1 = function (mountEl, data, ctx) {
           }
           
           // Save to localStorage
-          localStorage.setItem('khod_commission_goal_target_' + activeAccId, newTarget);
+          localStorage.setItem(goalStorageKey, newTarget);
           goalObj.target = newTarget;
           
           // Re-render the goal widget contents or just update DOM elements
@@ -796,8 +838,8 @@ window.renderSection1 = function (mountEl, data, ctx) {
           updatedTargetEl.style.borderBottom = '1px dashed rgba(255,255,255,0.4)';
           updatedTargetEl.style.paddingBottom = '1px';
           updatedTargetEl.style.transition = 'color 0.2s';
-          updatedTargetEl.title = s1Txt('Click to edit goal', 'Ø§Ù†Ù‚Ø± Ù„ØªØ¹Ø¯ÙŠÙ„ Ø§Ù„Ù‡Ø¯Ù');
-          updatedTargetEl.textContent = fmt(newTarget) + ' SAR';
+          updatedTargetEl.title = s1Txt('Click to edit goal', 'انقر لتعديل الهدف');
+          updatedTargetEl.textContent = fmt(newTarget);
           
           // Add hover effects
           updatedTargetEl.onmouseover = function() { this.style.color = '#00e676'; };
@@ -814,7 +856,7 @@ window.renderSection1 = function (mountEl, data, ctx) {
           // Update remaining label
           var remainingEl = mountEl.querySelector('#s1-goal-remaining');
           if (remainingEl) {
-            remainingEl.textContent = fmt(Math.max(0, newTarget - goalObj.current)) + ' SAR';
+            remainingEl.textContent = fmt(Math.max(0, newTarget - goalObj.current));
           }
         }
         
@@ -836,7 +878,7 @@ window.renderSection1 = function (mountEl, data, ctx) {
     initGoalEdit();
   })();
 
-  /* 3. Animate health bar segments (width: 0 â†’ pct%) */
+  /* 3. Animate health bar segments (width: 0 → pct%) */
   requestAnimationFrame(function () {
     requestAnimationFrame(function () {
       var track = document.getElementById('s1-bar-track');
@@ -856,3 +898,4 @@ window.renderSection1 = function (mountEl, data, ctx) {
     });
   });
 };
+

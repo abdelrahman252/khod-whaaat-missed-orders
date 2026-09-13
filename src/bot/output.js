@@ -1,12 +1,46 @@
 "use strict";
 
 const XLSX = require("xlsx");
-const { formatPhone966 } = require("./phone");
+const { formatPhone } = require("./phone");
+const { fallbackCityForOrder } = require("./city-fallback");
+
+function configuredCountry(options) {
+  if (options && options.country) return String(options.country).trim().toLowerCase();
+  try {
+    return String(JSON.parse(process.env.BOT_CONFIG || "{}").khodCountry || "sa").trim().toLowerCase();
+  } catch (_) {
+    return "sa";
+  }
+}
+
+function cityDecision(order, options) {
+  if (order && order.resolvedCity) {
+    return { city: order.resolvedCity, tier: order.cityFallbackTier || "provided" };
+  }
+  const hasConfiguredFallback = options.applyCityFallback
+    || options.fallbackCity
+    || (options.fallbackCityBySku instanceof Map && options.fallbackCityBySku.size > 0)
+    || Object.keys(options.fallbackCityBySku || {}).length > 0;
+  if (!hasConfiguredFallback) {
+    return { city: String(order?.city || "").trim(), tier: order?.city ? "provided" : "static" };
+  }
+  return fallbackCityForOrder(order, options);
+}
+
+function logFallbackUsage(label, orders, usage, options) {
+  const configuredSkuFallbacks = options.fallbackCityBySku instanceof Map
+    ? options.fallbackCityBySku.size
+    : Object.keys(options.fallbackCityBySku || {}).length;
+  console.log(
+    `[City fallback] ${label} rows=${orders.length} | provided=${usage.provided} | SKU=${usage.sku} | global=${usage.global} | static=${usage.static}`
+    + ` | configured SKU fallbacks=${configuredSkuFallbacks} | global city=${options.fallbackCity || "none"}`
+  );
+}
 
 // ════════════════════════════════════════
 // BUILD OUTPUT EXCEL
 //
-// Columns requested (matching Khod export field names exactly):
+// Columns requested (matching KHOD WHAAT export field names exactly):
 //   عدد القطع              — qty
 //   المنتجات               — product name
 //   السعر الكلي بدون الشحن — price without shipping (subtotal)
@@ -17,7 +51,8 @@ const { formatPhone966 } = require("./phone");
 //   اسم المستلم            — customer name
 //   الهاتف  1              — phone (966XXXXXXXXX format)
 // ════════════════════════════════════════
-function buildOutputExcel(orders) {
+function buildOutputExcel(orders, options = {}) {
+  const country = configuredCountry(options);
   const wb = XLSX.utils.book_new();
 
   const headers = [
@@ -32,17 +67,23 @@ function buildOutputExcel(orders) {
     "الهاتف  1",
   ];
 
-  const dataRows = orders.map((order) => [
-    order.qty        || 1,
-    order.productName || "",
-    order.subtotal   || "",
-    order.date       || "",
-    order.city       || "",
-    order.region     || "",
-    order.address    || "",
-    order.name       || "",
-    formatPhone966(order.normPhone) || "",
-  ]);
+  const usage = { provided: 0, sku: 0, global: 0, static: 0 };
+  const dataRows = orders.map((order) => {
+    const decision = cityDecision(order, options);
+    usage[decision.tier]++;
+    return [
+      order.qty        || 1,
+      order.productName || "",
+      order.subtotal   || "",
+      order.date       || "",
+      decision.city,
+      order.region     || "",
+      order.address    || decision.city,
+      order.name       || "",
+      formatPhone(order.normPhone, country) || "",
+    ];
+  });
+  logFallbackUsage("Output Excel", orders, usage, options);
 
   const ws = XLSX.utils.aoa_to_sheet([headers, ...dataRows]);
   ws["!cols"] = [
@@ -78,7 +119,7 @@ function buildOutputExcel(orders) {
 // One sheet with full order details + source column (real / missed)
 // so the user knows where each failed order came from.
 // ════════════════════════════════════════
-function buildFailedExcel(failedOrders) {
+function buildFailedExcel(failedOrders, options = {}) {
   const wb = XLSX.utils.book_new();
 
   const headers = [
@@ -100,19 +141,25 @@ function buildFailedExcel(failedOrders) {
     return "طلبات فعلية";
   };
 
-  const dataRows = failedOrders.map((f) => [
-    sourceLabel(f.source),
-    f.name    || "",
-    f.phone   || "",
-    f.product || "",
-    f.sku     || "",
-    f.uncertain ? "YES" : "NO",
-    f.qty     || 1,
-    f.subtotal || "",
-    f.city    || "",
-    f.address || "",
-    f.error   || "",
-  ]);
+  const usage = { provided: 0, sku: 0, global: 0, static: 0 };
+  const dataRows = failedOrders.map((f) => {
+    const decision = cityDecision(f, options);
+    usage[decision.tier]++;
+    return [
+      sourceLabel(f.source),
+      f.name    || "",
+      f.phone   || "",
+      f.product || "",
+      f.sku     || "",
+      f.uncertain ? "YES" : "NO",
+      f.qty     || 1,
+      f.subtotal || "",
+      decision.city,
+      f.address || decision.city,
+      f.error   || "",
+    ];
+  });
+  logFallbackUsage("Failed Excel", failedOrders, usage, options);
 
   const ws = XLSX.utils.aoa_to_sheet([headers, ...dataRows]);
   ws["!cols"] = [
@@ -136,7 +183,7 @@ function buildSkippedExcel(skippedOrders) {
   const headers = [
     "Account Email",
     "Account Label",
-    "Khod Whaat Country",
+    "KHOD WHAAT Country",
     "Full Name",
     "Raw Phone",
     "Product",

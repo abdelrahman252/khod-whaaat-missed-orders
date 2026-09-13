@@ -19,6 +19,9 @@
       to: "to",
       apply: "Apply"
     },
+    actions: {
+      updateUploadedOrders: "Update Uploaded Orders"
+    },
     runBanner: {
       singleRun: "Viewing single run from",
       showAll: "✕ Show all"
@@ -121,7 +124,7 @@
       colOrder: "Order",
       colValue: "Value",
       colStatus: "Status",
-      colTime: "Time",
+      colTime: "EasyOrders Created",
       colProduct: "Product",
       colQty: "Qty",
       colSource: "Source",

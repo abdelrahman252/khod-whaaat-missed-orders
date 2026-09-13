@@ -20,8 +20,6 @@ async function renderAnalytics(onBack) {
   let _isolatedRunId = null;    // null = all runs, string = single run
   let _settingsOpen  = false;
   let _settings      = {};      // { minutesPerOrder }
-  const _skeletonShownAt = performance.now();
-  const _minSkeletonMs = 0;
 
   // ── Skeleton layout ─────────────────────────────────────────────────────────
   root.innerHTML = `
@@ -38,46 +36,46 @@ async function renderAnalytics(onBack) {
       <!-- Header -->
       <div style="display:flex;justify-content:space-between;align-items:center;padding-bottom:16px;border-bottom:1px solid rgba(255,255,255,0.04);flex-shrink:0;">
         <div style="display:flex;flex-direction:column;gap:8px;">
-          <div class="sk" style="width:140px;height:22px;border-radius:6px;"></div>
+          <div class="sk" style="width:140px;height:22px;border-radius:var(--radius-xs);"></div>
           <div class="sk" style="width:210px;height:13px;border-radius:4px;"></div>
         </div>
         <div style="display:flex;gap:8px;align-items:center;">
-          <div class="sk" style="width:345px;height:34px;border-radius:20px;"></div>
-          <div class="sk" style="width:34px;height:34px;border-radius:8px;"></div>
+          <div class="sk" style="width:345px;height:34px;border-radius:var(--radius-lg);"></div>
+          <div class="sk" style="width:34px;height:34px;border-radius:var(--radius-xs);"></div>
         </div>
       </div>
       <!-- 6 KPI cards -->
       <div style="display:grid;grid-template-columns:repeat(6,1fr);gap:12px;flex-shrink:0;">
-        <div class="sk" style="height:96px;border-radius:12px;"></div>
-        <div class="sk" style="height:96px;border-radius:12px;"></div>
-        <div class="sk" style="height:96px;border-radius:12px;"></div>
-        <div class="sk" style="height:96px;border-radius:12px;"></div>
-        <div class="sk" style="height:96px;border-radius:12px;"></div>
-        <div class="sk" style="height:96px;border-radius:12px;"></div>
+        <div class="sk" style="height:96px;border-radius:var(--radius-sm);"></div>
+        <div class="sk" style="height:96px;border-radius:var(--radius-sm);"></div>
+        <div class="sk" style="height:96px;border-radius:var(--radius-sm);"></div>
+        <div class="sk" style="height:96px;border-radius:var(--radius-sm);"></div>
+        <div class="sk" style="height:96px;border-radius:var(--radius-sm);"></div>
+        <div class="sk" style="height:96px;border-radius:var(--radius-sm);"></div>
       </div>
       <!-- Charts + sidebar -->
       <div style="display:grid;grid-template-columns:1fr 284px;gap:16px;flex:1;min-height:0;">
         <div style="display:flex;flex-direction:column;gap:12px;">
           <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:12px;">
-            <div class="sk" style="height:205px;border-radius:12px;"></div>
-            <div class="sk" style="height:205px;border-radius:12px;"></div>
-            <div class="sk" style="height:205px;border-radius:12px;"></div>
+            <div class="sk" style="height:205px;border-radius:var(--radius-sm);"></div>
+            <div class="sk" style="height:205px;border-radius:var(--radius-sm);"></div>
+            <div class="sk" style="height:205px;border-radius:var(--radius-sm);"></div>
           </div>
           <div style="display:grid;grid-template-columns:1fr 1fr 1fr 1fr;gap:12px;">
-            <div class="sk" style="height:200px;border-radius:12px;"></div>
-            <div class="sk" style="height:200px;border-radius:12px;"></div>
-            <div class="sk" style="height:200px;border-radius:12px;"></div>
-            <div class="sk" style="height:200px;border-radius:12px;"></div>
+            <div class="sk" style="height:200px;border-radius:var(--radius-sm);"></div>
+            <div class="sk" style="height:200px;border-radius:var(--radius-sm);"></div>
+            <div class="sk" style="height:200px;border-radius:var(--radius-sm);"></div>
+            <div class="sk" style="height:200px;border-radius:var(--radius-sm);"></div>
           </div>
         </div>
         <div style="display:flex;flex-direction:column;gap:12px;">
-          <div class="sk" style="height:230px;border-radius:12px;"></div>
-          <div class="sk" style="height:190px;border-radius:12px;"></div>
-          <div class="sk" style="height:150px;border-radius:12px;"></div>
+          <div class="sk" style="height:230px;border-radius:var(--radius-sm);"></div>
+          <div class="sk" style="height:190px;border-radius:var(--radius-sm);"></div>
+          <div class="sk" style="height:150px;border-radius:var(--radius-sm);"></div>
         </div>
       </div>
       <!-- Orders table -->
-      <div class="sk" style="height:300px;border-radius:12px;flex-shrink:0;"></div>
+      <div class="sk" style="height:300px;border-radius:var(--radius-sm);flex-shrink:0;"></div>
     </div>
 
     <div class="analytics-page" id="analytics-page">
@@ -102,10 +100,14 @@ async function renderAnalytics(onBack) {
           <!-- Inline Custom Date inputs (dynamically displayed when Custom is active) -->
           <div class="analytics-date-custom-inline" id="date-custom-inputs-inline" style="display:none">
             <input type="date" class="date-input-inline" id="custom-from-inline">
-            <span style="color:#64748b; font-size:11px;">${window.t_anl('dateCustom.to')}</span>
+            <span style="color:#64748b; font-size:var(--type-caption);">${window.t_anl('dateCustom.to')}</span>
             <input type="date" class="date-input-inline" id="custom-to-inline">
             <button class="btn-apply-inline" id="custom-apply-btn-inline">${window.t_anl('dateCustom.apply')}</button>
           </div>
+
+          <button type="button" class="analytics-uploaded-update-btn" id="analytics-uploaded-update-btn">
+            ${window.t_anl('actions.updateUploadedOrders', { default: 'Update Uploaded Orders' })}
+          </button>
 
           <!-- Sleek Micro-Animated Premium Refresh Button -->
           <button class="analytics-refresh-btn-premium" id="analytics-refresh-btn" title="Refresh Data">
@@ -113,8 +115,8 @@ async function renderAnalytics(onBack) {
               <path d="M21.5 2v6h-6M21.34 15.57a10 10 0 1 1-.57-8.38l5.67-5.67"/>
             </svg>
           </button>
-          <button type="button" class="khod-tour-quick-guide" id="analytics-tour-btn" title="${window.t_anl('tour.common.quickGuide', { default: 'Quick Guide' })}">
-            <span class="khod-tour-guide-mark">?</span><span>${window.t_anl('tour.common.quickGuide', { default: 'Quick Guide' })}</span>
+          <button type="button" class="taager-tour-quick-guide" id="analytics-tour-btn" title="${window.t_anl('tour.common.quickGuide', { default: 'Quick Guide' })}">
+            <span class="taager-tour-guide-mark">?</span><span>${window.t_anl('tour.common.quickGuide', { default: 'Quick Guide' })}</span>
           </button>
         </div>
       </div>
@@ -122,18 +124,18 @@ async function renderAnalytics(onBack) {
       <!-- Account selector (rendered dynamically) -->
       <div class="analytics-account-tabs" id="analytics-account-tabs"></div>
 
-      <div class="analytics-first-run-guidance" id="analytics-first-run-guidance" style="display:none;margin:0 20px 14px;padding:14px 16px;border:1px solid var(--border);border-radius:12px;background:var(--bg2);align-items:center;justify-content:space-between;gap:14px;box-shadow:0 10px 28px rgba(0,0,0,.10);">
+      <div class="analytics-first-run-guidance" id="analytics-first-run-guidance" style="display:none;margin:0 20px 14px;padding:14px 16px;border:1px solid var(--border);border-radius:var(--radius-sm);background:var(--bg2);align-items:center;justify-content:space-between;gap:14px;box-shadow:0 10px 28px rgba(0,0,0,.10);">
         <div style="min-width:0;">
-          <div style="font-size:13px;font-weight:800;color:var(--text);margin-bottom:3px;">${window.t_anl('empty.bannerTitle', { default: 'Analytics is ready' })}</div>
-          <div style="font-size:12px;color:var(--text2);line-height:1.5;">${window.t_anl('empty.bannerDesc', { default: 'Run the bot once to start filling these sections with real orders, revenue, COD, delivery, and failure data.' })}</div>
+          <div style="font-size:var(--type-control);font-weight:var(--weight-semibold);color:var(--text);margin-bottom:3px;">${window.t_anl('empty.bannerTitle', { default: 'Analytics is ready' })}</div>
+          <div style="font-size:var(--type-label);color:var(--text2);line-height:1.5;">${window.t_anl('empty.bannerDesc', { default: 'Run the bot once to start filling these sections with real orders, revenue, COD, delivery, and failure data.' })}</div>
         </div>
-        <button type="button" class="btn btn-primary" id="analytics-first-run-btn" style="white-space:nowrap;font-size:12px;padding:8px 12px;">${window.t_anl('empty.runAction', { default: 'Go to Run' })}</button>
+        <button type="button" class="btn btn-primary" id="analytics-first-run-btn" style="white-space:nowrap;font-size:var(--type-label);padding:8px 12px;">${window.t_anl('empty.runAction', { default: 'Go to Run' })}</button>
       </div>
 
       <!-- Isolated run banner -->
       <div class="analytics-run-banner" id="analytics-run-banner" style="display:none">
         <span id="run-banner-label">${window.t_anl('runBanner.singleRun')}</span>
-        <button class="btn btn-ghost" id="run-banner-clear" style="font-size:11px;padding:4px 10px">${window.t_anl('runBanner.showAll')}</button>
+        <button class="btn btn-ghost" id="run-banner-clear" style="font-size:var(--type-caption);padding:4px 10px">${window.t_anl('runBanner.showAll')}</button>
       </div>
 
       <!-- KPI row (6 cards, single row — matches reference) -->
@@ -161,14 +163,15 @@ async function renderAnalytics(onBack) {
 
       <!-- Empty state -->
       <div class="analytics-empty" id="analytics-empty" style="display:none">
-        <div style="font-size:48px;margin-bottom:12px">📭</div>
-        <div style="font-size:18px;font-weight:600;margin-bottom:6px">${window.t_anl('empty.title')}</div>
-        <div style="color:var(--text3);font-size:13px;max-width:320px;text-align:center;line-height:1.6;">
+        <div style="font-size:var(--type-hero-lg);margin-bottom:12px">📭</div>
+        <div style="font-size:var(--type-section-title);font-weight:var(--weight-semibold);margin-bottom:6px">${window.t_anl('empty.title')}</div>
+        <div style="color:var(--text3);font-size:var(--type-control);max-width:320px;text-align:center;line-height:1.6;">
           ${window.t_anl('empty.desc')}
         </div>
       </div>
 
     </div><!-- /analytics-page -->
+    <div class="dashboard-update-overlay analytics-uploaded-update-overlay" data-dashboard-update-overlay hidden aria-live="polite" aria-busy="false"></div>
       </div><!-- /scrollable content -->
     </div><!-- /sv3-shell -->`;
   // ── Load data & settings in parallel; skeleton stays until real render ──────
@@ -176,18 +179,14 @@ async function renderAnalytics(onBack) {
   wireSharedSidebar(root);
 
   function _previewAnalyticsActive() {
-    return window.KhodPremiumPreview && window.KhodPremiumPreview.isActive("analytics");
+    return window.TaagerPremiumPreview && window.TaagerPremiumPreview.isActive("analytics");
   }
 
   async function _loadAnalyticsRuns() {
-    if (_previewAnalyticsActive()) return window.KhodPremiumPreview.runs();
-    const cache = window.__analyticsRunsCache;
-    if (cache && Array.isArray(cache.runs)) return cache.runs;
+    if (_previewAnalyticsActive()) return window.TaagerPremiumPreview.runs();
     try {
       const r = await window.api.getAnalyticsRuns();
-      const runs = Array.isArray(r) ? r : (r?.runs || []);
-      window.__analyticsRunsCache = { runs, loadedAt: Date.now() };
-      return runs;
+      return Array.isArray(r) ? r : (r?.runs || []);
     } catch (e) {
       console.error("[Analytics] Failed to load runs:", e);
       return [];
@@ -238,7 +237,6 @@ async function renderAnalytics(onBack) {
     if (svgIcon) svgIcon.classList.add("rotating");
     
     _allRuns = await _loadAnalyticsRuns();
-    if (window.__analyticsFlattenCache) window.__analyticsFlattenCache = new WeakMap();
     
     // Smooth delay before resolving rotation to make the micro-interaction satisfying
     setTimeout(() => {
@@ -247,12 +245,30 @@ async function renderAnalytics(onBack) {
     }, 600);
   });
 
-  if (window.KhodGuidedTour) {
+  document.getElementById("analytics-uploaded-update-btn")?.addEventListener("click", async () => {
+    if (typeof window._onUpdateUploadedOrdersForAnalytics !== "function") return;
+    const range = _resolveDateRange();
+    if (!range) {
+      if (window.TaagerUI) window.TaagerUI.toast("Choose a date range before updating uploaded orders.", { kind: "info" });
+      return;
+    }
+    await window._onUpdateUploadedOrdersForAnalytics({
+      accountIds: _uploadedUpdateAccountIds(range),
+      dateFrom: _dateParam(range.from),
+      dateTo: _dateParam(range.to),
+      onComplete: async function () {
+        _allRuns = await _loadAnalyticsRuns();
+        _renderPage();
+      }
+    });
+  });
+
+  if (window.TaagerGuidedTour) {
     const guideOpts = { root };
     document.getElementById("analytics-tour-btn")?.addEventListener("click", () => {
-      window.KhodGuidedTour.start("analytics", guideOpts);
+      window.TaagerGuidedTour.start("analytics", guideOpts);
     });
-    setTimeout(() => window.KhodGuidedTour.mountPagePrompt("analytics", guideOpts), 700);
+    setTimeout(() => window.TaagerGuidedTour.mountPagePrompt("analytics", guideOpts), 700);
   }
 
   // Date segmented visual tabs (pills)
@@ -366,19 +382,15 @@ async function renderAnalytics(onBack) {
 
   // ── Initial render ──────────────────────────────────────────────────────────
   _renderPage();
-  if (window.KhodPremiumPreview) window.KhodPremiumPreview.mount(root, "analytics");
+  if (window.TaagerPremiumPreview) window.TaagerPremiumPreview.mount(root, "analytics");
 
   // Fade out skeleton after the first real render has mounted content.
   const skEl = document.getElementById("anl-skeleton");
   if (skEl) {
-    const elapsed = performance.now() - _skeletonShownAt;
-    const waitMs = Math.max(0, _minSkeletonMs - elapsed);
-    setTimeout(() => {
-      requestAnimationFrame(() => {
-        skEl.classList.add("sk-exit");
-        setTimeout(() => skEl.remove(), 220);
-      });
-    }, waitMs);
+    requestAnimationFrame(() => {
+      skEl.classList.add("sk-exit");
+      setTimeout(() => skEl.remove(), 120);
+    });
   }
 
   // ── Core render function ────────────────────────────────────────────────────
@@ -402,7 +414,7 @@ async function renderAnalytics(onBack) {
       if (banner) banner.style.display = "flex";
       if (label && runs[0]) {
         const ts = runs[0].runTimestamp;
-        label.textContent = window.t_anl('runBanner.singleRun') + " " + (ts ? new Date(ts).toLocaleString() : "—");
+        label.textContent = window.t_anl('runBanner.singleRun') + " " + (ts ? new Date(ts).toLocaleString("en-US") : "—");
       }
     } else {
       const banner = document.getElementById("analytics-run-banner");
@@ -532,13 +544,40 @@ async function renderAnalytics(onBack) {
     return runs;
   }
 
+  function _dateParam(date) {
+    if (!(date instanceof Date) || isNaN(date.getTime())) return "";
+    const yyyy = date.getFullYear();
+    const mm = String(date.getMonth() + 1).padStart(2, "0");
+    const dd = String(date.getDate()).padStart(2, "0");
+    return `${yyyy}-${mm}-${dd}`;
+  }
+
+  function _isUploadedAnalyticsOrder(order) {
+    const source = String(order && order.source || "real").toLowerCase();
+    return source === "missed" || source === "real";
+  }
+
+  function _uploadedUpdateAccountIds(dateRange) {
+    const runs = _filterRuns(_allRuns, dateRange);
+    const scopedRuns = _activeAccount
+      ? runs.filter(r => accountMatches(r, _activeAccount))
+      : runs;
+    const ids = [];
+    scopedRuns.forEach(function (run) {
+      if (!Array.isArray(run.orders) || !run.orders.some(_isUploadedAnalyticsOrder)) return;
+      const id = run.accountId || "__single__";
+      if (ids.indexOf(id) === -1) ids.push(id);
+    });
+    return ids;
+  }
+
   // ── Account tabs ─────────────────────────────────────────────────────────────
   function _renderAccountTabs(filteredRuns) {
     const tabBar = document.getElementById("analytics-account-tabs");
     if (!tabBar) return;
 
     const accounts = uniqueAccounts(_allRuns)
-      .map(r => ({ key: accountKey(r), label: accountDisplay(r) }))
+      .map(r => ({ key: accountKey(r), label: accountDisplay(r), country: accountCountry(r), email: r.accountEmail || "" }))
       .filter(a => a.key);
     if (accounts.length <= 1) { tabBar.innerHTML = ""; return; }
 
@@ -555,13 +594,20 @@ async function renderAnalytics(onBack) {
         : periodOrders.length;
     }
 
-    const options = [{ key: "", label: window.t_anl('account.allAccounts') }].concat(accounts).map(a => {
+    const options = [{ key: "", label: window.t_anl('account.allAccounts'), country: "", email: "" }].concat(accounts).map(a => {
       const email = a.key ? (uniqueAccounts(_allRuns).find(r => accountKey(r) === a.key)?.accountEmail || "") : "";
       const text = a.key ? (a.label || email || a.key) : a.label;
+      const countText = `${countFor(a.key).toLocaleString("en-US")} ${window.t_anl('account.orders')}`;
       return {
         value: a.key,
-        label: `${text}  ${countFor(a.key).toLocaleString()} ${window.t_anl('account.orders')}`,
-        subLabel: email && email !== text ? email : "",
+        label: `${text}  ${countText}`,
+        labelHtml: a.key
+          ? accountOptionLabelHtml(`${text}  ${countText}`, a.country)
+          : '<span style="display:inline-flex;align-items:center;gap:7px">' + allAccountsCountryFlagsHtml(_allRuns) + '<span>' + analyticsEscapeHtml(`${text}  ${countText}`) + '</span></span>',
+        subLabel: a.key
+          ? [email && email !== text ? email : "", accountCountryLabel({ taagerCountry: a.country })].filter(Boolean).join(" - ")
+          : "",
+        searchText: [text, email, a.country, accountCountryLabel({ taagerCountry: a.country }), countText].filter(Boolean).join(" "),
       };
     });
 
@@ -633,8 +679,9 @@ async function renderAnalytics(onBack) {
 
     const counts = {};
     orders.forEach(o => {
-      const s = o.orderStatus || "Unknown";
-      counts[s] = (counts[s] || 0) + 1;
+      const raw = o.orderStatus || "Unknown";
+      const bucket = window.TaagerStatus ? window.TaagerStatus.normalize(raw).bucket : raw;
+      counts[bucket] = (counts[bucket] || 0) + 1;
     });
 
     const total   = orders.length || 1;
@@ -651,8 +698,11 @@ async function renderAnalytics(onBack) {
       "canceled",
       "cancelled"
     ];
-    const statusRank = status => {
-      const key = String(status || "").toLowerCase();
+    const statusRank = bucket => {
+      if (window.TaagerStatus) {
+        return window.TaagerStatus.statusInfo(bucket).order || 999;
+      }
+      const key = String(bucket || "").toLowerCase();
       const idx = statusOrder.indexOf(key);
       return idx === -1 ? statusOrder.length : idx;
     };
@@ -667,17 +717,18 @@ async function renderAnalytics(onBack) {
         <div class="status-breakdown-header">📊 ${window.t_anl('charts.statusTitle')}</div>
         <div class="status-breakdown-list">
           ${entries.length === 0
-            ? `<div style="color:var(--text3);font-size:13px;padding:12px">${window.t_anl('insights.noData')}</div>`
-            : entries.map(([status, count]) => {
-                const sc  = getStatusColor(status);
+            ? `<div style="color:var(--text3);font-size:var(--type-control);padding:12px">${window.t_anl('insights.noData')}</div>`
+            : entries.map(([bucket, count]) => {
+                const sc  = getStatusColor(bucket);
+                const statusLabel = typeof analyticsStatusLabel === "function" ? analyticsStatusLabel(bucket) : bucket;
                 const pct = Math.round((count / total) * 100);
                 return `
                   <div class="status-breakdown-item">
-                    <span class="status-badge" style="background:${sc.bg};color:${sc.text}">${status}</span>
+                    <span class="status-badge" style="background:${sc.bg};color:${sc.text}">${statusLabel}</span>
                     <div class="status-breakdown-bar-wrap">
                       <div class="status-breakdown-bar" style="width:${pct}%;background:${sc.bg}"></div>
                     </div>
-                    <span class="status-breakdown-count">${count.toLocaleString()} <span style="color:var(--text3);font-size:10px">(${pct}%)</span></span>
+                    <span class="status-breakdown-count">${count.toLocaleString("en-US")} <span style="color:var(--text3);font-size:var(--type-micro)">(${pct}%)</span></span>
                   </div>`;
               }).join("")}
         </div>

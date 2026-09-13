@@ -1,4 +1,23 @@
 // ── RUN PAGE ──
+function normalizeKhodStats(stats) {
+  const s = stats || {};
+  const num = value => Number(value) || 0;
+  const realInKhod = num(s.realInKhod ?? s.realInTaager ?? 0);
+  const missedInKhod = num(s.missedInKhod ?? s.missedInTaager ?? 0);
+  const realDupe = num(s.realDupe ?? 0);
+  const missedDupe = num(s.missedDupe ?? 0);
+  const khodOrderCount = s.khodOrderCount == null ? null : num(s.khodOrderCount);
+  return {
+    ...s,
+    realInKhod,
+    missedInKhod,
+    realInTaager: realInKhod,
+    missedInTaager: missedInKhod,
+    khodOrderCount,
+    realDupe,
+    missedDupe,
+  };
+}
 
 // ════════════════════════════════════════
 // SOUND ENGINE
@@ -62,7 +81,8 @@ function formatCountdown(ms) {
 // ════════════════════════════════════════
 // RUN PAGE
 // ════════════════════════════════════════
-window.renderRun = function (dateFrom, dateTo, selectedAccountIds, onComplete, onHome) {
+window.renderRun = function (dateFrom, dateTo, selectedAccountIds, onComplete, onHome, runOptions) {
+  runOptions = runOptions && typeof runOptions === "object" ? runOptions : {};
   window._botIsRunning = true;
   const t = window._t;
   const el = document.getElementById("page-run");
@@ -75,14 +95,14 @@ window.renderRun = function (dateFrom, dateTo, selectedAccountIds, onComplete, o
 
   function accountDisplayName(acc, fallback = "") {
     if (!acc) return fallback;
-    return acc.memberName || acc.easyEmail || acc.email || acc.khodEmail || acc.easyStore || acc.storeName || acc.label || acc.name || fallback;
+    return acc.memberName || acc.easyEmail || acc.email || acc.taagerEmail || acc.easyStore || acc.storeName || acc.label || acc.name || fallback;
   }
 
   function selectedAccountEmailTag() {
     const accounts = window._kbotAccounts || [];
     const id = Array.isArray(selectedAccountIds) && selectedAccountIds.length === 1 ? selectedAccountIds[0] : null;
     const acc = id ? accounts.find(a => a.id === id) : accounts[0];
-    return safeFilenamePart((acc && (acc.easyEmail || acc.email || acc.khodEmail || acc.label || acc.id)) || id || "account");
+    return safeFilenamePart((acc && (acc.easyEmail || acc.email || acc.taagerEmail || acc.label || acc.id)) || id || "account");
   }
 
   function runDateTag() {
@@ -169,6 +189,16 @@ window.renderRun = function (dateFrom, dateTo, selectedAccountIds, onComplete, o
               </div>
             </div>
 
+            <!-- External Login Notice -->
+            <div class="notice-box warn" id="notice-external-login" style="display:none;border-color:#4285f4;background:rgba(66,133,244,0.1)">
+              <span class="notice-icon">🌐</span>
+              <div class="notice-text">
+                <strong>External Login Required</strong>
+                <span id="notice-external-login-text">Chrome opened with this bot profile. Complete login, then close Chrome.</span>
+                <button class="btn-primary" id="btn-external-login-done" type="button" style="margin-top:8px;width:max-content;padding:8px 12px;font-size:12px">I finished login</button>
+              </div>
+            </div>
+
             <!-- Manual Confirm Notice -->
             <div class="notice-box warn" id="notice-confirm" style="display:none;border-color:var(--warning);background:rgba(255,201,77,0.12)">
               <span class="notice-icon">👀</span>
@@ -178,7 +208,7 @@ window.renderRun = function (dateFrom, dateTo, selectedAccountIds, onComplete, o
               </div>
             </div>
 
-            <!-- Khod Restart Notice -->
+            <!-- Legacy restart notice; compatibility IDs are retained for existing event wiring. -->
             <div class="notice-box warn" id="notice-khod-restart" style="display:none;border-color:#ff6b35;background:rgba(255,107,53,0.1)">
               <span class="notice-icon">🔄</span>
               <div class="notice-text" style="flex:1">
@@ -242,7 +272,7 @@ window.renderRun = function (dateFrom, dateTo, selectedAccountIds, onComplete, o
                 </div>
               </div>
               <div style="padding:8px 12px;border-bottom:1px solid var(--border);background:rgba(0,0,0,0.05)">
-                <input id="preview-search" type="text" placeholder="${t('run.search_orders_placeholder') || 'Search by name, phone or product…'}" style="width:100%;box-sizing:border-box;background:var(--bg);border:1px solid var(--border);border-radius:var(--radius-sm);padding:6px 10px;font-size:12px;color:var(--text);outline:none" oninput="window._filterPreviewTable(this.value)">
+                <input id="preview-search" type="text" placeholder="${t('run.search_orders_placeholder') || 'Search by name, phone or product...'}" style="width:100%;box-sizing:border-box;background:var(--bg);border:1px solid var(--border);border-radius:var(--radius-sm);padding:6px 10px;font-size:12px;color:var(--text);outline:none" oninput="window._filterPreviewTable(this.value)">
               </div>
               <div style="overflow:auto;max-height:340px" id="preview-table-wrap"></div>
             </div>
@@ -278,21 +308,26 @@ window.renderRun = function (dateFrom, dateTo, selectedAccountIds, onComplete, o
       </div>
     `;
 
-    // Inject table + search styles for single-account path
     if (!document.getElementById("run-preview-table-style")) {
       const _runTableStyle = document.createElement("style");
       _runTableStyle.id = "run-preview-table-style";
       _runTableStyle.textContent = `
-        .orders-preview-table { border-collapse: collapse; width: 100%; }
+        .orders-preview-table { border-collapse: collapse; width: 100%; table-layout: fixed; }
+        .run-orders-preview-table {
+          width: 100%;
+          min-width: 1380px;
+        }
         .orders-preview-table th,
         .orders-preview-table td {
-          padding: 7px 10px;
+          padding: 9px 14px;
           text-align: left;
           border-bottom: 1px solid var(--border);
           font-size: 12px;
+          line-height: 1.35;
           overflow: hidden;
           text-overflow: ellipsis;
           white-space: nowrap;
+          vertical-align: middle;
         }
         .orders-preview-table th {
           font-weight: 700;
@@ -307,6 +342,38 @@ window.renderRun = function (dateFrom, dateTo, selectedAccountIds, onComplete, o
         }
         .orders-preview-table tbody tr:hover { background: rgba(79,142,247,0.05); }
         .orders-preview-table tbody tr:last-child td { border-bottom: none; }
+        .run-orders-preview-table .preview-index,
+        .run-orders-preview-table .preview-qty {
+          text-align: center;
+        }
+        .run-orders-preview-table .preview-product,
+        .run-orders-preview-table .preview-city,
+        .run-orders-preview-table .preview-name,
+        .run-orders-preview-table td:nth-child(2),
+        .run-orders-preview-table td:nth-child(7),
+        .run-orders-preview-table td:nth-child(8) {
+          direction: rtl;
+          text-align: right;
+        }
+        .run-orders-preview-table .preview-product,
+        .run-orders-preview-table td:nth-child(2) {
+          color: var(--text);
+          font-weight: 650;
+        }
+        .run-orders-preview-table .preview-date,
+        .run-orders-preview-table .preview-created,
+        .run-orders-preview-table .preview-city,
+        .run-orders-preview-table td:nth-child(5),
+        .run-orders-preview-table td:nth-child(6),
+        .run-orders-preview-table td:nth-child(7) {
+          color: var(--text2);
+        }
+        .run-orders-preview-table .preview-phone,
+        .run-orders-preview-table td:nth-child(9) {
+          direction: ltr;
+          font-family: monospace;
+          font-size: 12.5px;
+        }
       `;
       document.head.appendChild(_runTableStyle);
     }
@@ -331,6 +398,12 @@ window.renderRun = function (dateFrom, dateTo, selectedAccountIds, onComplete, o
     const logEl  = document.getElementById("log-output");
     const badge  = document.getElementById("run-status-badge");
     let botDone  = false;
+    let stopRequested = false;
+
+    function isInlineCountdownLog(text) {
+      return String(text || "").includes("[تجنب حد التصدير]") ||
+        String(text || "").includes("[Account schedule]");
+    }
 
     let _logQueue = [];
     let _logRafPending = false;
@@ -339,9 +412,9 @@ window.renderRun = function (dateFrom, dateTo, selectedAccountIds, onComplete, o
       if (!_logQueue.length) return;
 
       const firstItem = _logQueue[0];
-      if (firstItem && firstItem.text.includes("[تجنب حد التصدير]") && logEl) {
+      if (firstItem && isInlineCountdownLog(firstItem.text) && logEl) {
         const lastChild = logEl.lastElementChild;
-        if (lastChild && lastChild.textContent.includes("[تجنب حد التصدير]")) {
+        if (lastChild && isInlineCountdownLog(lastChild.textContent)) {
           lastChild.textContent = firstItem.text;
           _logQueue.shift();
         }
@@ -363,26 +436,29 @@ window.renderRun = function (dateFrom, dateTo, selectedAccountIds, onComplete, o
     document.getElementById("btn-home-run").addEventListener("click", () => { cleanup(); onHome(); });
 
     document.getElementById("btn-stop").addEventListener("click", async () => {
-      if (botDone) return;
+      if (botDone || stopRequested) return;
       const confirmed = await showRunConfirm(t("run.stop_title"), t("run.stop_msg"));
       if (!confirmed) return;
+      stopRequested = true;
+      const stopBtn = document.getElementById("btn-stop");
+      if (stopBtn) stopBtn.disabled = true;
       window._botIsRunning = false;
-      window.api.killBot();
+      await window.api.killBot();
       window.api.botFinished();
+      botDone = true;
+      cleanup();
       appendLog("\n" + t("run.bot_stopped_user"));
       badge.textContent = t("run.badge_stopped");
-      document.getElementById("btn-stop").style.display = "none";
-      const homeBtn = document.getElementById("btn-home-run");
-      if (homeBtn) { homeBtn.disabled = false; homeBtn.style.opacity = "1"; homeBtn.style.cursor = "pointer"; }
-      startGlobalCooldown();
-      showCooldownBar();
+      if (stopBtn) stopBtn.style.display = "none";
+      onHome();
     });
 
     function appendLog(msg) {
-      if (msg.includes("[تجنب حد التصدير]")) {
+      msg = String(msg == null ? "" : msg);
+      if (isInlineCountdownLog(msg)) {
         const cleanMsg = msg.trim();
         const lastQueueItem = _logQueue[_logQueue.length - 1];
-        if (lastQueueItem && lastQueueItem.text.includes("[تجنب حد التصدير]")) {
+        if (lastQueueItem && isInlineCountdownLog(lastQueueItem.text)) {
           lastQueueItem.text = cleanMsg;
           if (!_logRafPending) { _logRafPending = true; requestAnimationFrame(_flushLog); }
           return;
@@ -390,7 +466,7 @@ window.renderRun = function (dateFrom, dateTo, selectedAccountIds, onComplete, o
         
         if (_logQueue.length === 0 && logEl) {
           const lastChild = logEl.lastElementChild;
-          if (lastChild && lastChild.textContent.includes("[تجنب حد التصدير]")) {
+          if (lastChild && isInlineCountdownLog(lastChild.textContent)) {
             lastChild.textContent = cleanMsg;
             return;
           }
@@ -419,8 +495,8 @@ window.renderRun = function (dateFrom, dateTo, selectedAccountIds, onComplete, o
         { keywords: ["Easy-Orders Login", "PHASE 1", "easy-orders login", "Easy-orders login"], idx: 0 },
         { keywords: ["Real Orders Export", "PHASE 2", "Real orders downloaded"],                idx: 1 },
         { keywords: ["Missed Orders Export", "PHASE 3", "Missed orders downloaded"],            idx: 2 },
-        { keywords: ["PHASE 4", "Khod Login", "Khod: logging in", "khodLogin"],                idx: 3 },
-        { keywords: ["PHASE 5", "Creating Orders in Easy-Orders", "Creating order for"],        idx: 4 },
+        { keywords: ["PHASE 4", "KHOD WHAAT Login", "KHOD WHAAT Login", "KHOD WHAAT: logging in", "KHOD WHAAT: logging in", "khodLogin"], idx: 3 },
+        { keywords: ["PHASE 5", "Creating Orders in Easy-Orders", "Easy-Orders upload"], idx: 4 },
       ];
       for (const p of phaseMap) {
         if (p.keywords.some((k) => msg.includes(k))) setPhaseActive(p.idx);
@@ -474,6 +550,7 @@ window.renderRun = function (dateFrom, dateTo, selectedAccountIds, onComplete, o
       window.api.removeAllListeners("bot-preview");
       window.api.removeAllListeners("bot-order-progress");
       window.api.removeAllListeners("bot-khod-restart");
+      window.api.removeAllListeners("bot-khod-restart");
       window.api.removeAllListeners("bot-session-event");
       window._opsLiveGlobalBound = false;
     }
@@ -491,48 +568,55 @@ window.renderRun = function (dateFrom, dateTo, selectedAccountIds, onComplete, o
       previewEl.style.display = "block";
       if (placeholder) placeholder.style.display = "none";
       window._previewBuffer = data.buffer;
+      const manualReview = data.manualReview === true;
+      window._previewManualReview = manualReview;
       const cols = t("run.preview_cols");
       const headerFn = t("run.preview_header");
       const headerLabel = typeof headerFn === "function" ? headerFn(data.total) : headerFn;
       if (headerLbl) headerLbl.textContent = headerLabel;
 
       // Build selectable, copyable table
-      const allRows = data.rows; // show ALL rows
-      window._previewAllRows = allRows; // store for search filtering
+      const allRows = Array.isArray(data.rows) ? data.rows : []; // show ALL rows
+      window._previewAllRows = allRows;
       const more = data.total > allRows.length ? `<div style="padding:8px 16px;font-size:11px;color:var(--text2)">+ ${data.total - allRows.length} more rows not shown</div>` : "";
 
       function buildPreviewTableHTML(rows) {
+        const escPreview = (value) => String(value == null ? "" : value)
+          .replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;");
         return `
-          <table class="orders-preview-table" style="width:100%;table-layout:fixed;border-collapse:collapse">
+          <table class="orders-preview-table run-orders-preview-table" style="width:100%;min-width:1380px;table-layout:fixed;border-collapse:collapse">
             <colgroup>
-              <col style="width:38px">
-              <col style="width:auto">
-              <col style="width:50px">
-              <col style="width:72px">
-              <col style="width:80px">
-              <col style="width:90px">
-              <col style="width:110px">
-              <col style="width:120px">
+              <col style="width:46px">
+              <col style="width:420px">
+              <col style="width:64px">
+              <col style="width:82px">
+              <col style="width:140px">
+              <col style="width:190px">
+              <col style="width:170px">
+              <col style="width:170px">
+              <col style="width:150px">
             </colgroup>
             <thead>
-              <tr><th style="width:38px">#</th>${cols.map(c => `<th>${c}</th>`).join("")}</tr>
+              <tr><th>#</th>${cols.map(c => `<th>${c}</th>`).join("")}</tr>
             </thead>
             <tbody>
               ${rows.map((r, i) => `
                 <tr>
-                  <td style="color:var(--text2);text-align:center">${i + 1}</td>
-                  <td style="overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="${(r.productName||"").replace(/"/g,"")}">${r.productName || "—"}</td>
-                  <td style="font-weight:700;text-align:center">${r.qty}</td>
-                  <td style="color:var(--success);font-weight:600">${r.unitPrice || "—"}</td>
+                  <td class="preview-index" style="color:var(--text2)">${i + 1}</td>
+                  <td style="overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="${escPreview(r.productName)}">${escPreview(r.productName || "—")}</td>
+                  <td class="preview-qty" style="font-weight:700">${manualReview ? `<input class="review-row" data-review-index="${Number(r.manualReviewIndex ?? i)}" data-review-field="qty" type="number" min="1" value="${escPreview(r.qty || 1)}" style="width:55px">` : escPreview(r.qty)}</td>
+                  <td style="color:var(--success);font-weight:600">${manualReview ? `<input class="review-row" data-review-index="${Number(r.manualReviewIndex ?? i)}" data-review-field="unitPrice" type="number" min="0" step="0.01" value="${escPreview(r.unitPrice || "")}" style="width:85px">` : escPreview(r.unitPrice || "—")}</td>
                   <td style="color:var(--text2)">${r.date || "—"}</td>
-                  <td style="direction:rtl;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${r.city || "—"}</td>
-                  <td style="direction:rtl;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${r.name || "—"}</td>
-                  <td style="font-family:monospace;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${r.phone}</td>
+                  <td style="color:var(--text2)">${r.easyCreatedAt || r.createdAt || r.date || "—"}</td>
+                  <td style="direction:rtl;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${manualReview ? `<input class="review-row" data-review-index="${Number(r.manualReviewIndex ?? i)}" data-review-field="city" value="${escPreview(r.city || "")}" style="width:120px">` : escPreview(r.city || "—")}</td>
+                  <td style="direction:rtl;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${manualReview ? `<input class="review-row" data-review-index="${Number(r.manualReviewIndex ?? i)}" data-review-field="name" value="${escPreview(r.name || "")}" style="width:150px">` : escPreview(r.name || "—")}</td>
+                  <td style="font-family:monospace;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${manualReview ? `<input class="review-row" data-review-index="${Number(r.manualReviewIndex ?? i)}" data-review-field="phone" value="${escPreview(r.phone || "")}" style="width:130px">` : escPreview(r.phone)}</td>
                 </tr>
               `).join("")}
             </tbody>
           </table>
           ${more}
+          ${manualReview ? `<div style="display:flex;gap:8px;align-items:center;padding:10px 14px;background:rgba(249,115,22,.08);border-top:1px solid rgba(249,115,22,.28);color:#fb923c"><strong>⚠️ Manual review required</strong><span style="font-size:11px;color:var(--text2)">Edit the orange rows, then approve to submit.</span><button id="btn-approve-preview" class="btn" style="margin-left:auto;background:rgba(249,115,22,.16);border-color:#f97316;color:#fb923c">Approve &amp; Submit</button></div>` : ""}
         `;
       }
 
@@ -543,25 +627,37 @@ window.renderRun = function (dateFrom, dateTo, selectedAccountIds, onComplete, o
           ? (window._previewAllRows || []).filter(r =>
               (r.name || "").toLowerCase().includes(q) ||
               (r.phone || "").toLowerCase().includes(q) ||
-              (r.productName || "").toLowerCase().includes(q)
+              (r.productName || "").toLowerCase().includes(q) ||
+              String(r.easyCreatedAt || r.createdAt || r.date || "").toLowerCase().includes(q)
             )
           : (window._previewAllRows || []);
         tableWrap.innerHTML = buildPreviewTableHTML(filtered);
-        const noResult = tableWrap.querySelector(".preview-no-results");
-        if (filtered.length === 0 && !noResult) {
+        if (filtered.length === 0) {
           tableWrap.innerHTML += `<div style="padding:16px;text-align:center;font-size:12px;color:var(--text2)">No orders match your search</div>`;
         }
       };
 
       if (tableWrap) {
         tableWrap.innerHTML = buildPreviewTableHTML(allRows);
-        // Clear search box when new data arrives
         const searchEl = document.getElementById("preview-search");
         if (searchEl) searchEl.value = "";
       }
+      document.getElementById("btn-approve-preview")?.addEventListener("click", async () => {
+        const byIndex = {};
+        tableWrap?.querySelectorAll("[data-review-index]").forEach((input) => {
+          const index = input.dataset.reviewIndex;
+          byIndex[index] = byIndex[index] || { manualReviewIndex: Number(index) };
+          byIndex[index][input.dataset.reviewField] = input.value;
+        });
+        const rows = Object.values(byIndex);
+        const button = document.getElementById("btn-approve-preview");
+        if (button) { button.disabled = true; button.textContent = "Submitting…"; }
+        const response = await window.api.approveBotPreview({ rows });
+        if (!response?.ok && button) { button.disabled = false; button.textContent = "Approve & Submit"; }
+      });
       document.getElementById("btn-preview-download")?.addEventListener("click", async () => {
         if (!window._previewBuffer) return;
-        const filename = `Khod-preview-${selectedAccountEmailTag()}-${runDateTag()}.xlsx`;
+        const filename = `KHOD-preview-${selectedAccountEmailTag()}-${runDateTag()}.xlsx`;
         const result = await window.api.saveOutputFile({ buffer: window._previewBuffer, filename });
         if (result.saved) { const fn = t("run.preview_saved"); appendLog(typeof fn === "function" ? fn(result.path) : fn); }
       });
@@ -699,7 +795,8 @@ window.renderRun = function (dateFrom, dateTo, selectedAccountIds, onComplete, o
 
     if (typeof wireSharedSidebar === "function") wireSharedSidebar(el);
 
-    window.api.runBot({ dateFrom, dateTo, accountIds: selectedAccountIds || [] }).then((result) => {
+    window.api.runBot({ dateFrom, dateTo, accountIds: selectedAccountIds || [], ...runOptions }).then((result) => {
+      if (stopRequested) return;
       botDone = true;
       window._botIsRunning = false;
       window.api.botFinished();
@@ -730,12 +827,12 @@ window.renderRun = function (dateFrom, dateTo, selectedAccountIds, onComplete, o
           if (idlePlaceholder) idlePlaceholder.style.display = "none";
           if (zeroPanel)       zeroPanel.style.display = "block";
           if (statsEl && result.data.stats) {
-            const s = result.data.stats;
+            const s = normalizeKhodStats(result.data.stats);
             const statItems = [
-              { icon: "📥", label: t("run.stat_real_scanned"),     val: (s.realValid   || 0) + (s.realInTaager   || 0) + (s.realDupe   || 0) },
-              { icon: "📋", label: t("run.stat_missed_scanned"),   val: (s.missedValid || 0) + (s.missedInTaager || 0) + (s.missedDupe || 0) },
-              { icon: "🔁", label: t("run.stat_already_khod"),     val: (s.realInTaager || 0) + (s.missedInTaager || 0) },
-              { icon: "📦", label: t("run.stat_duplicate_phones"), val: (s.realDupe     || 0) + (s.missedDupe     || 0) },
+              { icon: "📥", label: t("run.stat_real_scanned"),     val: (s.realValid   || 0) + s.realInKhod + s.realDupe },
+              { icon: "📋", label: t("run.stat_missed_scanned"),   val: (s.missedValid || 0) + s.missedInKhod + s.missedDupe },
+              { icon: "🔁", label: t("run.stat_already_khod"),     val: s.khodOrderCount ?? "—" },
+              { icon: "📦", label: t("run.stat_duplicate_phones"), val: s.realDupe + s.missedDupe },
             ];
             statsEl.innerHTML = statItems.map(item => `
               <div style="background:var(--bg3);border:1px solid var(--border);border-radius:10px;padding:12px 18px;min-width:120px">
@@ -801,6 +898,7 @@ window.renderRun = function (dateFrom, dateTo, selectedAccountIds, onComplete, o
   // Active pane: "__all__" or an accountId
   let selectedPane = "__all__";
   let allBotsDone  = false;
+  let stopRequested = false;
 
   // ── Status icon helper ──
   function statusIcon(s) {
@@ -959,7 +1057,6 @@ window.renderRun = function (dateFrom, dateTo, selectedAccountIds, onComplete, o
       const rows = prevData.rows || [];
       const searchId = `multi-preview-search-${acc.id}`;
       const tableId  = `multi-preview-table-${acc.id}`;
-      // Store rows on window for search access
       if (!window._multiPreviewRows) window._multiPreviewRows = {};
       window._multiPreviewRows[acc.id] = rows;
       window._filterMultiPreview = window._filterMultiPreview || function(accId, query) {
@@ -968,30 +1065,32 @@ window.renderRun = function (dateFrom, dateTo, selectedAccountIds, onComplete, o
         const filtered = q ? allR.filter(r =>
           (r.name || "").toLowerCase().includes(q) ||
           (r.phone || "").toLowerCase().includes(q) ||
-          (r.productName || "").toLowerCase().includes(q)
+          (r.productName || "").toLowerCase().includes(q) ||
+              String(r.easyCreatedAt || r.createdAt || r.date || "").toLowerCase().includes(q)
         ) : allR;
         const wrap = document.getElementById(`multi-preview-table-${accId}`);
         if (!wrap) return;
         const colsL = window._t("run.preview_cols");
         wrap.innerHTML = `
-          <table class="orders-preview-table" style="width:100%;table-layout:fixed;border-collapse:collapse">
+          <table class="orders-preview-table run-orders-preview-table" style="width:100%;min-width:1380px;table-layout:fixed;border-collapse:collapse">
             <colgroup>
-              <col style="width:38px"><col style="width:auto"><col style="width:50px">
-              <col style="width:72px"><col style="width:80px"><col style="width:90px">
-              <col style="width:110px"><col style="width:120px">
+              <col style="width:46px"><col style="width:420px"><col style="width:64px">
+              <col style="width:82px"><col style="width:140px"><col style="width:190px"><col style="width:170px">
+              <col style="width:170px"><col style="width:150px">
             </colgroup>
-            <thead><tr><th style="width:38px">#</th>${Array.isArray(colsL)?colsL.map(c=>`<th>${c}</th>`).join(""):""}</tr></thead>
+            <thead><tr><th>#</th>${Array.isArray(colsL)?colsL.map(c=>`<th>${c}</th>`).join(""):""}</tr></thead>
             <tbody>${filtered.map((r,i)=>`<tr>
               <td style="color:var(--text2);text-align:center">${i+1}</td>
               <td style="overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="${(r.productName||"").replace(/"/g,"")}">${r.productName||"—"}</td>
               <td style="font-weight:700;text-align:center">${r.qty||1}</td>
               <td style="color:var(--success);font-weight:600">${r.unitPrice||"—"}</td>
               <td style="color:var(--text2)">${r.date||"—"}</td>
+              <td style="color:var(--text2)">${r.easyCreatedAt||r.createdAt||r.date||"—"}</td>
               <td style="direction:rtl;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${r.city||"—"}</td>
               <td style="direction:rtl;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${r.name||"—"}</td>
               <td style="font-family:monospace;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${r.phone||"—"}</td>
             </tr>`).join("")}
-            ${filtered.length===0?`<tr><td colspan="8" style="text-align:center;padding:14px;color:var(--text2);font-size:12px">No orders match your search</td></tr>`:""}</tbody>
+            ${filtered.length===0?`<tr><td colspan="9" style="text-align:center;padding:14px;color:var(--text2);font-size:12px">No orders match your search</td></tr>`:""}</tbody>
           </table>`;
       };
       return `
@@ -1001,16 +1100,16 @@ window.renderRun = function (dateFrom, dateTo, selectedAccountIds, onComplete, o
           ${prevData.buffer ? `<button class="btn btn-primary" style="font-size:11px;padding:5px 12px" onclick="window._multiDownloadPreview('${acc.id}')">${t("run.download")}</button>` : ""}
         </div>
         <div style="padding:7px 10px;border-bottom:1px solid var(--border);background:rgba(0,0,0,0.05)">
-          <input id="${searchId}" type="text" placeholder="${t('run.search_orders_placeholder')||'Search by name, phone or product…'}" style="width:100%;box-sizing:border-box;background:var(--bg);border:1px solid var(--border);border-radius:var(--radius-sm);padding:5px 9px;font-size:12px;color:var(--text);outline:none" oninput="window._filterMultiPreview('${acc.id}',this.value)">
+          <input id="${searchId}" type="text" placeholder="${t('run.search_orders_placeholder')||'Search by name, phone or product...'}" style="width:100%;box-sizing:border-box;background:var(--bg);border:1px solid var(--border);border-radius:var(--radius-sm);padding:5px 9px;font-size:12px;color:var(--text);outline:none" oninput="window._filterMultiPreview('${acc.id}',this.value)">
         </div>
         <div style="overflow:auto;max-height:300px" id="${tableId}">
-          <table class="orders-preview-table" style="width:100%;table-layout:fixed;border-collapse:collapse">
+          <table class="orders-preview-table run-orders-preview-table" style="width:100%;min-width:1380px;table-layout:fixed;border-collapse:collapse">
             <colgroup>
-              <col style="width:38px"><col style="width:auto"><col style="width:50px">
-              <col style="width:72px"><col style="width:80px"><col style="width:90px">
-              <col style="width:110px"><col style="width:120px">
+              <col style="width:46px"><col style="width:420px"><col style="width:64px">
+              <col style="width:82px"><col style="width:140px"><col style="width:190px"><col style="width:170px">
+              <col style="width:170px"><col style="width:150px">
             </colgroup>
-            <thead><tr><th style="width:38px">#</th>${Array.isArray(cols)?cols.map(c=>`<th>${c}</th>`).join(""):""}</tr></thead>
+            <thead><tr><th>#</th>${Array.isArray(cols)?cols.map(c=>`<th>${c}</th>`).join(""):""}</tr></thead>
             <tbody>
               ${rows.map((r,i)=>`<tr>
                 <td style="color:var(--text2);text-align:center">${i+1}</td>
@@ -1018,6 +1117,7 @@ window.renderRun = function (dateFrom, dateTo, selectedAccountIds, onComplete, o
                 <td style="font-weight:700;text-align:center">${r.qty||1}</td>
                 <td style="color:var(--success);font-weight:600">${r.unitPrice||"—"}</td>
                 <td style="color:var(--text2)">${r.date||"—"}</td>
+                <td style="color:var(--text2)">${r.easyCreatedAt||r.createdAt||r.date||"—"}</td>
                 <td style="direction:rtl;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${r.city||"—"}</td>
                 <td style="direction:rtl;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${r.name||"—"}</td>
                 <td style="font-family:monospace;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${r.phone||"—"}</td>
@@ -1081,6 +1181,7 @@ window.renderRun = function (dateFrom, dateTo, selectedAccountIds, onComplete, o
 
   // ── Classify a log line ──
   function classifyLog(msg) {
+    msg = String(msg == null ? "" : msg);
     const ch = msg[0];
     if (ch === "✅" || msg.startsWith("📦") || msg.startsWith("📋")) return "log-ok";
     if (ch === "❌" || msg.startsWith("FATAL") || msg.startsWith("ERR:")) return "log-err";
@@ -1095,8 +1196,8 @@ window.renderRun = function (dateFrom, dateTo, selectedAccountIds, onComplete, o
       { keywords: ["Easy-Orders Login","PHASE 1","easy-orders login","Easy-orders login"], idx: 0 },
       { keywords: ["Real Orders Export","PHASE 2","Real orders downloaded"],               idx: 1 },
       { keywords: ["Missed Orders Export","PHASE 3","Missed orders downloaded"],           idx: 2 },
-      { keywords: ["PHASE 4","Khod Login","Khod: logging in","khodLogin"],                idx: 3 },
-      { keywords: ["PHASE 5","Creating Orders in Easy-Orders","Creating order for"],       idx: 4 },
+      { keywords: ["PHASE 4","KHOD WHAAT Login","KHOD WHAAT Login","KHOD WHAAT: logging in","KHOD WHAAT: logging in","khodLogin"], idx: 3 },
+      { keywords: ["PHASE 5","Creating Orders in Easy-Orders","Easy-Orders upload"], idx: 4 },
     ];
     for (const p of phaseMap) {
       if (p.keywords.some(k => msg.includes(k)) && acc.phases[p.idx].state !== "done") {
@@ -1212,16 +1313,22 @@ window.renderRun = function (dateFrom, dateTo, selectedAccountIds, onComplete, o
     .mac-sidebar-active { border-color: var(--accent) !important; background: rgba(79,142,247,0.1) !important; }
     .mac-si-done { border-color: var(--success) !important; }
     .mac-si-failed { border-color: var(--danger) !important; }
-    .orders-preview-table { border-collapse: collapse; width: 100%; }
+    .orders-preview-table { border-collapse: collapse; width: 100%; table-layout: fixed; }
+    .run-orders-preview-table {
+      width: 100%;
+      min-width: 1380px;
+    }
     .orders-preview-table th,
     .orders-preview-table td {
-      padding: 7px 10px;
+      padding: 9px 14px;
       text-align: left;
       border-bottom: 1px solid var(--border);
       font-size: 12px;
+      line-height: 1.35;
       overflow: hidden;
       text-overflow: ellipsis;
       white-space: nowrap;
+      vertical-align: middle;
     }
     .orders-preview-table th {
       font-weight: 700;
@@ -1236,6 +1343,28 @@ window.renderRun = function (dateFrom, dateTo, selectedAccountIds, onComplete, o
     }
     .orders-preview-table tbody tr:hover { background: rgba(79,142,247,0.05); }
     .orders-preview-table tbody tr:last-child td { border-bottom: none; }
+    .run-orders-preview-table td:nth-child(1),
+    .run-orders-preview-table td:nth-child(3) { text-align: center; }
+    .run-orders-preview-table td:nth-child(2),
+    .run-orders-preview-table td:nth-child(7),
+    .run-orders-preview-table td:nth-child(8) {
+      direction: rtl;
+      text-align: right;
+    }
+    .run-orders-preview-table td:nth-child(2) {
+      color: var(--text);
+      font-weight: 650;
+    }
+    .run-orders-preview-table td:nth-child(5),
+    .run-orders-preview-table td:nth-child(6),
+    .run-orders-preview-table td:nth-child(7) {
+      color: var(--text2);
+    }
+    .run-orders-preview-table td:nth-child(9) {
+      direction: ltr;
+      font-family: monospace;
+      font-size: 12.5px;
+    }
   `;
   document.head.appendChild(sidebarStyle);
 
@@ -1288,11 +1417,14 @@ window.renderRun = function (dateFrom, dateTo, selectedAccountIds, onComplete, o
   // ── Buttons ──
   document.getElementById("btn-home-run").addEventListener("click", () => { cleanup(); onHome(); });
   document.getElementById("btn-stop").addEventListener("click", async () => {
-    if (allBotsDone) return;
+    if (allBotsDone || stopRequested) return;
     const confirmed = await showRunConfirm(t("run.stop_title"), t("run.stop_msg"));
     if (!confirmed) return;
+    stopRequested = true;
+    const stopBtn = document.getElementById("btn-stop");
+    if (stopBtn) stopBtn.disabled = true;
     window._botIsRunning = false;
-    window.api.killBot();
+    await window.api.killBot();
     window.api.botFinished();
     allBotsDone = true;
     for (const acc of accountStates) {
@@ -1302,13 +1434,9 @@ window.renderRun = function (dateFrom, dateTo, selectedAccountIds, onComplete, o
     badge.textContent = t("run.badge_stopped");
     badge.style.background = "rgba(255,77,109,0.15)";
     badge.style.color = "var(--danger)";
-    document.getElementById("btn-stop").style.display = "none";
-    const homeBtn = document.getElementById("btn-home-run");
-    if (homeBtn) { homeBtn.disabled = false; homeBtn.style.opacity = "1"; homeBtn.style.cursor = "pointer"; }
-    startGlobalCooldown();
-    showCooldownBar();
-    refreshSidebar();
-    renderPane();
+    if (stopBtn) stopBtn.style.display = "none";
+    cleanup();
+    onHome();
   });
 
   // ── Cooldown bar ──
@@ -1340,22 +1468,29 @@ window.renderRun = function (dateFrom, dateTo, selectedAccountIds, onComplete, o
     window.api.removeAllListeners("bot-preview");
     window.api.removeAllListeners("bot-order-progress");
       window.api.removeAllListeners("bot-khod-restart");
+      window.api.removeAllListeners("bot-khod-restart");
       window.api.removeAllListeners("bot-session-event");
       window._opsLiveGlobalBound = false;
   }
   cleanup();
 
+  function isInlineCountdownLog(text) {
+    return String(text || "").includes("[تجنب حد التصدير]") ||
+      String(text || "").includes("[Account schedule]");
+  }
+
   // ── BOT LOG — route to correct account by [Label] prefix ──
   window.api.onBotLog((rawMsg) => {
+    rawMsg = String(rawMsg == null ? "" : rawMsg);
     // Check if it's a cooldown countdown
-    const isCountdown = rawMsg.includes("[تجنب حد التصدير]");
+    const isCountdown = isInlineCountdownLog(rawMsg);
     if (isCountdown) {
       const cleanMsg = rawMsg.trim();
       const cls = "log-warn";
 
       // 1. Update in allLogLines
       const lastAllItem = allLogLines[allLogLines.length - 1];
-      if (lastAllItem && lastAllItem.text.includes("[تجنب حد التصدير]")) {
+      if (lastAllItem && isInlineCountdownLog(lastAllItem.text)) {
         lastAllItem.text = cleanMsg;
       } else {
         allLogLines.push({ text: cleanMsg, cls });
@@ -1364,7 +1499,7 @@ window.renderRun = function (dateFrom, dateTo, selectedAccountIds, onComplete, o
       // 2. Update in all accounts' logLines
       for (const a of accountStates) {
         const lastAccItem = a.logLines[a.logLines.length - 1];
-        if (lastAccItem && lastAccItem.text.includes("[تجنب حد التصدير]")) {
+        if (lastAccItem && isInlineCountdownLog(lastAccItem.text)) {
           lastAccItem.text = cleanMsg;
         } else {
           a.logLines.push({ text: cleanMsg, cls });
@@ -1376,14 +1511,10 @@ window.renderRun = function (dateFrom, dateTo, selectedAccountIds, onComplete, o
         const logEl = document.getElementById("log-output");
         if (logEl) {
           const lastChild = logEl.lastElementChild;
-          if (lastChild && lastChild.textContent.includes("[تجنب حد التصدير]")) {
-            // Update the existing countdown line in-place
+          if (lastChild && isInlineCountdownLog(lastChild.textContent)) {
             lastChild.textContent = cleanMsg;
-            return;
           } else {
-            // First tick — append countdown line to the live DOM so the log doesn't go silent
             liveAppendLog("log-output", cleanMsg, cls);
-            return;
           }
         }
       }
@@ -1504,7 +1635,7 @@ window.renderRun = function (dateFrom, dateTo, selectedAccountIds, onComplete, o
     const acc = accountStates.find(a => a.id === accId);
     if (!acc?.preview?.buffer) return;
     const accName = accountDisplayName(acc);
-    const result = await window.api.saveOutputFile({ buffer: acc.preview.buffer, filename: `Khod-preview-${safeFilenamePart(accName)}-${runDateTag()}.xlsx` });
+    const result = await window.api.saveOutputFile({ buffer: acc.preview.buffer, filename: `KHOD-preview-${safeFilenamePart(accName)}-${runDateTag()}.xlsx` });
     if (result?.saved) {
       const fn = t("run.preview_saved");
       const msg = typeof fn === "function" ? fn(result.path) : fn;
@@ -1526,6 +1657,32 @@ window.renderRun = function (dateFrom, dateTo, selectedAccountIds, onComplete, o
       const titleFn = t("run.notif_2fa_title");
       new Notification(typeof titleFn === "function" ? titleFn(tag) : titleFn, { body: t("run.notif_2fa_body") });
     }
+  });
+
+  window.api.on("__disabled-external-login-needed", async (msg) => {
+    const acc = msg?.accountId ? accountStates.find(a => a.id === msg.accountId) : null;
+    const accName = acc ? accountDisplayName(acc) : (msg && msg.accountLabel) || "";
+    const tag = accName ? ` [${accName}]` : "";
+    const txt = `External login required${tag}. Complete login in Chrome, then close Chrome.`;
+    allLogLines.push({ text: txt, cls: "log-warn" });
+    if (selectedPane === "__all__") liveAppendLog("log-output", txt, "log-warn");
+    playSound("confirm");
+    window.alert(txt);
+    const result = { ok: false, error: "disabled" };
+    if (!result || !result.ok) {
+      const err = `External login resume disabled${tag}: ${result && result.error || "unknown error"}`;
+      allLogLines.push({ text: err, cls: "log-warn" });
+      if (selectedPane === "__all__") liveAppendLog("log-output", err, "log-warn");
+    }
+  });
+
+  window.api.on("__disabled-external-login-complete", (msg) => {
+    const acc = msg?.accountId ? accountStates.find(a => a.id === msg.accountId) : null;
+    const accName = acc ? accountDisplayName(acc) : (msg && msg.accountLabel) || "";
+    const tag = accName ? ` [${accName}]` : "";
+    const txt = `External login verified${tag}.`;
+    allLogLines.push({ text: txt, cls: "log-ok" });
+    if (selectedPane === "__all__") liveAppendLog("log-output", txt, "log-ok");
   });
 
   // ── NEEDS CONFIRM ──
@@ -1561,7 +1718,7 @@ window.renderRun = function (dateFrom, dateTo, selectedAccountIds, onComplete, o
     badge.style.color = "#a89cf7";
   });
 
-  // ── KHOD RESTART ──
+  // KHOD WHAAT restart event; legacy DOM/channel names above remain compatibility-only.
   window.api.on("bot-khod-restart", (msg) => {
     const acc = msg?.accountId ? accountStates.find(a => a.id === msg.accountId) : null;
     const accName = acc ? accountDisplayName(acc) : "";
@@ -1614,7 +1771,8 @@ window.renderRun = function (dateFrom, dateTo, selectedAccountIds, onComplete, o
   if (typeof wireSharedSidebar === "function") wireSharedSidebar(el);
 
   // ── RUN BOT + handle multi-account result (Task 4) ──
-  window.api.runBot({ dateFrom, dateTo, accountIds: selectedAccountIds || [] }).then((result) => {
+  window.api.runBot({ dateFrom, dateTo, accountIds: selectedAccountIds || [], ...runOptions }).then((result) => {
+    if (stopRequested) return;
     allBotsDone = true;
     window._botIsRunning = false;
     window.api.botFinished();
@@ -1701,3 +1859,4 @@ function showRunConfirm(title, message) {
     document.getElementById("rc-cancel").addEventListener("click",  () => { overlay.remove(); resolve(false); });
   });
 }
+

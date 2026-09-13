@@ -1,4 +1,4 @@
-(function () {
+﻿(function () {
   "use strict";
 
   var PLATFORMS = ["tiktok", "snapchat", "facebook"];
@@ -38,6 +38,28 @@
     return !!term && (" " + text + " ").indexOf(" " + term + " ") !== -1;
   }
 
+  function productTokens(name) {
+    var stop = {
+      ad: true, ads: true, campaign: true, sales: true, sale: true, lead: true, leads: true,
+      tiktok: true, tik: true, tok: true, snapchat: true, snap: true, facebook: true, meta: true,
+      ksa: true, saudi: true, offer: true, new: true, test: true, original: true, product: true,
+      "منتج": true, "عرض": true, "جديد": true, "اصلي": true, "حمله": true, "حملة": true
+    };
+    return textKey(name).split(" ").filter(function (token) {
+      return token.length >= 3 && !stop[token] && !/^x\d+$/i.test(token) && !/^\d+$/.test(token);
+    });
+  }
+
+  function productPhrases(tokens) {
+    var phrases = [];
+    for (var size = 2; size <= Math.min(3, tokens.length); size += 1) {
+      for (var start = 0; start <= tokens.length - size; start += 1) {
+        phrases.push(tokens.slice(start, start + size).join(" "));
+      }
+    }
+    return phrases;
+  }
+
   function cleanProductName(name) {
     if (!name) return "";
     var clean = String(name);
@@ -64,8 +86,11 @@
           placedCount: 0,
           deliveredCount: 0,
           canceledCount: 0,
+          cancelStatusCount: 0,
+          statusTotalCount: 0,
           failedCount: 0,
           confirmedCount: 0,
+          confirmationStatusCount: 0,
           shippingCount: 0,
           processingCount: 0,
           waitingCount: 0,
@@ -76,10 +101,7 @@
           qty: 0,
           units: 0,
           pieces: 0,
-          cityMap: {},
-          accounts: {},
-          countries: {},
-          scopes: {}
+          cityMap: {}
         };
       }
       
@@ -92,28 +114,15 @@
           g.skus.push(cleanSku);
         }
       });
-      (Array.isArray(p.accountIds) ? p.accountIds : []).forEach(function (accountId) {
-        if (accountId) g.accounts[String(accountId)] = true;
-      });
-      (Array.isArray(p.countries) ? p.countries : []).forEach(function (country) {
-        if (country) g.countries[String(country)] = true;
-      });
-      (Array.isArray(p.scopes) ? p.scopes : []).forEach(function (scope) {
-        var accountId = String(scope && (scope.accountId || scope.dashboardAccountId) || "");
-        var country = String(scope && (scope.khodCountry || scope.country) || "");
-        if (accountId) g.accounts[accountId] = true;
-        if (country) g.countries[country] = true;
-        if (accountId || country) g.scopes[accountId + "|" + country] = {
-          accountId: accountId,
-          khodCountry: country
-        };
-      });
       
-      g.placedCount += num(p.placedCount || p.orders);
+      g.placedCount += num(p.netOrderCount != null ? p.netOrderCount : (p.orders != null ? p.orders : p.placedCount));
       g.deliveredCount += num(p.deliveredCount || p.units || p.delivered);
       g.canceledCount += num(p.canceledCount || 0);
+      g.cancelStatusCount += num(p.cancelStatusCount || p.canceledCount || 0);
+      g.statusTotalCount += num(p.statusTotalCount || p.netOrderCount || p.orders || p.placedCount || 0);
       g.failedCount += num(p.failedCount || p.realFailedCount || 0);
       g.confirmedCount += num(p.confirmedCount || 0);
+      g.confirmationStatusCount += num(p.confirmationStatusCount || p.confirmedCount || 0);
       g.shippingCount += num(p.shippingCount || 0);
       g.processingCount += num(p.processingCount || 0);
       g.waitingCount += num(p.waitingCount || 0);
@@ -175,8 +184,8 @@
       
       var ndrPct = placed > 0 ? parseFloat(((delivered / placed) * 100).toFixed(1)) : 0;
       var drPct = activeTotal > 0 ? parseFloat(((delivered / activeTotal) * 100).toFixed(1)) : 0;
-      var cancelPct = placed > 0 ? parseFloat(((g.canceledCount / placed) * 100).toFixed(1)) : 0;
-      var confirmationPct = placed > 0 ? parseFloat((((placed - g.pendingCount) / placed) * 100).toFixed(1)) : 0;
+      var cancelPct = placed > 0 ? parseFloat((((g.cancelStatusCount || g.canceledCount) / placed) * 100).toFixed(1)) : 0;
+      var confirmationPct = placed > 0 ? parseFloat(((g.confirmationStatusCount / placed) * 100).toFixed(1)) : 0;
       
       var deliveredAov = delivered > 0 ? parseFloat((g.deliveredSales / delivered).toFixed(2)) : 0;
       
@@ -184,9 +193,6 @@
         key: g.name,
         sku: g.skus.join(", "),
         name: g.name,
-        accountIds: Object.keys(g.accounts),
-        countries: Object.keys(g.countries),
-        scopes: Object.keys(g.scopes).map(function (scopeKey) { return g.scopes[scopeKey]; }),
         units: g.deliveredCount,
         pieces: g.pieces || g.qty,
         placedCount: g.placedCount,
@@ -202,6 +208,7 @@
         canceledCount: g.canceledCount,
         failedCount: g.failedCount,
         confirmedCount: g.confirmedCount,
+        confirmationStatusCount: g.confirmationStatusCount,
         shippingCount: g.shippingCount,
         processingCount: g.processingCount,
         waitingCount: g.waitingCount,
@@ -213,6 +220,21 @@
         cityBreakdown: cityBreakdown
       };
     });
+  }
+
+  function validSkus(product) {
+    var raw = product && (product.sku || product.sku_code || product.skuCode) || "";
+    var skus = [];
+    raw.split(/[\s,]+/).forEach(function (part) {
+      var sku = textKey(part);
+      if (!sku || sku === "n a" || sku === "na") return;
+      if (sku.length >= 2) {
+        if (skus.indexOf(sku) === -1) {
+          skus.push(sku);
+        }
+      }
+    });
+    return skus;
   }
 
   function campaignName(row) {
@@ -260,43 +282,44 @@
     ) || "unknown").toLowerCase();
   }
 
-  function campaignSpendToSar(row, fallbackCurrency) {
-    var amount = parseNumber(row && (
+  function campaignSpendToReporting(row, fallbackCurrency, targetCurrency, egpRate) {
+    var target = targetCurrency || window.dashboardActiveCurrency || "SAR";
+    if (window.DashboardMarketingSpend && typeof window.DashboardMarketingSpend.sourceSpend === "function") {
+      return window.DashboardMarketingSpend.sourceSpend(row || {}, target, {
+        egpRate: egpRate,
+        summaryCurrency: fallbackCurrency || target,
+        sourceCurrency: fallbackCurrency || target
+      }).spend;
+    }
+    var rawAmount = parseNumber(row && (
       row.rawSpend != null ? row.rawSpend :
       row.spend != null ? row.spend :
       row.adSpend != null ? row.adSpend :
       row.cost != null ? row.cost :
       row.amount_spent
     ) || 0);
-    var currency = String(row && row.currency || fallbackCurrency || "SAR").toUpperCase();
-    if (currency === "USD") return amount * 3.75;
-    return amount;
+    var convertedAmount = parseNumber(row && row.convertedSpend != null ? row.convertedSpend : 0);
+    var useConverted = convertedAmount > 0 && rawAmount <= 0;
+    var amount = useConverted ? convertedAmount : rawAmount;
+    var currency = String(row && (useConverted ? row.targetCurrency : row.currency) || fallbackCurrency || "SAR").toUpperCase();
+    return convertReportingMoney(amount, currency, target, egpRate);
   }
-
-  function cleanCurrency(currency, fallback) {
-    var value = String(currency || fallback || "SAR").toUpperCase();
-    if (window.TaagerCurrency && typeof window.TaagerCurrency.cleanCurrency === "function") {
-      return window.TaagerCurrency.cleanCurrency(value, fallback || "SAR");
-    }
-    return ["SAR", "USD"].indexOf(value) !== -1 ? value : "SAR";
-  }
-
-  function campaignRoiSettings(accountId, data) {
-    var fallback = Object.assign({
-      currency: data && data.meta && data.meta.activeCurrency || window.dashboardActiveCurrency || "SAR",
-    }, data && data.roi || {});
-    return window.DashboardRoiState && typeof window.DashboardRoiState.get === "function"
-      ? window.DashboardRoiState.get(accountId, fallback)
-      : fallback;
-  }
-
-  function sarToReportingCurrency(value, reportingCurrency) {
+  function convertReportingMoney(value, fromCurrency, targetCurrency, egpRate) {
     var amount = parseNumber(value);
-    var currency = cleanCurrency(reportingCurrency, "SAR");
+    var source = String(fromCurrency || window.dashboardActiveCurrency || "SAR").toUpperCase();
+    var target = String(targetCurrency || window.dashboardActiveCurrency || source || "SAR").toUpperCase();
+    if (source === target) return amount;
     if (window.TaagerCurrency && typeof window.TaagerCurrency.convert === "function") {
-      return window.TaagerCurrency.convert(amount, "SAR", currency);
+      return window.TaagerCurrency.convert(amount, source, target);
     }
-    if (currency === "USD") return amount / 3.75;
+    var egp = Number(egpRate) || 52;
+    var sar = amount;
+    if (source === "USD") sar = amount * 3.75;
+    else if (source === "EGP") sar = (amount / egp) * 3.75;
+    else if (source !== "SAR") return amount;
+    if (target === "SAR") return sar;
+    if (target === "USD") return sar / 3.75;
+    if (target === "EGP") return (sar / 3.75) * egp;
     return amount;
   }
 
@@ -308,13 +331,30 @@
     return 0;
   }
 
+  function fallbackMetric(row, keys) {
+    var available = false;
+    for (var i = 0; i < keys.length; i += 1) {
+      var value = row && row[keys[i]];
+      if (value == null || value === "") continue;
+      available = true;
+      value = num(value, 4);
+      if (value > 0) return { value: value, available: true };
+    }
+    return { value: 0, available: available };
+  }
+
   function trafficViewMetrics(row) {
-    var landingPageViews = metric(row, ["landingPageViews", "landing_page_views", "actions_landing_page_view", "total_pageview", "conversion_page_views"]);
-    var contentViews = metric(row, ["contentViews", "content_views", "actions_view_content", "page_content_view_events", "conversion_view_content"]);
+    var landing = fallbackMetric(row, ["landingPageViews", "landing_page_views", "actions_landing_page_view", "total_landing_page_view", "total_pageview", "conversion_page_views"]);
+    var content = fallbackMetric(row, ["contentViews", "content_views", "actions_offsite_conversion_fb_pixel_view_content", "actions_view_content", "actions_omni_view_content", "page_content_view_events", "conversion_view_content"]);
+    var landingPageViews = landing.value;
+    var contentViews = content.value;
     return {
       landingPageViews: landingPageViews,
       contentViews: contentViews,
-      trafficViews: landingPageViews > 0 ? landingPageViews : contentViews
+      trafficViews: landingPageViews > 0 ? landingPageViews : contentViews,
+      trafficViewAvailable: row && row.trafficViewAvailable != null
+        ? row.trafficViewAvailable === true
+        : landing.available || content.available
     };
   }
 
@@ -322,66 +362,156 @@
     return String(row && (row.currency || row.account_currency) || (state && state.currency) || "SAR").toUpperCase();
   }
 
-  function campaignPerformance(row, spendSar, fallbackCurrency) {
+  function campaignPerformance(row, spend, fallbackCurrency) {
     var rawCurrency = fallbackCurrency || "SAR";
     var rawSpend = metric(row, ["rawSpend", "spend", "adSpend", "cost", "amount_spent"]);
+    if (!rawSpend && window.DashboardMarketingSpend && typeof window.DashboardMarketingSpend.sourceSpend === "function") {
+      var spendSource = window.DashboardMarketingSpend.sourceSpend(row || {}, fallbackCurrency || window.dashboardActiveCurrency || "SAR", { summaryCurrency: fallbackCurrency || "SAR" });
+      if (spendSource.hasSpend) {
+        rawSpend = spendSource.sourceAmount;
+        rawCurrency = spendSource.sourceCurrency || rawCurrency;
+      }
+    }
     var impressions = metric(row, ["impressions", "reach"]);
     var clicks = metric(row, ["clicks", "link_clicks", "outbound_clicks_outbound_click", "unique_clicks"]);
+    var views = trafficViewMetrics(row);
     var ctr = metric(row, ["ctr", "website_ctr_link_click", "unique_ctr", "unique_link_clicks_ctr", "outbound_clicks_ctr_outbound_click"]);
     var cpc = metric(row, ["cpc", "cost_per_link_click", "cost_per_unique_click"]);
     var cpm = metric(row, ["cpm"]);
-    var views = trafficViewMetrics(row);
     if (!ctr && impressions > 0 && clicks > 0) ctr = (clicks / impressions) * 100;
-    if (!cpc && clicks > 0) cpc = spendSar / clicks;
-    if (!cpm && impressions > 0) cpm = spendSar / impressions * 1000;
+    if (!cpc && clicks > 0 && rawSpend > 0) cpc = rawSpend / clicks;
+    if (!cpm && impressions > 0) cpm = rawSpend / impressions * 1000;
     return {
       impressions: num(impressions),
       clicks: num(clicks),
       landingPageViews: num(views.landingPageViews),
       contentViews: num(views.contentViews),
       trafficViews: num(views.trafficViews),
+      trafficViewAvailable: views.trafficViewAvailable,
       ctrPct: num(ctr, 2),
-      cpcSar: num(cpc, 2),
-      cpmSar: num(cpm, 2),
+      cpc: clicks > 0 ? num(spend / clicks, 2) : 0,
+      cpm: impressions > 0 ? num(spend / impressions * 1000, 2) : 0,
+      platformCpc: num(cpc, 2),
+      platformCpm: num(cpm, 2),
+      platformCpcCurrency: rawCurrency,
       rawCurrency: rawCurrency,
-      rawSpend: rawSpend,
+      rawSpend: rawSpend
     };
   }
 
-  function productSnapshot(product, reportingCurrency) {
-    var orders = num(product && (product.placedCount || product.orders));
+  function productSnapshot(product, reportingCurrency, egpRate) {
+    var orders = num(product && (product.netOrderCount != null
+      ? product.netOrderCount
+      : (product.orders != null ? product.orders : product.placedCount)));
+    var totalOrderCount = num(product && (product.totalOrderCount != null
+      ? product.totalOrderCount
+      : (product.rawTotalOrders != null ? product.rawTotalOrders : orders)));
     var delivered = num(product && (product.deliveredCount || product.units || product.delivered));
-    var commission = num(product && product.commission, 2);
-    var totalSales = num(product && (product.totalSales != null ? product.totalSales : product.revenue), 2);
-    var avgCommission = window.KhodFinancialMetrics.averageCommission(commission, delivered);
+    var sourceCurrency = String(product && product.currency || window.dashboardActiveCurrency || "SAR").toUpperCase();
+    var targetCurrency = String(reportingCurrency || sourceCurrency || "SAR").toUpperCase();
+    var commissionNative = num(product && product.commission, 2);
+    var commission = num(convertReportingMoney(commissionNative, sourceCurrency, targetCurrency, egpRate), 2);
+    var avgCommissionNative = delivered > 0 ? commissionNative / delivered : 0;
+    var avgCommission = delivered > 0 ? commission / delivered : 0;
     var ndr = num(product && (product.ndrPct || product.deliveryRate || product.deliveryPct));
     var dr = num(product && (product.drRate || product.deliveryPct));
+    var breakEvenNative = avgCommissionNative * (ndr / 100);
     var breakEven = avgCommission * (ndr / 100);
+    var deliveredSalesNative = num(product && (product.deliveredSales || product.sales || 0), 2);
+    var deliveredSales = num(convertReportingMoney(deliveredSalesNative, sourceCurrency, targetCurrency, egpRate), 2);
+    var totalSalesNative = num(product && (product.totalSales || product.revenue || product.sales || product.deliveredSales || 0), 2);
+    var totalSales = num(convertReportingMoney(totalSalesNative, sourceCurrency, targetCurrency, egpRate), 2);
     return {
       id: String(product && (product.key || product.sku || product.name) || ""),
+      accountId: String(product && product.accountId || ""),
+      country: String(product && product.country || ""),
+      currency: targetCurrency,
+      nativeCurrency: sourceCurrency,
       name: String(product && (product.name || product.key || product.sku) || "Unknown product"),
       sku: String(product && product.sku || ""),
       orders: orders,
+      netOrderCount: orders,
+      totalOrderCount: totalOrderCount,
       delivered: delivered,
       ndrPct: num(ndr, 1),
       drPct: num(dr, 1),
       cancelPct: num(product && product.cancelPct, 1),
-      deliveredSales: num(product && (product.deliveredSales || product.sales || 0), 2),
+      deliveredSales: deliveredSales,
+      deliveredSalesNative: deliveredSalesNative,
       totalSales: totalSales,
-      totalSalesReporting: num(sarToReportingCurrency(totalSales, reportingCurrency), 2),
+      totalSalesNative: totalSalesNative,
       commission: commission,
-      commissionReporting: num(sarToReportingCurrency(commission, reportingCurrency), 2),
-      deliveredAov: delivered > 0 ? num((product && (product.deliveredSales || product.sales || 0)) / delivered, 2) : 0,
-      breakEvenCpaSar: num(breakEven, 2),
-      breakEvenCpa: num(sarToReportingCurrency(breakEven, reportingCurrency), 2),
+      commissionNative: commissionNative,
+      deliveredAov: delivered > 0 ? num(deliveredSales / delivered, 2) : 0,
+      breakEvenCpaSar: num(convertReportingMoney(breakEvenNative, sourceCurrency, "SAR", egpRate), 2),
+      breakEvenCpaNative: num(breakEvenNative, 2),
+      breakEvenCpa: num(breakEven, 2),
       topCities: (product && Array.isArray(product.cityBreakdown) ? product.cityBreakdown : []).slice(0, 4).map(function (city) {
         return {
           city: city.name || city.city || "",
-          orders: num(city.count || city.orders),
+          orders: num(city.netOrderCount != null ? city.netOrderCount : (city.orders != null ? city.orders : city.count)),
+          netOrderCount: num(city.netOrderCount != null ? city.netOrderCount : (city.orders != null ? city.orders : city.count)),
+          totalOrderCount: num(city.totalOrderCount != null
+            ? city.totalOrderCount
+            : (city.rawTotalOrders != null ? city.rawTotalOrders : (city.netOrderCount != null ? city.netOrderCount : (city.orders != null ? city.orders : city.count)))),
           ndrPct: num(city.ndr || city.ndrPct, 1)
         };
       })
     };
+  }
+
+  function productMatchIndex(products) {
+    var entries = products.map(function (product, idx) {
+      var tokens = productTokens(product.name || product.key || "");
+      return {
+        idx: idx,
+        accountId: String(product.accountId || ""),
+        country: String(product.country || ""),
+        skus: validSkus(product),
+        tokens: tokens,
+        phrases: productPhrases(tokens)
+      };
+    });
+    var tokenOwners = {};
+    var phraseOwners = {};
+    entries.forEach(function (entry) {
+      entry.tokens.forEach(function (token) { tokenOwners[token] = (tokenOwners[token] || 0) + 1; });
+      entry.phrases.forEach(function (phrase) { phraseOwners[phrase] = (phraseOwners[phrase] || 0) + 1; });
+    });
+    return { entries: entries, tokenOwners: tokenOwners, phraseOwners: phraseOwners };
+  }
+
+  function nameMatchScore(campaignText, spaceText, entry, index) {
+    var hasAnyToken = entry.tokens.some(function (token) {
+      return campaignText.indexOf(token) !== -1;
+    });
+    if (!hasAnyToken) return 0;
+
+    var hits = entry.tokens.filter(function (token) { return spaceText.indexOf(" " + token + " ") !== -1; });
+    var phraseHits = entry.phrases.filter(function (phrase) { return spaceText.indexOf(" " + phrase + " ") !== -1; });
+    var uniqueWordHit = hits.some(function (token) { return token.length >= 4 && index.tokenOwners[token] === 1; });
+    var uniquePhraseHit = phraseHits.some(function (phrase) { return index.phraseOwners[phrase] === 1; });
+    if (hits.length < Math.min(2, entry.tokens.length) && !uniqueWordHit && !uniquePhraseHit) return 0;
+    return hits.reduce(function (total, token) {
+      return total + token.length + (index.tokenOwners[token] === 1 ? 6 : 0);
+    }, 0) + phraseHits.reduce(function (total, phrase) {
+      return total + phrase.length + (index.phraseOwners[phrase] === 1 ? 12 : 0);
+    }, 0);
+  }
+
+  function matchCampaign(row, products, index, state) {
+    var attribution = window.TaagerProductAttribution;
+    if (!attribution || !index) return null;
+    var scopedRow = Object.assign({}, row, {
+      dashboardAccountId: row && row.dashboardAccountId || state && state.accountId || "",
+      country: row && row.country || state && state.country || ""
+    });
+    var result = attribution.matchCampaign(scopedRow, index);
+    if (result.status !== "matched") return result;
+    return Object.assign({}, result, {
+      idx: result.productIndex,
+      product: products[result.productIndex]
+    });
   }
 
   function marketingStates(accountId, platform) {
@@ -398,17 +528,13 @@
     return Array.isArray(summary.campaignBreakdown) ? summary.campaignBreakdown : [];
   }
 
-  function pushTop(list, item, limit) {
-    list.push(item);
-    if (list.length > (limit || CAP) * 4) list.length = (limit || CAP) * 4;
-  }
-
-  function buildCacheKey(data, states, opts, accountId, rawProducts, reportingCurrency) {
+  function buildCacheKey(data, states, opts, accountId, rawProducts, currency) {
     var meta = data && data.meta || {};
     var stateKey = (states || []).map(function (state) {
       var summary = state && state.summary || {};
       return [
         state && state.platform || "",
+        state && state.accountId || "",
         state && state.lastSyncAt || summary.lastSyncAt || "",
         summary.dateFrom || "",
         summary.dateTo || "",
@@ -417,14 +543,16 @@
       ].join(":");
     }).join("|");
     return [
-      window.KhodProductAttribution && window.KhodProductAttribution.VERSION || 0,
       accountId,
+      meta.activeCountry || "",
       opts.platform || "all",
+      currency,
+      opts.egpRate || "",
+      JSON.stringify(meta.exchangeRates || {}),
       textKey(opts.productName || opts.product || ""),
       meta.lastUpdatedAt || meta.generatedAt || meta.periodLabel || "",
       rawProducts.length,
-      stateKey,
-      reportingCurrency || "SAR",
+      stateKey
     ].join("::");
   }
 
@@ -441,33 +569,53 @@
     return value;
   }
 
+  function pushTop(list, item, limit) {
+    list.push(item);
+    if (list.length > (limit || CAP) * 4) list.length = (limit || CAP) * 4;
+  }
+
   function build(opts) {
     opts = opts || {};
     var data = opts.data || window.dashboardGeoData || {};
+    var meta = data.meta || {};
     var accountId = data.meta && data.meta.activeAccountId || (window.getActiveAccountId ? window.getActiveAccountId() : "__all__");
-    var roiSettings = campaignRoiSettings(accountId, data);
-    var reportingCurrency = cleanCurrency(roiSettings.currency, data.meta && data.meta.activeCurrency || window.dashboardActiveCurrency || "SAR");
-    var rawProducts = data.products && Array.isArray(data.products.rankedList) ? data.products.rankedList : [];
+    var roi = data.roi || {};
+    var roiSettings = window.DashboardRoiState && typeof window.DashboardRoiState.get === "function"
+      ? window.DashboardRoiState.get(accountId, Object.assign({ currency: meta.activeCurrency || meta.reportingCurrency || window.dashboardActiveCurrency || "SAR" }, roi))
+      : roi;
+    var egpRate = Number(roiSettings.egpRate || roi.egpRate || 52) || 52;
+    var reportingCurrency = String(roiSettings.currency || meta.activeCurrency || meta.reportingCurrency || window.dashboardActiveCurrency || "SAR").toUpperCase();
+    var campaignProducts = data.products && Array.isArray(data.products.campaignList) ? data.products.campaignList : [];
+    var rawProducts = campaignProducts.length
+      ? campaignProducts
+      : (data.products && Array.isArray(data.products.rankedList) ? data.products.rankedList : []);
+    var products = campaignProducts.length ? rawProducts.slice() : groupProductsByName(rawProducts);
+    var snapshots = products.map(function (product) {
+      return productSnapshot(product, reportingCurrency, egpRate);
+    });
+    var attribution = window.TaagerProductAttribution;
+    var index = attribution
+      ? attribution.createProductIndex(products, {
+          productNameOverrides: productNameOverrides
+        })
+      : null;
     var states = opts.marketingState ? [opts.marketingState] : marketingStates(accountId, opts.platform);
-    var periodLabel = (states[0] && states[0].summary && (states[0].summary.dateFrom || states[0].summary.dateTo))
-      ? [states[0].summary.dateFrom, states[0].summary.dateTo].filter(Boolean).join(" - ")
-      : (data.meta && data.meta.periodLabel || "Last 30 days / synced dashboard period");
-    var cacheKey = buildCacheKey(data, states, opts, accountId, rawProducts, reportingCurrency);
+    var productNameOverrides = window.TaagerProductNames && typeof window.TaagerProductNames.all === "function"
+      ? window.TaagerProductNames.all()
+      : {};
+    var attributionVersion = window.TaagerProductAttribution ? window.TaagerProductAttribution.VERSION : 0;
+    var cacheKey = buildCacheKey(data, states, Object.assign({}, opts, { egpRate: egpRate }), accountId, rawProducts, reportingCurrency) +
+      "|attribution:" + attributionVersion +
+      "|names:" + JSON.stringify(productNameOverrides);
     var cached = cachedBuild(data, cacheKey);
     if (cached) return cached;
-    var products = groupProductsByName(rawProducts);
-    var snapshots = products.map(function (product) {
-      return productSnapshot(product, reportingCurrency);
-    });
-    var attribution = window.KhodProductAttribution;
-    var index = attribution.createProductIndex(products);
     var rows = [];
     var totals = {
-      adSpendSar: 0,
+      spend: 0,
       campaignCount: 0,
       rowCount: 0,
-      matchedSpendSar: 0,
-      unmatchedSpendSar: 0,
+      matchedSpend: 0,
+      unmatchedSpend: 0,
       spentCampaignCount: 0,
       zeroSpendRowsSkipped: 0,
       missingSkuCampaignCount: 0,
@@ -490,12 +638,12 @@
       totals.campaignCount += num(summary.campaignCount);
       totals.rowCount += num(summary.rowCount);
       rowsFromState(state).forEach(function (row) {
+        var stateAccountId = String(state.accountId || "");
+        if (stateAccountId === "__all__") stateAccountId = "";
         rows.push({
-          row: Object.assign({
-            dashboardAccountId: row && row.dashboardAccountId ||
-              (state && state.accountId && state.accountId !== "__all__" ? state.accountId : "")
-          }, row),
-          state: state
+          row: row,
+          state: state,
+          dashboardAccountId: String(stateAccountId || row.dashboardAccountId || (accountId === "__all__" ? "" : accountId) || "")
         });
       });
     });
@@ -504,84 +652,78 @@
       var row = entry.row;
       var platform = platformOf(row, entry.state && entry.state.platform);
       var currency = rowCurrency(row, entry.state);
-      var spendSar = campaignSpendToSar(row, currency);
-      if (spendSar <= 0) {
+      var spend = campaignSpendToReporting(row, currency, reportingCurrency, egpRate);
+      if (spend <= 0) {
         totals.zeroSpendRowsSkipped += 1;
         return;
       }
       var objective = objectiveOf(row);
-      var match = attribution.matchCampaignName(row, index, {
-        accountId: accountId !== "__all__" ? accountId : ""
-      });
-      var product = match.status === "matched" ? snapshots[match.productIndex] : null;
-      var candidateProducts = (match.candidateIds || []).map(function (candidateId) {
-        var candidate = index.entries.filter(function (item) { return item.id === candidateId; })[0];
-        return candidate ? snapshots[candidate.idx] : null;
-      }).filter(Boolean);
-      var suggestedProduct = !product && candidateProducts.length === 1 ? candidateProducts[0] : null;
-      var khodOrders = product ? product.orders : 0;
-      var estimatedCpaSar = product && khodOrders > 0 ? spendSar / khodOrders : 0;
-      var performance = campaignPerformance(row, spendSar, currency);
-      totals.adSpendSar += spendSar;
+      var scopedRow = Object.assign({}, row, { dashboardAccountId: entry.dashboardAccountId });
+      var match = matchCampaign(scopedRow, products, index, entry.state);
+      var product = match && match.status === "matched" && match.product ? snapshots[match.idx] : null;
+      var taagerOrders = product ? product.orders : 0;
+      var taagerCpa = product && taagerOrders > 0 ? spend / taagerOrders : 0;
+      var performance = campaignPerformance(row, spend, currency);
+      totals.spend += spend;
       totals.spentCampaignCount += 1;
-      if (product) {
-        totals.matchedSpendSar += spendSar;
-        if (match.matchDetail === "sku_separated") totals.separatedSkuRows += 1;
-        else if (match.matchDetail === "sku_glued") totals.gluedSkuRows += 1;
-        else if (match.method === "name") totals.nameRows += 1;
-      }
+      if (product) totals.matchedSpend += spend;
       else {
-        totals.unmatchedSpendSar += spendSar;
+        totals.unmatchedSpend += spend;
         totals.missingSkuCampaignCount += 1;
-        if (match.status === "ambiguous") totals.ambiguousRows += 1;
-        else totals.unmatchedRows += 1;
       }
-      if (!objectiveMap[objective]) objectiveMap[objective] = { objective: objective, spendSar: 0, campaignCount: 0 };
-      objectiveMap[objective].spendSar += spendSar;
+      if (match && match.matchDetail === "separated_sku") totals.separatedSkuRows += 1;
+      else if (match && match.matchDetail === "glued_sku") totals.gluedSkuRows += 1;
+      else if (match && match.method === "name") totals.nameRows += 1;
+      else if (match && match.method === "ambiguous") totals.ambiguousRows += 1;
+      else totals.unmatchedRows += 1;
+      if (!objectiveMap[objective]) objectiveMap[objective] = { objective: objective, spend: 0, campaignCount: 0 };
+      objectiveMap[objective].spend += spend;
       objectiveMap[objective].campaignCount += 1;
 
       var campaign = {
         campaignId: campaignId(row),
         campaign: campaignName(row),
+        dashboardAccountId: entry.dashboardAccountId,
+        sourceAccountId: String(row.accountId || row.sourceAccountId || ""),
+        sourceAccountName: String(row.accountName || row.sourceAccountName || ""),
         platform: platform,
         objective: objective,
         status: statusOf(row),
-        spendSar: num(spendSar, 2),
+        currency: reportingCurrency,
+        spend: num(spend, 2),
+        spendSar: num(spend, 2),
         impressions: performance.impressions,
         clicks: performance.clicks,
         landingPageViews: performance.landingPageViews,
         contentViews: performance.contentViews,
         trafficViews: performance.trafficViews,
         ctrPct: performance.ctrPct,
-        cpcSar: performance.cpcSar,
-        cpmSar: performance.cpmSar,
+        cpc: performance.cpc,
+        cpcSar: performance.cpc,
+        cpm: performance.cpm,
+        cpmSar: performance.cpm,
+        platformCpc: performance.platformCpc,
+        platformCpm: performance.platformCpm,
+        platformCpcCurrency: performance.platformCpcCurrency,
         rawCurrency: performance.rawCurrency,
         rawSpend: performance.rawSpend,
         product: product ? product.name : null,
         productSku: product ? product.sku : "",
-        suggestedProduct: suggestedProduct ? suggestedProduct.name : "",
-        suggestedProductSku: suggestedProduct ? suggestedProduct.sku : "",
-        candidateIds: match.candidateIds || [],
-        candidateProducts: candidateProducts.map(function (candidate) {
-          return { id: candidate.id, name: candidate.name, sku: candidate.sku };
-        }),
-        matchMethod: match.method,
-        matchDetail: match.matchDetail,
-        matchedSku: match.matchedSku || "",
-        matchConfidence: match.confidence,
-        attributionStatus: match.status,
+        matchMethod: match ? match.method : "unmatched",
+        matchDetail: match ? match.matchDetail : "no_match",
+        matchConfidence: product ? match.confidence : "none",
+        matchedSku: match ? match.matchedSku : "",
+        candidateIds: match ? match.candidateIds : [],
         attributionVerified: !!product,
-        khodOrders: khodOrders,
+        taagerOrders: taagerOrders,
+        taagerDelivered: product ? product.delivered : 0,
+        taagerNdrPct: product ? product.ndrPct : 0,
+        taagerCpa: num(taagerCpa, 2),
+        khodOrders: taagerOrders,
         khodDelivered: product ? product.delivered : 0,
         khodNdrPct: product ? product.ndrPct : 0,
-        estimatedCpaSar: num(estimatedCpaSar, 2),
-        khodConversionRatePct: product && performance.trafficViews > 0 ? num((khodOrders / performance.trafficViews) * 100, 2) : 0,
-        deliveredConversionRatePct: product && performance.trafficViews > 0 ? num((product.delivered / performance.trafficViews) * 100, 2) : 0,
-        note: product
-          ? "Orders and delivery results come from the KHOD dashboard."
-          : (match.status === "ambiguous"
-            ? "Ambiguous campaign; spend is assigned to no product."
-            : "Unmatched spend; no KHOD product attribution.")
+        estimatedCpaSar: num(taagerCpa, 2),
+        note: product ? "Orders and delivery results come from the KHOD dashboard." : "Unmatched spend; no KHOD product attribution."
       };
       campaign.searchHaystack = textKey([
         campaign.campaign,
@@ -590,17 +732,13 @@
         campaign.objective,
         campaign.status,
         campaign.product || "",
-        campaign.suggestedProduct || "",
         campaign.productSku || "",
-        campaign.suggestedProductSku || "",
         campaign.matchMethod,
-        campaign.matchConfidence,
-        campaign.matchDetail,
-        campaign.candidateProducts.map(function (candidate) { return candidate.name + " " + candidate.sku; }).join(" ")
+        campaign.matchConfidence
       ].join(" "));
       allCampaignSummaries.push(campaign);
       pushTop(topSpendCampaigns, campaign);
-      if (!product || khodOrders <= 0 || (estimatedCpaSar > 0 && product.breakEvenCpaSar > 0 && estimatedCpaSar > product.breakEvenCpaSar)) {
+      if (!product || taagerOrders <= 0 || (taagerCpa > 0 && product.breakEvenCpa > 0 && taagerCpa > product.breakEvenCpa)) {
         allWorstCampaigns.push(campaign);
         pushTop(worstCampaigns, campaign);
       }
@@ -609,132 +747,130 @@
         var key = matchedProduct.id || matchedProduct.name;
         if (!productGroups[key]) {
           productGroups[key] = {
+            id: key,
+            accountId: matchedProduct.accountId,
+            country: matchedProduct.country,
+            currency: reportingCurrency,
             product: matchedProduct.name,
             sku: matchedProduct.sku,
-            spendSar: 0,
+            spend: 0,
             campaignCount: 0,
-            khodOrders: matchedProduct.orders,
-            khodDelivered: matchedProduct.delivered,
-            khodNdrPct: matchedProduct.ndrPct,
-            khodDrPct: matchedProduct.drPct,
+            taagerOrders: matchedProduct.orders,
+            taagerDelivered: matchedProduct.delivered,
+            taagerNdrPct: matchedProduct.ndrPct,
+            taagerDrPct: matchedProduct.drPct,
             cancelPct: matchedProduct.cancelPct,
             deliveredSales: matchedProduct.deliveredSales,
             totalSales: matchedProduct.totalSales,
             deliveredAov: matchedProduct.deliveredAov,
+            khodOrders: matchedProduct.orders,
+            khodDelivered: matchedProduct.delivered,
+            khodNdrPct: matchedProduct.ndrPct,
+            khodDrPct: matchedProduct.drPct,
+            khodCpa: 0,
             commission: matchedProduct.commission,
-            breakEvenCpaSar: matchedProduct.breakEvenCpaSar,
+            taagerProfit: matchedProduct.commission,
+            breakEvenCpa: matchedProduct.breakEvenCpa,
             impressions: 0,
             clicks: 0,
             landingPageViews: 0,
             contentViews: 0,
             trafficViews: 0,
+            trafficViewAvailable: false,
             objectives: {},
             cities: matchedProduct.topCities,
             matchConfidence: match.confidence
           };
         }
-        productGroups[key].spendSar += spendSar;
+        productGroups[key].spend += spend;
         productGroups[key].campaignCount += 1;
         productGroups[key].impressions += performance.impressions;
         productGroups[key].clicks += performance.clicks;
         productGroups[key].landingPageViews += performance.landingPageViews;
         productGroups[key].contentViews += performance.contentViews;
         productGroups[key].trafficViews += performance.trafficViews;
-        productGroups[key].objectives[objective] = (productGroups[key].objectives[objective] || 0) + spendSar;
-        if (match.method === "sku") {
-          productGroups[key].matchConfidence = "high";
-        }
+        productGroups[key].trafficViewAvailable = productGroups[key].trafficViewAvailable || performance.trafficViewAvailable;
+        productGroups[key].objectives[objective] = (productGroups[key].objectives[objective] || 0) + spend;
       }
     });
 
     var allProductGroups = Object.keys(productGroups).map(function (key) {
       var group = productGroups[key];
-      var cpa = group.khodOrders > 0 ? group.spendSar / group.khodOrders : 0;
-      var deliveredCpa = group.khodDelivered > 0 ? group.spendSar / group.khodDelivered : 0;
-      var breakEven = group.breakEvenCpaSar || 0;
-      var avgCommissionSar = window.KhodFinancialMetrics.averageCommission(group.commission, group.khodDelivered);
-      var trafficViews = group.trafficViews || 0;
-      var netProfitSar = group.commission - group.spendSar;
+      var cpa = group.taagerOrders > 0 ? group.spend / group.taagerOrders : 0;
+      var deliveredCpa = group.taagerDelivered > 0 ? group.spend / group.taagerDelivered : 0;
+      var breakEven = group.breakEvenCpa || 0;
+      var avgDeliveredCommission = group.taagerDelivered > 0 ? group.taagerProfit / group.taagerDelivered : 0;
+      var trafficViews = group.trafficViews;
+      var netProfit = group.taagerProfit - group.spend;
       var cpaUnsafe = breakEven > 0 && cpa > breakEven;
-      var deliveredCpaUnsafe = avgCommissionSar > 0 && deliveredCpa > avgCommissionSar;
-      var decisionMetadata = window.KhodCampaignDecision && typeof window.KhodCampaignDecision.evaluate === "function"
-        ? window.KhodCampaignDecision.evaluate({
-          orders: group.khodOrders,
-          delivered: group.khodDelivered,
-          ndrPct: group.khodNdrPct,
+      var deliveredCpaUnsafe = avgDeliveredCommission > 0 && deliveredCpa > avgDeliveredCommission;
+      var decisionEngine = window.KhodCampaignDecision || window.TaagerCampaignDecision;
+      var decisionMetadata = decisionEngine && typeof decisionEngine.evaluate === "function"
+        ? decisionEngine.evaluate({
+          orders: group.taagerOrders,
+          delivered: group.taagerDelivered,
+          ndrPct: group.taagerNdrPct,
           cancelPct: group.cancelPct,
           cpa: cpa,
           breakEvenCpa: breakEven,
           deliveredCpa: deliveredCpa,
-          avgDeliveredProfit: avgCommissionSar,
-          netProfit: netProfitSar,
+          avgDeliveredCommission: avgDeliveredCommission,
+          netProfit: netProfit,
           campaignCount: group.campaignCount,
-          periodLabel: periodLabel,
+          periodLabel: data.meta && data.meta.periodLabel || "",
           cities: group.cities
         })
-        : {
-          decision: cpaUnsafe || deliveredCpaUnsafe ? "fix_first" : "watch",
-          status: cpaUnsafe || deliveredCpaUnsafe ? "fix_first" : "watch",
-          passedChecks: [],
-          failedChecks: [],
-          warnings: [],
-          reasons: ["Campaign decision evaluator is unavailable."],
-          nextAction: "Collect more evidence before changing spend."
-        };
+        : { decision: cpaUnsafe || deliveredCpaUnsafe ? "fix_first" : "watch", status: cpaUnsafe || deliveredCpaUnsafe ? "fix_first" : "watch" };
       var decision = decisionMetadata.decision;
       var res = Object.assign({}, group, {
-        spendSar: num(group.spendSar, 2),
-        spend: num(sarToReportingCurrency(group.spendSar, reportingCurrency), 2),
-        estimatedCpaSar: num(cpa, 2),
-        estimatedCpa: num(sarToReportingCurrency(cpa, reportingCurrency), 2),
-        khodCpaSar: num(cpa, 2),
-        khodCpa: num(sarToReportingCurrency(cpa, reportingCurrency), 2),
-        deliveredCpaSar: num(deliveredCpa, 2),
-        deliveredCpa: num(sarToReportingCurrency(deliveredCpa, reportingCurrency), 2),
-        breakEvenCpa: num(sarToReportingCurrency(breakEven, reportingCurrency), 2),
-        avgCommissionSar: num(avgCommissionSar, 2),
-        avgCommission: num(sarToReportingCurrency(avgCommissionSar, reportingCurrency), 2),
-        avgDeliveredProfitSar: num(avgCommissionSar, 2),
-        avgDeliveredProfit: num(sarToReportingCurrency(avgCommissionSar, reportingCurrency), 2),
-        landingPageViews: num(group.landingPageViews),
-        contentViews: num(group.contentViews),
+        spend: num(group.spend, 2),
+        spendSar: num(group.spend, 2),
+        taagerCpa: num(cpa, 2),
+        deliveredCpa: num(deliveredCpa, 2),
+        avgDeliveredCommission: num(avgDeliveredCommission, 2),
         trafficViews: num(trafficViews),
-        realConversionRatePct: trafficViews > 0 ? num(group.khodOrders / trafficViews * 100, 2) : 0,
-        deliveredConversionRatePct: trafficViews > 0 ? num(group.khodDelivered / trafficViews * 100, 2) : 0,
+        conversionRateAvailable: trafficViews > 0,
+        realConversionRatePct: trafficViews > 0 ? num(group.taagerOrders / trafficViews * 100, 2) : 0,
+        deliveredConversionRatePct: trafficViews > 0 ? num(group.taagerDelivered / trafficViews * 100, 2) : 0,
+        cpc: group.clicks > 0 ? num(group.spend / group.clicks, 2) : 0,
+        netProfit: num(netProfit, 2),
+        netResult: num(netProfit, 2),
+        roiPct: group.spend > 0 ? num(netProfit / group.spend * 100, 2) : 0,
+        profitRoas: group.spend > 0 ? num(group.taagerProfit / group.spend, 2) : 0,
+        totalSalesRoas: group.spend > 0 ? num(group.totalSales / group.spend, 2) : 0,
+        deliveredSalesRoas: group.spend > 0 ? num(group.deliveredSales / group.spend, 2) : 0,
+        khodOrders: group.taagerOrders,
+        khodDelivered: group.taagerDelivered,
+        khodNdrPct: group.taagerNdrPct,
+        khodDrPct: group.taagerDrPct,
+        estimatedCpaSar: num(cpa, 2),
+        khodCpa: num(cpa, 2),
+        khodCpaSar: num(cpa, 2),
+        deliveredCpaSar: num(deliveredCpa, 2),
+        breakEvenCpaSar: num(breakEven, 2),
+        commission: group.taagerProfit,
+        netProfitSar: num(netProfit, 2),
+        commissionRoas: group.spend > 0 ? num(group.taagerProfit / group.spend, 2) : 0,
         ctrPct: group.impressions > 0 ? num(group.clicks / group.impressions * 100, 2) : 0,
-        cpcSar: group.clicks > 0 ? num(group.spendSar / group.clicks, 2) : 0,
-        netProfitSar: num(netProfitSar, 2),
-        netProfit: num(sarToReportingCurrency(netProfitSar, reportingCurrency), 2),
-        commissionReporting: num(sarToReportingCurrency(group.commission, reportingCurrency), 2),
-        totalSales: num(sarToReportingCurrency(group.totalSales, reportingCurrency), 2),
-        totalSalesSar: num(group.totalSales, 2),
-        reportingCurrency: reportingCurrency,
-        roiPct: group.spendSar > 0 ? num(netProfitSar / group.spendSar * 100, 2) : 0,
-        commissionRoas: group.spendSar > 0 ? num(group.commission / group.spendSar, 2) : 0,
-        totalSalesRoas: group.spendSar > 0 ? num(group.totalSales / group.spendSar, 2) : 0,
-        deliveredSalesRoas: group.spendSar > 0 ? num(group.deliveredSales / group.spendSar, 2) : 0,
+        cpcSar: group.clicks > 0 ? num(group.spend / group.clicks, 2) : 0,
         decision: decision,
         decisionMetadata: decisionMetadata,
         objectiveMix: Object.keys(group.objectives).map(function (objective) {
-          return {
-            objective: objective,
-            spendSar: num(group.objectives[objective], 2),
-            spend: num(sarToReportingCurrency(group.objectives[objective], reportingCurrency), 2)
-          };
-        }).sort(function (a, b) { return b.spendSar - a.spendSar; })
+          return { objective: objective, spend: num(group.objectives[objective], 2), spendSar: num(group.objectives[objective], 2) };
+        }).sort(function (a, b) { return b.spend - a.spend; })
       });
-      res.searchHaystack = textKey([res.product || "", res.sku || ""].join(" "));
+      res.searchHaystack = textKey([res.product || "", res.sku || "", res.accountId || "", res.country || ""].join(" "));
       return res;
     }).sort(function (a, b) {
-      return (b.khodOrders - a.khodOrders) || (b.spendSar - a.spendSar);
+      return (b.khodOrders - a.khodOrders) || (b.spend - a.spend);
     });
     var topProductGroups = allProductGroups.slice(0, CAP);
 
-    topSpendCampaigns = topSpendCampaigns.sort(function (a, b) { return b.spendSar - a.spendSar; }).slice(0, CAP);
+    topSpendCampaigns = topSpendCampaigns.sort(function (a, b) { return b.spend - a.spend; }).slice(0, CAP);
     worstCampaigns = worstCampaigns.sort(function (a, b) {
       if (!a.product && b.product) return -1;
       if (a.product && !b.product) return 1;
-      return b.spendSar - a.spendSar;
+      return b.spend - a.spend;
     }).slice(0, CAP);
 
     var focus = null;
@@ -748,12 +884,12 @@
         topSpendCampaigns = allCampaignSummaries.filter(function (campaign) {
           return textKey(campaign.product || "") === textKey(focus.product);
         }).sort(function (a, b) {
-          return b.spendSar - a.spendSar;
+          return b.spend - a.spend;
         }).slice(0, CAP);
         worstCampaigns = allWorstCampaigns.filter(function (campaign) {
           return textKey(campaign.product || "") === textKey(focus.product);
         }).sort(function (a, b) {
-          return b.spendSar - a.spendSar;
+          return b.spend - a.spend;
         }).slice(0, CAP);
         topProductGroups = [focus];
       } else {
@@ -764,91 +900,83 @@
     }
 
     var fatigueCandidates = topSpendCampaigns.filter(function (campaign) {
-      return campaign.product && campaign.khodOrders > 0 && campaign.estimatedCpaSar > 0 && campaign.khodNdrPct < 30;
+      return campaign.product && campaign.taagerOrders > 0 && campaign.taagerCpa > 0 && campaign.taagerNdrPct < 30;
     }).slice(0, 8);
-    var matchedProductTotals = allProductGroups.reduce(function (acc, group) {
-      acc.khodOrders += num(group.khodOrders);
-      acc.khodDelivered += num(group.khodDelivered);
-      acc.clicks += num(group.clicks);
-      acc.commission += num(group.commission, 2);
-      acc.deliveredSales += num(group.deliveredSales, 2);
-      acc.totalSales += num(group.totalSales, 2);
-      acc.spendSar += num(group.spendSar, 2);
-      return acc;
-    }, { khodOrders: 0, khodDelivered: 0, clicks: 0, commission: 0, deliveredSales: 0, totalSales: 0, spendSar: 0 });
-    var matchedNetProfit = matchedProductTotals.commission - matchedProductTotals.spendSar;
-    var attributionQuality = {
-      matchedSpendPct: totals.adSpendSar > 0 ? num(totals.matchedSpendSar / totals.adSpendSar * 100, 2) : 0,
-      unmatchedSpendPct: totals.adSpendSar > 0 ? num(totals.unmatchedSpendSar / totals.adSpendSar * 100, 2) : 0,
-      missingSkuCampaignCount: totals.missingSkuCampaignCount,
-      separatedSkuRows: totals.separatedSkuRows,
-      gluedSkuRows: totals.gluedSkuRows,
-      nameRows: totals.nameRows,
-      ambiguousRows: totals.ambiguousRows,
-      unmatchedRows: totals.unmatchedRows,
-      khodOrders: num(matchedProductTotals.khodOrders),
-      noKhodProductSpendSar: num(totals.unmatchedSpendSar, 2)
-    };
 
+    var matchedProductTotals = allProductGroups.reduce(function (acc, group) {
+      acc.taagerOrders += num(group.taagerOrders);
+      acc.taagerDelivered += num(group.taagerDelivered);
+      acc.taagerProfit += num(group.taagerProfit, 2);
+      acc.deliveredSales += num(group.deliveredSales, 2);
+      acc.spend += num(group.spend, 2);
+      return acc;
+    }, { taagerOrders: 0, taagerDelivered: 0, taagerProfit: 0, deliveredSales: 0, spend: 0 });
+    var matchedNetProfit = matchedProductTotals.taagerProfit - matchedProductTotals.spend;
+    var matchedSpendPct = totals.spend > 0 ? num(totals.matchedSpend / totals.spend * 100, 2) : 0;
+    var unmatchedSpendPct = totals.spend > 0 ? num(totals.unmatchedSpend / totals.spend * 100, 2) : 0;
     var latestSyncAt = states.reduce(function (latest, state) {
       var value = state && (state.lastSyncAt || state.summary && state.summary.lastSyncAt) || "";
       if (!value) return latest;
-      if (!latest || new Date(value) > new Date(latest)) return value;
-      return latest;
+      return !latest || new Date(value) > new Date(latest) ? value : latest;
     }, "");
-    var matchedKhodCpaSar = matchedProductTotals.khodOrders > 0 ? matchedProductTotals.spendSar / matchedProductTotals.khodOrders : 0;
     var result = {
       version: 3,
-      attributionVersion: attribution.VERSION,
-      sourceOfTruth: "Product decisions use shared campaign-name attribution with KHOD orders, delivery, and commission data.",
-      periodLabel: periodLabel,
+      currency: reportingCurrency,
+      sourceOfTruth: "Product decisions use SKU-matched campaign spend with KHOD orders, delivery, marketer commission, CPA, and break-even. Campaign rows show ad-platform traffic only.",
+      periodLabel: (states[0] && states[0].summary && (states[0].summary.dateFrom || states[0].summary.dateTo))
+        ? [states[0].summary.dateFrom, states[0].summary.dateTo].filter(Boolean).join(" - ")
+        : (data.meta && data.meta.periodLabel || "Last 30 days / synced dashboard period"),
       accountId: accountId,
       platform: opts.platform || "all",
       lastSyncAt: latestSyncAt,
-      currency: reportingCurrency,
-      reportingCurrency: reportingCurrency,
       totals: {
-        adSpendSar: num(totals.adSpendSar, 2),
-        adSpend: num(sarToReportingCurrency(totals.adSpendSar, reportingCurrency), 2),
+        currency: reportingCurrency,
+        spend: num(totals.spend, 2),
+        matchedSpend: num(totals.matchedSpend, 2),
+        unmatchedSpend: num(totals.unmatchedSpend, 2),
+        matchedSpendPct: matchedSpendPct,
+        unmatchedSpendPct: unmatchedSpendPct,
+        taagerOrders: num(matchedProductTotals.taagerOrders),
+        taagerDelivered: num(matchedProductTotals.taagerDelivered),
+        taagerCpa: matchedProductTotals.taagerOrders > 0 ? num(matchedProductTotals.spend / matchedProductTotals.taagerOrders, 2) : 0,
+        taagerProfit: num(matchedProductTotals.taagerProfit, 2),
+        commission: num(matchedProductTotals.taagerProfit, 2),
+        netProfit: num(matchedNetProfit, 2),
+        netResult: num(matchedNetProfit, 2),
+        roiPct: matchedProductTotals.spend > 0 ? num(matchedNetProfit / matchedProductTotals.spend * 100, 2) : 0,
+        profitRoas: matchedProductTotals.spend > 0 ? num(matchedProductTotals.taagerProfit / matchedProductTotals.spend, 2) : 0,
+        deliveredSalesRoas: matchedProductTotals.spend > 0 ? num(matchedProductTotals.deliveredSales / matchedProductTotals.spend, 2) : 0,
         campaignCount: totals.spentCampaignCount || allCampaignSummaries.length,
         sourceCampaignCount: totals.campaignCount || rows.length,
         rowCount: totals.rowCount || rows.length,
         zeroSpendRowsSkipped: totals.zeroSpendRowsSkipped,
-        matchedSpendSar: num(totals.matchedSpendSar, 2),
-        matchedSpend: num(sarToReportingCurrency(totals.matchedSpendSar, reportingCurrency), 2),
-        unmatchedSpendSar: num(totals.unmatchedSpendSar, 2),
-        unmatchedSpend: num(sarToReportingCurrency(totals.unmatchedSpendSar, reportingCurrency), 2),
-        matchedSpendPct: attributionQuality.matchedSpendPct,
-        unmatchedSpendPct: attributionQuality.unmatchedSpendPct,
+        missingSkuCampaignCount: totals.missingSkuCampaignCount,
         separatedSkuRows: totals.separatedSkuRows,
         gluedSkuRows: totals.gluedSkuRows,
         nameRows: totals.nameRows,
         ambiguousRows: totals.ambiguousRows,
         unmatchedRows: totals.unmatchedRows,
-        khodOrders: num(matchedProductTotals.khodOrders),
-        khodDelivered: num(matchedProductTotals.khodDelivered),
-        khodCpaSar: num(matchedKhodCpaSar, 2),
-        khodCpa: num(sarToReportingCurrency(matchedKhodCpaSar, reportingCurrency), 2),
+        adSpendSar: num(totals.spend, 2),
+        matchedSpendSar: num(totals.matchedSpend, 2),
+        unmatchedSpendSar: num(totals.unmatchedSpend, 2),
+        khodOrders: num(matchedProductTotals.taagerOrders),
+        khodDelivered: num(matchedProductTotals.taagerDelivered),
+        khodNdrPct: matchedProductTotals.taagerOrders > 0 ? num(matchedProductTotals.taagerDelivered / matchedProductTotals.taagerOrders * 100, 2) : 0,
+        khodCpa: matchedProductTotals.taagerOrders > 0 ? num(matchedProductTotals.spend / matchedProductTotals.taagerOrders, 2) : 0,
+        khodCpaSar: matchedProductTotals.taagerOrders > 0 ? num(matchedProductTotals.spend / matchedProductTotals.taagerOrders, 2) : 0,
         netProfitSar: num(matchedNetProfit, 2),
-        netProfit: num(sarToReportingCurrency(matchedNetProfit, reportingCurrency), 2),
-        commission: num(sarToReportingCurrency(matchedProductTotals.commission, reportingCurrency), 2),
-        totalSalesSar: num(matchedProductTotals.totalSales, 2),
-        totalSales: num(sarToReportingCurrency(matchedProductTotals.totalSales, reportingCurrency), 2),
-        roiPct: matchedProductTotals.spendSar > 0 ? num(matchedNetProfit / matchedProductTotals.spendSar * 100, 2) : 0,
-        commissionRoas: matchedProductTotals.spendSar > 0 ? num(matchedProductTotals.commission / matchedProductTotals.spendSar, 2) : 0,
-        totalSalesRoas: matchedProductTotals.spendSar > 0 ? num(matchedProductTotals.totalSales / matchedProductTotals.spendSar, 2) : 0,
-        deliveredSalesRoas: matchedProductTotals.spendSar > 0 ? num(matchedProductTotals.deliveredSales / matchedProductTotals.spendSar, 2) : 0
+        commissionRoas: matchedProductTotals.spend > 0 ? num(matchedProductTotals.taagerProfit / matchedProductTotals.spend, 2) : 0
       },
-      attributionQuality: attributionQuality,
       objectiveMix: Object.keys(objectiveMap).map(function (key) {
         return {
           objective: key,
-          spendSar: num(objectiveMap[key].spendSar, 2),
+          spend: num(objectiveMap[key].spend, 2),
+          spendSar: num(objectiveMap[key].spend, 2),
           campaignCount: objectiveMap[key].campaignCount
         };
-      }).sort(function (a, b) { return b.spendSar - a.spendSar; }).slice(0, CAP),
+      }).sort(function (a, b) { return b.spend - a.spend; }).slice(0, CAP),
       topSpendCampaigns: topSpendCampaigns,
-      allCampaigns: allCampaignSummaries.sort(function (a, b) { return b.spendSar - a.spendSar; }),
+      allCampaigns: allCampaignSummaries.sort(function (a, b) { return b.spend - a.spend; }),
       allProductGroups: allProductGroups,
       topProductGroups: topProductGroups,
       worstCampaigns: worstCampaigns,
@@ -910,7 +1038,7 @@
         objective: "sales",
         structure: "Use a best-city ad group and isolate weak cities from the scale budget.",
         creatives: "Use product creative with city-relevant delivery promise and offer framing.",
-        budgetRule: "Shift test budget toward cities with strong KHOD orders, NDR, DR, and commission.",
+        budgetRule: "Shift test budget toward cities with strong KHOD orders, NDR, DR, and marketer commission.",
         killRule: "Exclude or isolate cities with order volume but weak delivery/COD quality.",
         scaleRule: "Expand cities only after their KHOD delivery quality stays stable."
       },
@@ -937,14 +1065,14 @@
     };
     return {
       version: 1,
-      sourceOfTruth: "Use KHOD orders, delivered orders, NDR, DR, delivered sales, commission, CPA, and break-even for decisions.",
+      sourceOfTruth: "Use KHOD orders, delivered orders, NDR, DR, delivered sales, marketer commission, CPA, and break-even for decisions.",
       defaultObjectives: ["sales", "website_leads"],
       launch: "Start controlled tests. Judge by KHOD orders, NDR, CPA vs break-even, city quality, and delivered sales.",
       scale: "Scale only products with enough KHOD sample, healthy delivery, and CPA at or below break-even. Increase budgets gradually and protect winning cities.",
       fixFirst: "Before scaling, repair the biggest leak: creative fatigue, weak city mix, high CPA, low NDR, or low delivered AOV.",
       pause: "Pause or stop testing when spend is meaningful, KHOD orders are weak, NDR is unsafe, or CPA is above break-even without a clear fix.",
       creativeRefresh: "When spend is high but KHOD orders/NDR do not hold, produce new hooks, UGC/demo creatives, problem-solution angles, and city/product-specific variations.",
-      cityScaling: "Push budget toward cities with strong KHOD orders, NDR, DR, and commission. Exclude or isolate weak cities before scaling.",
+      cityScaling: "Push budget toward cities with strong KHOD orders, NDR, DR, and marketer commission. Exclude or isolate weak cities before scaling.",
       budgetSteps: "Use small budget steps first, then larger increases only after 24-48h of stable KHOD CPA, NDR, and delivered sales.",
       strategyRecipes: recipes
     };
@@ -954,6 +1082,10 @@
     build: build,
     playbook: playbook,
     textKey: textKey,
-    campaignSpendToSar: campaignSpendToSar
+    campaignSpendToReporting: campaignSpendToReporting,
+    campaignSpendToSar: function (row, fallbackCurrency, egpRate) {
+      return campaignSpendToReporting(row, fallbackCurrency, window.dashboardActiveCurrency || "SAR", egpRate);
+    }
   };
+  window.TaagerCampaignIntelligence = window.KhodCampaignIntelligence;
 })();

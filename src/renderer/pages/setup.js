@@ -1,22 +1,30 @@
-// ── SETUP PAGE — Redesigned v3 (Execution Setup style) ──
+// â”€â”€ SETUP PAGE â€” Redesigned v3 (Execution Setup style) â”€â”€
 // Tasks:
-// [✅] 1. Auto-label accounts as {customerName} 1, 2, 3 — no label input
-// [✅] 2. UI exactly like Image 2: card grid with checkmarks, summary, run button
-// [✅] 3. Reset button always visible, disabled when account is locked
-// [✅] 4. Add Account card inside the grid (dashed tile)
-// [✅] 5. Sidebar navigation (Accounts → Date → Run)
+// [âœ…] 1. Auto-label accounts as {customerName} 1, 2, 3 â€” no label input
+// [âœ…] 2. UI exactly like Image 2: card grid with checkmarks, summary, run button
+// [âœ…] 3. Reset button always visible, disabled when account is locked
+// [âœ…] 4. Add Account card inside the grid (dashed tile)
+// [âœ…] 5. Sidebar navigation (Accounts â†’ Date â†’ Run)
 
 window.renderSetup = function (onComplete, initialStep) {
   const t = window._t;
   const el = document.getElementById("page-setup");
 
+  let readyResolve;
+  window._setupInitialReady = new Promise((resolve) => {
+    readyResolve = resolve;
+  });
+
   let accounts    = [];
   let maxAccounts = 1;
+  let remoteAccountSlots = null;
+  let credentialBackupPrompt = null;
   let editingId   = null;
 
   // Step state: "accounts" | "run"
   // initialStep lets the caller decide the landing step (e.g. skip to "run" if accounts exist)
   let step = (initialStep === "run" || initialStep === "accounts") ? initialStep : "accounts";
+  if (window._teamLeaderEnabled) step = "accounts";
   let runFlowStep = "users"; // "users" | "date"
   window._setupCurrentStep = step; // exposed so adminRefresh() can re-render at the correct step
 
@@ -33,28 +41,42 @@ window.renderSetup = function (onComplete, initialStep) {
   let selectedIds = [];
 
   async function loadAccounts() {
-    const creds = await window.api.getCredentials();
-    accounts    = creds.accounts || [];
-    maxAccounts = creds.maxAccounts || 1;
+    try {
+      const creds = await window.api.getCredentials();
+      accounts    = creds.accounts || [];
+      maxAccounts = creds.maxAccounts || 1;
+      remoteAccountSlots = creds.remoteAccountSlots || null;
+      credentialBackupPrompt = window.api.getLicenseCredentialBackupPromptStatus
+        ? await window.api.getLicenseCredentialBackupPromptStatus()
+        : null;
 
-    if (!accounts.length && creds.easyEmail) {
-      accounts = [{
-        id: "account_1",
-        label: buildLabel(1),
-        easyEmail: creds.easyEmail,
-        easyStore: creds.easyStore || "",
-        khodEmail: creds.khodEmail || "",
-        khodCountry: creds.khodCountry || "sa",
-        locked: true,
-      }];
+      if (!accounts.length && creds.easyEmail) {
+        accounts = [{
+          id: "account_1",
+          label: buildLabel(1),
+          easyEmail: creds.easyEmail,
+          easyStore: creds.easyStore || "",
+          khodEmail: creds.khodEmail || "",
+          khodCountry: creds.khodCountry || "sa",
+          khodAffiliateCode: creds.khodAffiliateCode || "",
+          locked: true,
+        }];
+      }
+
+      // Default: nothing selected â€” user picks on the Run step
+      selectedIds = [];
+      renderShell();
+    } catch (err) {
+      console.error("Error loading accounts in setup:", err);
+    } finally {
+      if (readyResolve) {
+        readyResolve();
+        readyResolve = null;
+      }
     }
-
-    // Default: nothing selected — user picks on the Run step
-    selectedIds = [];
-    renderShell();
   }
 
-  // ── Label builder: "{CustomerName} 1", "{CustomerName} 2", etc. ──
+  // â”€â”€ Label builder: "{CustomerName} 1", "{CustomerName} 2", etc. â”€â”€
   function buildLabel(n) {
     const name = (window._kbotUser && window._kbotUser.customerName) || window._t("setup.account_fallback");
     return `${name} ${n}`;
@@ -65,26 +87,64 @@ window.renderSetup = function (onComplete, initialStep) {
     return buildLabel(n);
   }
 
-  // ── Total days calculation ──
+  function setupText(key, fallback) {
+    const value = t(key);
+    return !value || value === key ? fallback : value;
+  }
+
+  async function refreshAccountStateAfterMutation(reason = "accounts-updated") {
+    const fresh = await window.api.getCredentials();
+    accounts = fresh.accounts || [];
+    window._kbotAccounts = accounts;
+    maxAccounts = fresh.maxAccounts || maxAccounts;
+    remoteAccountSlots = fresh.remoteAccountSlots || null;
+    credentialBackupPrompt = window.api.getLicenseCredentialBackupPromptStatus
+      ? await window.api.getLicenseCredentialBackupPromptStatus()
+      : null;
+
+    if (window.invalidateDashboardCache) window.invalidateDashboardCache(reason);
+    if (typeof invalidatePage === "function") {
+      invalidatePage("page-dashboard", reason);
+      invalidatePage("page-analytics", reason);
+      invalidatePage("page-operations", reason);
+    }
+    if (typeof updateTopBarText === "function") updateTopBarText();
+    try {
+      window.dispatchEvent(new CustomEvent("khod-accounts-updated", {
+        detail: { reason, accounts: accounts.slice() }
+      }));
+    } catch (_) {}
+    return fresh;
+  }
+
+  function accountCountryMeta() {
+    return {
+      code: "SA",
+      flagClass: "khod-country-flag flag:SA",
+      label: setupText("setup.country_sa", "Saudi Arabia"),
+    };
+  }
+
+  // â”€â”€ Total days calculation â”€â”€
   function daysBetween(from, to) {
     const a = new Date(from), b = new Date(to);
     return Math.max(1, Math.round((b - a) / 86400000) + 1);
   }
 
-  // ─────────────────────────────────────────────────────────────────
-  // SHELL — sidebar + content area, rendered once
-  // ─────────────────────────────────────────────────────────────────
+  // â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+  // SHELL â€” sidebar + content area, rendered once
+  // â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
   function renderShell() {
     el.innerHTML = `
       <style>
-        /* ── Entry animation (sidebar + all nav styles come from main.css) ── */
+        /* â”€â”€ Entry animation (sidebar + all nav styles come from main.css) â”€â”€ */
         .sv3-shell { animation: sv3-shell-enter .48s ease both; }
         @keyframes sv3-shell-enter {
           from { opacity: 0; transform: translateY(10px); }
           to { opacity: 1; transform: translateY(0); }
         }
 
-        /* ── Main content ── */
+        /* â”€â”€ Main content â”€â”€ */
         .sv3-main {
           flex: 1;
           overflow-y: auto;
@@ -112,7 +172,7 @@ window.renderSetup = function (onComplete, initialStep) {
           to { opacity: 1; transform: translateY(0) scale(1); }
         }
 
-        /* ── Phase badge ── */
+        /* â”€â”€ Phase badge â”€â”€ */
         .sv3-phase-badge {
           display: inline-flex;
           align-items: center;
@@ -131,6 +191,41 @@ window.renderSetup = function (onComplete, initialStep) {
 
         .sv3-page-title { font-size: 24px; font-weight: 800; color: var(--text); letter-spacing: -.4px; margin-bottom: 4px; }
         .sv3-page-sub   { font-size: 13px; color: var(--text2); margin-bottom: 28px; }
+        .sv3-recovery-note {
+          display: flex;
+          align-items: flex-start;
+          gap: 12px;
+          padding: 14px 16px;
+          margin-bottom: 18px;
+          border-radius: 8px;
+          background: rgba(245, 158, 11, .12);
+          border: 1px solid rgba(245, 158, 11, .34);
+          color: var(--text);
+          font-size: 13px;
+          line-height: 1.45;
+        }
+        .sv3-recovery-note strong {
+          display: block;
+          margin-bottom: 3px;
+          font-size: 13px;
+        }
+        .sv3-recovery-note span {
+          color: var(--text2);
+        }
+        .sv3-recovery-note-badge {
+          width: 22px;
+          height: 22px;
+          border-radius: 50%;
+          display: inline-flex;
+          align-items: center;
+          justify-content: center;
+          flex: 0 0 auto;
+          background: rgba(245, 158, 11, .2);
+          border: 1px solid rgba(245, 158, 11, .4);
+          color: #fbbf24;
+          font-weight: 900;
+          font-size: 13px;
+        }
 
         .sv3-run-title-lockup {
           display: flex;
@@ -317,14 +412,85 @@ window.renderSetup = function (onComplete, initialStep) {
             radial-gradient(circle at 12% 18%, rgba(79,142,247,.14), transparent 34%),
             rgba(24,33,50,.82);
         }
+        .sv3-setting-card--compact {
+          align-self: start;
+          min-height: 0;
+        }
         .sv3-setting-row {
           display: flex;
-          align-items: center;
+          align-items: flex-start;
           justify-content: space-between;
           gap: 12px;
         }
-        .sv3-setting-title { font-size: 12px; font-weight: 800; color: var(--text); margin-bottom: 3px; }
-        .sv3-setting-desc { font-size: 10.5px; color: var(--text2); line-height: 1.4; }
+        .sv3-setting-title { font-size: 12px; font-weight: 800; color: var(--text); margin-bottom: 0; }
+        .sv3-setting-title-row {
+          display: flex;
+          align-items: flex-start;
+          gap: 7px;
+          min-width: 0;
+        }
+        .sv3-help-tip {
+          position: relative;
+          display: inline-flex;
+          align-items: center;
+          justify-content: center;
+          width: 17px;
+          height: 17px;
+          padding: 0;
+          flex: 0 0 17px;
+          border: 1px solid rgba(148,163,184,.48);
+          border-radius: 50%;
+          background: rgba(15,23,42,.5);
+          color: var(--text2);
+          font-family: inherit;
+          font-size: 11px;
+          font-weight: 800;
+          line-height: 1;
+          cursor: help;
+        }
+        .sv3-help-tip:hover,
+        .sv3-help-tip:focus-visible {
+          border-color: rgba(167,139,250,.78);
+          color: var(--text);
+          outline: none;
+        }
+        .sv3-help-tip-text {
+          position: absolute;
+          z-index: 20;
+          top: calc(100% + 9px);
+          left: 50%;
+          width: 230px;
+          padding: 9px 11px;
+          border: 1px solid rgba(148,163,184,.28);
+          border-radius: 8px;
+          background: var(--bg2);
+          box-shadow: 0 10px 28px rgba(0,0,0,.34);
+          color: var(--text2);
+          font-size: 11px;
+          font-weight: 500;
+          line-height: 1.45;
+          text-align: start;
+          white-space: normal;
+          opacity: 0;
+          visibility: hidden;
+          pointer-events: none;
+          transform: translateX(-50%) translateY(-3px);
+          transition: opacity .16s ease, transform .16s ease, visibility .16s ease;
+        }
+        .sv3-help-tip:hover .sv3-help-tip-text,
+        .sv3-help-tip:focus-visible .sv3-help-tip-text {
+          opacity: 1;
+          visibility: visible;
+          transform: translateX(-50%) translateY(0);
+        }
+        .sv3-setting-desc {
+          width: 100%;
+          margin-top: 9px;
+          padding-inline-start: 48px;
+          font-size: 10.5px;
+          color: var(--text2);
+          line-height: 1.45;
+        }
         .sv3-setting-meta { margin-top: 9px; }
         .sv3-setting-icon {
           width: 52px;
@@ -369,7 +535,7 @@ window.renderSetup = function (onComplete, initialStep) {
         }
         .sv3-toggle-label { font-size: 10px; color: var(--text2); min-width: 24px; font-weight: 700; }
 
-        /* ── Section card ── */
+        /* â”€â”€ Section card â”€â”€ */
         .sv3-section {
           background: var(--bg2);
           border: 1px solid var(--border);
@@ -451,13 +617,23 @@ window.renderSetup = function (onComplete, initialStep) {
         }
         .sv3-users-panel .sv3-settings-dock {
           margin-top: 34px;
+          padding: 12px;
+          border-radius: 14px;
+          background: rgba(10,16,27,.22);
+          border: 1px solid rgba(125,148,186,.13);
         }
         .sv3-users-panel .sv3-setting-row {
-          align-items: flex-start;
+          min-height: 100%;
+          display: grid;
+          grid-template-columns: minmax(0, 1fr) auto;
+          grid-template-rows: 1fr auto;
+          gap: 14px 12px;
+          align-items: start;
         }
         .sv3-users-panel .sv3-setting-title {
-          font-size: 19px;
-          margin-bottom: 10px;
+          font-size: 16px;
+          line-height: 1.18;
+          margin-bottom: 0;
         }
         .sv3-users-panel .sv3-setting-desc {
           max-width: 285px;
@@ -465,20 +641,74 @@ window.renderSetup = function (onComplete, initialStep) {
           line-height: 1.5;
           color: #aab6ca;
         }
+        .sv3-users-panel .sv3-setting-card {
+          position: relative;
+          min-height: 116px;
+          padding: 16px;
+          border-radius: 12px;
+          background: linear-gradient(180deg, rgba(24,33,50,.88), rgba(18,27,42,.72));
+        }
+        .sv3-users-panel .sv3-setting-card::before {
+          content: "";
+          position: absolute;
+          inset: 0;
+          pointer-events: none;
+          border-radius: inherit;
+          background: linear-gradient(180deg, rgba(255,255,255,.045), transparent 52%);
+          opacity: .8;
+        }
+        .sv3-users-panel .sv3-setting-card > * {
+          position: relative;
+        }
+        .sv3-users-panel .sv3-setting-card.is-on {
+          border-color: rgba(124,106,247,.48);
+          background:
+            radial-gradient(circle at 88% 0%, rgba(124,106,247,.16), transparent 40%),
+            linear-gradient(180deg, rgba(27,34,55,.94), rgba(20,27,46,.78));
+          box-shadow: inset 0 1px 0 rgba(255,255,255,.06), 0 12px 28px rgba(0,0,0,.18);
+        }
+        .sv3-users-panel .sv3-setting-card.is-on.is-warning {
+          border-color: rgba(245,158,11,.44);
+          background:
+            radial-gradient(circle at 88% 0%, rgba(245,158,11,.14), transparent 40%),
+            linear-gradient(180deg, rgba(34,32,25,.94), rgba(28,26,20,.78));
+        }
+        .sv3-users-panel .sv3-setting-copy {
+          grid-column: 1 / -1;
+          align-items: center;
+          gap: 10px;
+        }
+        .sv3-users-panel .sv3-setting-control {
+          grid-column: 1 / -1;
+          align-self: end;
+          display: flex;
+          align-items: center;
+          justify-content: space-between;
+          gap: 10px;
+          padding-top: 12px;
+          border-top: 1px solid rgba(125,148,186,.12);
+        }
         .sv3-users-panel .sv3-toggle-btn {
-          width: 62px;
-          height: 34px;
+          --sv3-toggle-travel: 24px;
+          width: 54px;
+          height: 30px;
           background: rgba(30,41,59,.9);
           border: 1px solid rgba(125,148,186,.22);
           box-shadow: inset 0 1px 0 rgba(255,255,255,.06);
         }
         .sv3-users-panel .sv3-toggle-btn span {
-          width: 28px;
-          height: 28px;
+          width: 24px;
+          height: 24px;
         }
         .sv3-users-panel .sv3-toggle-label {
-          font-size: 13px;
-          min-width: 34px;
+          min-width: 36px;
+          padding: 3px 7px;
+          border-radius: 999px;
+          background: rgba(125,148,186,.1);
+          text-align: center;
+          font-size: 10px;
+          line-height: 1;
+          letter-spacing: .06em;
         }
         .sv3-section-hd {
           display: flex;
@@ -490,7 +720,7 @@ window.renderSetup = function (onComplete, initialStep) {
         .sv3-section-hd-title { font-size: 15px; font-weight: 700; color: var(--text); }
         .sv3-section-desc { font-size: 12px; color: var(--text2); margin-bottom: 20px; padding-left: 28px; }
 
-        /* ── Account cards grid ── */
+        /* â”€â”€ Account cards grid â”€â”€ */
         .sv3-grid {
           display: flex;
           gap: 12px;
@@ -582,12 +812,12 @@ window.renderSetup = function (onComplete, initialStep) {
 
         /* Account card */
         .sv3-acc-card {
-          width: 140px;
-          min-height: 152px;
+          width: 160px;
+          min-height: 178px;
           background: var(--bg3, #1e2535);
           border: 1.5px solid var(--border);
-          border-radius: 12px;
-          padding: 14px 12px 12px;
+          border-radius: 14px;
+          padding: 28px 14px 14px;
           display: flex;
           flex-direction: column;
           align-items: center;
@@ -618,6 +848,89 @@ window.renderSetup = function (onComplete, initialStep) {
         .sv3-acc-locked {
           opacity: .72;
           cursor: default;
+        }
+        .sv3-card-meta-stack {
+          position: absolute;
+          top: 10px;
+          right: 10px;
+          display: flex;
+          flex-direction: column;
+          align-items: flex-end;
+          gap: 5px;
+          max-width: 88px;
+          z-index: 2;
+          pointer-events: none;
+        }
+        [dir="rtl"] .sv3-card-meta-stack {
+          right: auto;
+          left: 10px;
+          align-items: flex-start;
+        }
+        .sv3-manage-meta-row {
+          left: 10px;
+          right: 10px;
+          width: auto;
+          max-width: none;
+          flex-direction: row;
+          align-items: flex-start;
+          justify-content: space-between;
+          gap: 8px;
+        }
+        [dir="rtl"] .sv3-manage-meta-row {
+          left: 10px;
+          right: 10px;
+          align-items: flex-start;
+        }
+        .sv3-manage-meta-row .sv3-lock-badge {
+          order: 1;
+        }
+        .sv3-manage-meta-row .sv3-country-badge {
+          order: 2;
+        }
+        .sv3-run-acc-card .sv3-card-meta-stack {
+          right: 38px;
+        }
+        [dir="rtl"] .sv3-run-acc-card .sv3-card-meta-stack {
+          right: auto;
+          left: 38px;
+        }
+        .sv3-card-meta-stack .sv3-country-badge,
+        .sv3-card-meta-stack .sv3-lock-badge {
+          position: static !important;
+          top: auto !important;
+          right: auto !important;
+          bottom: auto !important;
+          left: auto !important;
+          transform: none !important;
+          max-width: 88px;
+          pointer-events: auto;
+        }
+        .sv3-lock-badge {
+          position: absolute;
+          top: 10px;
+          left: 10px;
+          max-width: 82px;
+          overflow: hidden;
+          text-overflow: ellipsis;
+          white-space: nowrap;
+          background: rgba(245,158,11,.13);
+          border: 1px solid rgba(245,158,11,.34);
+          border-radius: 999px;
+          padding: 5px 8px;
+          color: #ffd166;
+          font-size: 9px;
+          font-weight: 900;
+          letter-spacing: .02em;
+          line-height: 1;
+        }
+        .sv3-lock-badge.unlocked {
+          background: rgba(0,214,143,.12);
+          border-color: rgba(0,214,143,.32);
+          color: #00d68f;
+        }
+        [dir="rtl"] .sv3-lock-badge {
+          left: auto;
+          right: 10px;
         }
 
         /* Checkmark corner */
@@ -718,19 +1031,12 @@ window.renderSetup = function (onComplete, initialStep) {
         .sv3-status-pill.lk  { background: rgba(255,201,77,.1);  border: 1px solid rgba(255,201,77,.3);  color: #ffc94d; }
         .sv3-dot { width: 5px; height: 5px; border-radius: 50%; background: currentColor; }
 
-        /* Hover action row */
+        /* Account action row */
         .sv3-hover-acts {
-          position: absolute;
-          bottom: 8px;
-          left: 0; right: 0;
           display: flex;
           justify-content: center;
           gap: 5px;
-          opacity: 0;
-          transition: opacity .15s;
-          pointer-events: none;
-        }
-        .sv3-acc-card:hover:not(.sv3-acc-locked) .sv3-hover-acts {
+          margin-top: 2px;
           opacity: 1;
           pointer-events: all;
         }
@@ -751,11 +1057,11 @@ window.renderSetup = function (onComplete, initialStep) {
 
         /* Add Account dashed card */
         .sv3-add-card {
-          width: 140px;
-          min-height: 152px;
-          background: transparent;
-          border: 1.5px dashed var(--border);
-          border-radius: 12px;
+          width: 160px;
+          min-height: 178px;
+          background: rgba(255,255,255,.018);
+          border: 1.5px dashed rgba(125,148,186,.22);
+          border-radius: 14px;
           padding: 14px 12px;
           display: flex;
           flex-direction: column;
@@ -775,10 +1081,10 @@ window.renderSetup = function (onComplete, initialStep) {
         }
         .sv3-add-disabled { opacity: .35; cursor: not-allowed; }
         .sv3-add-circle {
-          width: 40px; height: 40px;
-          border-radius: 50%;
+          width: 44px; height: 44px;
+          border-radius: 14px;
           background: rgba(124,106,247,.1);
-          border: 1.5px dashed rgba(124,106,247,.4);
+          border: 1px solid rgba(124,106,247,.28);
           display: flex;
           align-items: center;
           justify-content: center;
@@ -803,7 +1109,7 @@ window.renderSetup = function (onComplete, initialStep) {
         .sv3-sel-bar svg { color: #7c6af7; }
         .sv3-sel-bar strong { color: var(--text); }
 
-        /* ── Two-column lower section (date + summary) ── */
+        /* â”€â”€ Two-column lower section (date + summary) â”€â”€ */
         .sv3-two-col {
           display: grid;
           grid-template-columns: 1fr 1fr;
@@ -914,7 +1220,7 @@ window.renderSetup = function (onComplete, initialStep) {
           font-size: 8px;
         }
 
-        /* ── Run button ── */
+        /* â”€â”€ Run button â”€â”€ */
         .sv3-run-review {
           margin-top: 18px;
           padding: 0;
@@ -1177,6 +1483,7 @@ window.renderSetup = function (onComplete, initialStep) {
         }
         .sv3-users-panel .sv3-settings-dock {
           margin-top: 22px;
+          padding: 10px;
         }
         .sv3-settings-dock {
           gap: 14px;
@@ -1197,7 +1504,7 @@ window.renderSetup = function (onComplete, initialStep) {
         }
         .sv3-users-panel .sv3-setting-title {
           font-size: 16px;
-          margin-bottom: 5px;
+          margin-bottom: 0;
         }
         .sv3-users-panel .sv3-setting-desc {
           font-size: 12px;
@@ -1205,7 +1512,8 @@ window.renderSetup = function (onComplete, initialStep) {
           max-width: 250px;
         }
         .sv3-users-panel .sv3-toggle-btn {
-          width: 52px;
+          --sv3-toggle-travel: 22px;
+          width: 50px;
           height: 28px;
         }
         .sv3-users-panel .sv3-toggle-btn span {
@@ -1410,12 +1718,14 @@ window.renderSetup = function (onComplete, initialStep) {
         }
         .sv3-users-panel .sv3-settings-dock {
           margin-top: 18px;
+          padding: 8px;
         }
         .sv3-settings-dock {
           gap: 10px;
         }
+        .sv3-users-panel .sv3-setting-card,
         .sv3-setting-card {
-          min-height: 84px;
+          min-height: 104px;
           padding: 14px 16px;
           border-radius: 12px;
           background: rgba(24,33,50,.58);
@@ -1432,7 +1742,7 @@ window.renderSetup = function (onComplete, initialStep) {
         }
         .sv3-users-panel .sv3-setting-title {
           font-size: 14px;
-          margin-bottom: 3px;
+          margin-bottom: 0;
         }
         .sv3-users-panel .sv3-setting-desc {
           font-size: 11px;
@@ -1440,12 +1750,13 @@ window.renderSetup = function (onComplete, initialStep) {
           max-width: 230px;
         }
         .sv3-users-panel .sv3-toggle-btn {
+          --sv3-toggle-travel: 20px;
           width: 46px;
-          height: 24px;
+          height: 26px;
         }
         .sv3-users-panel .sv3-toggle-btn span {
-          width: 18px;
-          height: 18px;
+          width: 20px;
+          height: 20px;
         }
         .sv3-users-panel .sv3-toggle-label {
           font-size: 10px;
@@ -1672,12 +1983,14 @@ window.renderSetup = function (onComplete, initialStep) {
         }
         .sv3-users-panel .sv3-settings-dock {
           margin-top: 14px;
+          padding: 8px;
         }
         .sv3-settings-dock {
           gap: 10px;
         }
+        .sv3-users-panel .sv3-setting-card,
         .sv3-setting-card {
-          min-height: 72px;
+          min-height: 98px;
           padding: 12px 14px;
           border-radius: 10px;
           background: rgba(24,33,50,.5);
@@ -1701,7 +2014,7 @@ window.renderSetup = function (onComplete, initialStep) {
         }
         .sv3-users-panel .sv3-setting-title {
           font-size: 13px;
-          margin-bottom: 2px;
+          margin-bottom: 0;
         }
         .sv3-users-panel .sv3-setting-desc {
           font-size: 10.5px;
@@ -1709,6 +2022,7 @@ window.renderSetup = function (onComplete, initialStep) {
           max-width: 260px;
         }
         .sv3-users-panel .sv3-toggle-btn {
+          --sv3-toggle-travel: 20px;
           width: 42px;
           height: 22px;
           border-radius: 999px;
@@ -1909,7 +2223,7 @@ window.renderSetup = function (onComplete, initialStep) {
         }
         .text-sm text-muted mt-12 { text-align: center; font-size: 11px; color: var(--text2); margin-top: 8px; display: flex; align-items: center; justify-content: center; gap: 5px; }
 
-        /* ── Form overlay ── */
+        /* â”€â”€ Form overlay â”€â”€ */
         .sv3-form-overlay {
           position: fixed;
           inset: 0;
@@ -1925,11 +2239,13 @@ window.renderSetup = function (onComplete, initialStep) {
         @keyframes sv3-fade-in { from { opacity: 0; } to { opacity: 1; } }
         .sv3-form-card {
           background: var(--bg2);
-          background-image: radial-gradient(circle at 100% 0%, rgba(124,106,247,0.05) 0%, transparent 60%);
+          background-image:
+            radial-gradient(circle at 100% 0%, rgba(124,106,247,0.10) 0%, transparent 46%),
+            linear-gradient(180deg, rgba(255,255,255,0.025), transparent 42%);
           border: 1px solid var(--border);
           border-radius: 20px;
-          padding: 32px 36px;
-          width: 480px;
+          padding: 32px;
+          width: min(980px, 94vw);
           max-width: 95vw;
           max-height: 90vh;
           overflow-y: auto;
@@ -1938,12 +2254,54 @@ window.renderSetup = function (onComplete, initialStep) {
             0 0 0 1px rgba(255, 255, 255, 0.02);
           animation: sv3-slide-up .35s cubic-bezier(0.34, 1.56, 0.64, 1);
         }
+        .sv3-member-card {
+          width: min(460px, calc(100vw - 32px));
+          max-width: 460px;
+          padding: 24px;
+          border-radius: 14px;
+          max-height: min(90vh, 520px);
+        }
+        .sv3-member-card .form-group input {
+          width: 100%;
+          min-height: 44px;
+          font-size: 13px;
+        }
+        .sv3-member-card .sv3-member-actions {
+          display: grid;
+          grid-template-columns: 1fr 1fr;
+          gap: 10px;
+          margin-top: 18px;
+        }
+        .sv3-member-card .sv3-member-actions .btn {
+          width: 100%;
+          min-height: 42px;
+          padding: 0 14px;
+          font-size: 12px;
+        }
         @keyframes sv3-slide-up { from { transform: translateY(24px); opacity: 0; } to { transform: none; opacity: 1; } }
         [data-theme="light"] .sv3-form-card {
           background-image: radial-gradient(circle at 100% 0%, rgba(124,106,247,0.03) 0%, transparent 60%);
           box-shadow: 
             0 24px 48px rgba(0, 0, 0, 0.08),
             0 0 0 1px rgba(0, 0, 0, 0.01);
+        }
+        .sv3-form-grid {
+          display: grid;
+          grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+          gap: 18px;
+          align-items: start;
+        }
+        .sv3-form-panel {
+          min-width: 0;
+          border: 1px solid rgba(255,255,255,0.075);
+          border-radius: 16px;
+          padding: 18px;
+          background: rgba(8, 12, 22, 0.34);
+          box-shadow: inset 0 1px 0 rgba(255,255,255,0.035);
+        }
+        [data-theme="light"] .sv3-form-panel {
+          background: rgba(255,255,255,0.58);
+          border-color: rgba(0,0,0,0.06);
         }
         .sv3-form-card .form-group input,
         .sv3-form-card .form-group select {
@@ -1985,7 +2343,7 @@ window.renderSetup = function (onComplete, initialStep) {
           color: var(--accent);
           text-transform: uppercase;
           letter-spacing: 0.12em;
-          margin-top: 28px;
+          margin-top: 0;
           margin-bottom: 16px;
           padding-bottom: 8px;
           border-bottom: 1px solid rgba(255,255,255,0.06);
@@ -1995,6 +2353,75 @@ window.renderSetup = function (onComplete, initialStep) {
         }
         [data-theme="light"] .sv3-form-card .form-section-title {
           border-bottom-color: rgba(0,0,0,0.06);
+        }
+        .sv3-country-btn {
+          border: 1px solid transparent;
+          cursor: pointer;
+          color: var(--text2);
+          font-family: inherit;
+          transition: background .18s ease, border-color .18s ease, color .18s ease, transform .18s ease;
+        }
+        .sv3-country-btn.is-active {
+          color: #fff;
+          border-color: rgba(124,106,247,0.48);
+          background: linear-gradient(135deg, rgba(79,142,247,.86), rgba(124,106,247,.90));
+          box-shadow: 0 10px 24px rgba(79,142,247,0.18);
+        }
+        .sv3-country-btn:not(.is-active):hover {
+          color: var(--text);
+          border-color: rgba(255,255,255,0.10);
+          background: rgba(255,255,255,0.045);
+        }
+        .sv3-country-grid {
+          display: grid;
+          grid-template-columns: repeat(2, minmax(0, 1fr));
+          gap: 8px;
+        }
+        .sv3-country-btn {
+          display: flex;
+          align-items: center;
+          gap: 9px;
+          min-height: 44px;
+          border-radius: 12px;
+          background: rgba(0,0,0,0.12);
+          padding: 8px 10px;
+          text-align: left;
+        }
+        .sv3-country-code {
+          width: auto;
+          min-width: 58px;
+          height: 26px;
+          border-radius: 8px;
+          display: inline-flex;
+          align-items: center;
+          justify-content: center;
+          gap: 6px;
+          flex: 0 0 auto;
+          background: rgba(255,255,255,0.07);
+          color: inherit;
+          font-size: 10px;
+          font-weight: 900;
+          letter-spacing: .04em;
+          padding: 0 7px;
+        }
+        .sv3-country-code .khod-country-flag {
+          width: 18px;
+          height: 12px;
+          --CountryFlagIcon-height: 12px;
+        }
+        .sv3-country-name {
+          min-width: 0;
+          font-size: 12px;
+          font-weight: 800;
+          overflow: hidden;
+          text-overflow: ellipsis;
+          white-space: nowrap;
+        }
+        .sv3-field-hint {
+          font-size: 11px;
+          color: var(--text2);
+          margin-top: 7px;
+          line-height: 1.45;
         }
         .sv3-form-card #sv3-form-cancel {
           background: rgba(255,255,255,0.03);
@@ -2034,6 +2461,12 @@ window.renderSetup = function (onComplete, initialStep) {
         }
 
         @media (max-width: 920px) {
+          .sv3-form-card {
+            width: min(560px, 94vw);
+          }
+          .sv3-form-grid {
+            grid-template-columns: 1fr;
+          }
           .sv3-run-hero,
           .sv3-section-top {
             flex-direction: column;
@@ -2053,6 +2486,12 @@ window.renderSetup = function (onComplete, initialStep) {
         @media (max-width: 620px) {
           .sv3-settings-dock,
           .sv3-flow-stepper {
+            grid-template-columns: 1fr;
+          }
+          .sv3-member-card {
+            padding: 20px;
+          }
+          .sv3-member-card .sv3-member-actions {
             grid-template-columns: 1fr;
           }
           .sv3-launch-row {
@@ -2156,9 +2595,9 @@ window.renderSetup = function (onComplete, initialStep) {
         .sv3-users-panel .sv3-section-top {
           display: flex;
           align-items: flex-start;
-          justify-content: space-between;
+          justify-content: flex-start;
           gap: 14px;
-          margin-bottom: 12px;
+          margin-bottom: 0;
         }
         .sv3-users-panel .sv3-step-heading {
           align-items: center;
@@ -2185,14 +2624,19 @@ window.renderSetup = function (onComplete, initialStep) {
         .sv3-users-panel .sv3-settings-dock {
           width: 100%;
           min-width: 0;
-          margin-top: 14px;
+          margin: 14px 0 16px;
+          padding: 12px;
           display: grid;
-          grid-template-columns: repeat(2, minmax(0, 1fr));
-          gap: 10px;
+          grid-template-columns: repeat(3, minmax(0, 1fr));
+          gap: 12px;
+          border-radius: 12px;
+          background: rgba(10,16,27,.22);
+          border: 1px solid rgba(125,148,186,.12);
         }
+        .sv3-users-panel .sv3-setting-card,
         .sv3-setting-card {
-          min-height: 66px;
-          padding: 10px 12px;
+          min-height: 98px;
+          padding: 12px;
           border-radius: 8px;
         }
         .sv3-setting-icon {
@@ -2203,10 +2647,11 @@ window.renderSetup = function (onComplete, initialStep) {
         }
         .sv3-users-panel .sv3-setting-title {
           font-size: 12px;
+          line-height: 1.18;
         }
         .sv3-users-panel .sv3-setting-desc {
           font-size: 10px;
-          line-height: 1.35;
+          line-height: 1.45;
           max-width: none;
         }
         .sv3-run-accounts {
@@ -2216,6 +2661,201 @@ window.renderSetup = function (onComplete, initialStep) {
           overflow: visible;
           margin-top: 10px;
           padding: 2px;
+        }
+        .sv3-run-accounts .sv3-acc-card {
+          width: 100%;
+          min-height: 66px;
+          display: grid;
+          grid-template-columns: 38px minmax(0, 1fr) auto;
+          grid-template-rows: auto auto;
+          align-items: center;
+          column-gap: 12px;
+          row-gap: 2px;
+          justify-content: stretch;
+          text-align: start;
+          padding: 10px 46px 10px 12px;
+          border-radius: 8px;
+        }
+        [dir="rtl"] .sv3-run-accounts .sv3-acc-card {
+          padding: 10px 12px 10px 46px;
+        }
+        .sv3-run-accounts .sv3-check {
+          top: 50%;
+          right: 12px;
+          transform: translateY(-50%);
+          width: 22px;
+          height: 22px;
+        }
+        [dir="rtl"] .sv3-run-accounts .sv3-check {
+          right: auto;
+          left: 12px;
+        }
+        .sv3-run-accounts .sv3-avatar,
+        .sv3-run-accounts .sv3-avatar.lk {
+          grid-column: 1;
+          grid-row: 1 / 3;
+          width: 34px;
+          height: 34px;
+          margin-top: 0 !important;
+          font-size: 15px;
+        }
+        .sv3-run-accounts .sv3-run-index-avatar {
+          background:
+            radial-gradient(circle at 32% 24%, rgba(255,255,255,.16), transparent 34%),
+            linear-gradient(135deg, rgba(124,106,247,.22), rgba(79,142,247,.1));
+          border: 1px solid rgba(125,148,186,.28);
+          color: #d9e2f4;
+          font-size: 13px;
+          font-weight: 900;
+          box-shadow: inset 0 1px 0 rgba(255,255,255,.06), 0 8px 18px rgba(0,0,0,.16);
+        }
+        .sv3-run-accounts .sv3-acc-card.selected .sv3-run-index-avatar {
+          background: linear-gradient(135deg,#8b5cf6,#4f8ef7);
+          border-color: rgba(167,139,250,.62);
+          color: #fff;
+          box-shadow: 0 0 0 3px rgba(124,106,247,.14), 0 10px 22px rgba(79,142,247,.2);
+        }
+        .sv3-run-accounts .sv3-acc-name {
+          grid-column: 2;
+          grid-row: 1;
+          max-width: 100%;
+          margin: 0;
+          font-size: 12px;
+          line-height: 1.25;
+        }
+        .sv3-run-accounts .sv3-acc-email {
+          grid-column: 2;
+          grid-row: 2;
+          max-width: 100%;
+          font-size: 10px;
+        }
+        .sv3-run-accounts .sv3-status-pill {
+          grid-column: 3;
+          grid-row: 1 / 3;
+          margin-top: 0;
+          padding: 4px 9px;
+          font-size: 8.5px;
+          white-space: nowrap;
+        }
+        .sv3-run-acc-lock {
+          grid-column: 3;
+          grid-row: 1 / 3;
+          justify-self: end;
+          border-radius: 999px;
+          padding: 4px 8px;
+          background: rgba(255,201,77,.12);
+          border: 1px solid rgba(255,201,77,.34);
+          color: #ffc94d;
+          font-size: 9px;
+          font-weight: 800;
+          letter-spacing: .04em;
+          white-space: nowrap;
+        }
+        .sv3-run-accounts .sv3-run-acc-card > div[style*="position:absolute"] {
+          position: static !important;
+          grid-column: 3;
+          grid-row: 1 / 3;
+          justify-self: end;
+          border-radius: 999px !important;
+          padding: 4px 8px !important;
+          background: rgba(255,201,77,.12) !important;
+          border: 1px solid rgba(255,201,77,.34) !important;
+          color: #ffc94d !important;
+          font-size: 9px !important;
+          font-weight: 800 !important;
+          letter-spacing: .04em !important;
+          white-space: nowrap;
+        }
+        .sv3-continue-row {
+          margin-top: 12px;
+          padding: 8px;
+          border-radius: 10px;
+        }
+        .sv3-continue-btn {
+          min-height: 42px;
+          font-size: 13px;
+        }
+        .sv3-flow-node {
+          isolation: isolate;
+        }
+        .sv3-flow-node.done .sv3-flow-node-num {
+          box-shadow: 0 0 0 4px rgba(0,214,143,.1), 0 0 20px rgba(0,214,143,.18);
+        }
+        .sv3-flow-node.active .sv3-flow-node-num {
+          position: relative;
+          box-shadow: 0 0 0 5px rgba(124,106,247,.14), 0 0 24px rgba(124,106,247,.32);
+        }
+        .sv3-flow-node.active .sv3-flow-node-num::before,
+        .sv3-flow-node.active .sv3-flow-node-num::after,
+        .sv3-date-panel .sv3-step-badge.green::before {
+          content: "";
+          position: absolute;
+          inset: -8px;
+          border-radius: 999px;
+          border: 1px solid rgba(167,139,250,.55);
+          pointer-events: none;
+          animation: sv3-step-pulse-ring 1.7s ease-out infinite;
+          opacity: 1;
+        }
+        .sv3-flow-node.active .sv3-flow-node-num::after {
+          inset: -14px;
+          animation-delay: .45s;
+          border-color: rgba(79,142,247,.36);
+        }
+        .sv3-date-panel .sv3-step-badge.green {
+          position: relative;
+          box-shadow: 0 0 0 5px rgba(0,214,143,.1), 0 0 22px rgba(0,214,143,.2);
+        }
+        .sv3-date-panel .sv3-step-badge.green::before {
+          inset: -9px;
+          border-color: rgba(0,214,143,.42);
+          animation-duration: 1.9s;
+        }
+        @keyframes sv3-step-pulse-ring {
+          0% {
+            opacity: .78;
+            transform: scale(.72);
+          }
+          70% {
+            opacity: .12;
+            transform: scale(1.45);
+          }
+          100% {
+            opacity: 0;
+            transform: scale(1.62);
+          }
+        }
+        .sv3-run-review {
+          padding-bottom: 12px;
+          box-shadow: inset 0 1px 0 rgba(255,255,255,.035);
+        }
+        .sv3-launch-row {
+          grid-template-columns: 138px minmax(220px, 360px);
+          justify-content: start;
+          gap: 10px;
+          margin: 12px 12px 0;
+          padding: 12px;
+          border-radius: 12px;
+          background: rgba(10,16,27,.24);
+          border: 1px solid rgba(125,148,186,.12);
+        }
+        [dir="rtl"] .sv3-launch-row {
+          justify-content: start;
+        }
+        .sv3-back-ghost,
+        .sv3-run-primary {
+          min-height: 42px;
+          padding: 0 18px;
+          border-radius: 9px;
+          font-size: 12px;
+        }
+        .sv3-run-primary {
+          box-shadow: 0 10px 24px rgba(79,142,247,.18);
+        }
+        .sv3-dashboard-primary {
+          width: auto;
+          min-width: 220px;
+          max-width: 280px;
         }
         .sv3-run-accounts .sv3-acc-card {
           width: 100%;
@@ -2455,7 +3095,7 @@ window.renderSetup = function (onComplete, initialStep) {
           <div class="sv3-sb-logo">
             <div class="sv3-sb-logo-icon">⚡</div>
             <div>
-              <div class="sv3-sb-logo-text">Khod Whaat Bot</div>
+              <div class="sv3-sb-logo-text">KHOD WHAAT Bot</div>
               <div class="sv3-sb-logo-sub">${t("setup.sub_title")}</div>
             </div>
           </div>
@@ -2464,11 +3104,11 @@ window.renderSetup = function (onComplete, initialStep) {
             <div class="sv3-step-num" style="font-size:14px">👤</div>
             <span class="sv3-nav-label">${t("setup.nav_accounts")}</span>
           </div>
-          <div class="sv3-nav-item" id="nav-run" data-step="run">
+          ${window._teamLeaderEnabled ? "" : `<div class="sv3-nav-item" id="nav-run" data-step="run">
             <div class="sv3-step-num" style="font-size:14px">🚀</div>
             <span class="sv3-nav-label">${t("setup.nav_run")}</span>
-          </div>
-          <div class="sv3-nav-item sv3-nav-page${window._analyticsEnabled === false ? " sv3-nav-preview" : ""}" id="nav-analytics" data-page="analytics">
+          </div>`}
+          ${window._teamLeaderEnabled ? "" : `<div class="sv3-nav-item sv3-nav-page${window._analyticsEnabled === false ? " sv3-nav-preview" : ""}" id="nav-analytics" data-page="analytics">
             <div class="sv3-step-num" style="background:linear-gradient(135deg,#7c6bff,#4fa8e8)">📊</div>
             <span class="sv3-nav-label">${t("setup.nav_analytics")}</span>
             ${window._analyticsEnabled === false ? '<span class="sv3-nav-preview-badge">Preview</span>' : ""}
@@ -2477,7 +3117,7 @@ window.renderSetup = function (onComplete, initialStep) {
             <div class="sv3-step-num" style="background:linear-gradient(135deg,#00d4aa,#4fa8e8)">⚙️</div>
             <span class="sv3-nav-label">${t("setup.nav_operations")}</span>
             ${window._operationsEnabled === false ? '<span class="sv3-nav-preview-badge">Preview</span>' : ""}
-          </div>
+          </div>`}
           <div class="sv3-nav-item sv3-nav-page${window._dashboardEnabled === false ? " sv3-nav-preview" : ""}" id="nav-dashboard" data-page="dashboard">
             <div class="sv3-step-num" style="background:linear-gradient(135deg,#f59e0b,#ef4444)">📈</div>
             <span class="sv3-nav-label">${t("setup.nav_dashboard") || "Dashboard"}</span>
@@ -2485,10 +3125,22 @@ window.renderSetup = function (onComplete, initialStep) {
           </div>
 
           <div class="sv3-sidebar-footer">
+            <button class="sv3-report-btn" onclick="if (window.KhodSupport && typeof window.KhodSupport.open === 'function') window.KhodSupport.open()" style="display:flex;align-items:center;justify-content:center;gap:6px">
+              <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" style="flex-shrink:0"><path d="M21 11.5a8.38 8.38 0 0 1-.9 3.8 8.5 8.5 0 0 1-7.6 4.7 8.38 8.38 0 0 1-3.8-.9L3 21l1.9-5.7a8.38 8.38 0 0 1-.9-3.8 8.5 8.5 0 0 1 4.7-7.6 8.38 8.38 0 0 1 3.8-.9h.5a8.48 8.48 0 0 1 8 8v.5z"/></svg>
+              <span>${t("setup.report_issue_btn")}</span>
+            </button>
             <button class="sv3-update-btn" id="sv3-update-btn" onclick="checkForUpdatesManual()" style="display:flex;align-items:center;justify-content:center;gap:6px">
               <svg width="13" height="13" viewBox="0 0 16 16" fill="currentColor" style="flex-shrink:0"><path fill-rule="evenodd" d="M8 3a5 5 0 1 0 4.546 2.914.5.5 0 0 1 .908-.417A6 6 0 1 1 8 2v1z"/><path d="M8 4.466V.534a.25.25 0 0 1 .41-.192l2.36 1.966c.12.1.12.284 0 .384L8.41 4.658A.25.25 0 0 1 8 4.466z"/></svg>
               <span id="sv3-update-btn-label">${t("setup.check_updates_btn")}</span>
             </button>
+            <div id="sv3-app-version-label" style="font-size:11px;color:var(--text2);margin-top:4px;text-align:center;width:100%">
+              ${(() => {
+                const v = window._appVersion || "";
+                if (!v) return "";
+                const textFn = t("setup.app_version");
+                return typeof textFn === 'function' ? textFn(v) : `App version is v${v}`;
+              })()}
+            </div>
           </div>
         </div>
 
@@ -2507,6 +3159,7 @@ window.renderSetup = function (onComplete, initialStep) {
         if (item.dataset.page === "operations") { goToOperations(); return; }
         if (item.dataset.page === "dashboard")  { goToDashboard();  return; }
         const targetStep = item.dataset.step;
+        if (targetStep === "run" && !accounts.some(acc => acc.accountType !== "static")) { goToDashboard(); return; }
         // Only allow going to date/review if accounts exist
         if (targetStep !== "accounts" && accounts.length === 0) return;
         step = targetStep;
@@ -2536,7 +3189,7 @@ window.renderSetup = function (onComplete, initialStep) {
     });
     // Mark done steps with checkmark
     el.querySelectorAll(".sv3-nav-item.done .sv3-step-num").forEach(n => {
-      n.textContent = "✓";
+      n.textContent = "OK";
     });
     // Restore icons for non-done steps
     [["accounts","👤"],["run","🚀"]].forEach(([s, icon]) => {
@@ -2554,22 +3207,54 @@ window.renderSetup = function (onComplete, initialStep) {
     else if (step === "run") renderRunStep(content);
   }
 
-  // ─────────────────────────────────────────────────────────────────
-  // STEP 1 — ACCOUNTS (management only: add, edit, delete — no selection)
-  // ─────────────────────────────────────────────────────────────────
+  // â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+  // STEP 1 â€” ACCOUNTS (management only: add, edit, delete â€” no selection)
+  // â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
   function renderAccountsStep(content) {
     const canAdd = accounts.length < maxAccounts;
+    const hasRunnableAccounts = accounts.some(acc => acc.accountType !== "static");
     const disabledReason = !canAdd
       ? (maxAccounts <= 1 ? t("setup.license_one") : t("setup.license_max")(maxAccounts))
       : null;
+    const remoteCount = remoteAccountSlots && remoteAccountSlots.count ? Number(remoteAccountSlots.count) : 0;
+    const showRecoveryNotice = accounts.length === 0 && remoteCount > 0;
+    const recoveryTitle = setupText("setup.remote_slots_title", "This license already has accounts on the server");
+    const recoveryBodyFn = t("setup.remote_slots_body");
+    const recoveryBody = typeof recoveryBodyFn === "function"
+      ? recoveryBodyFn(remoteCount)
+      : `We found ${remoteCount} saved license slot(s) in the admin panel, but local credentials are missing on this install. Re-add the same KHOD WHAAT account email to re-link them, or ask admin to clear stale slots if this is a new setup.`;
+    const showBackupPrompt = !!(credentialBackupPrompt && credentialBackupPrompt.show && accounts.length > 0);
 
     content.innerHTML = `
       <div class="sv3-page-title">${t("setup.manage_title")}</div>
       <div class="sv3-page-sub">${t("setup.manage_sub")}</div>
 
+      ${showRecoveryNotice ? `
+        <div class="sv3-recovery-note">
+          <div class="sv3-recovery-note-badge">i</div>
+          <div>
+            <strong>${esc(recoveryTitle)}</strong>
+            <span>${esc(recoveryBody)}</span>
+          </div>
+        </div>
+      ` : ""}
+
+      ${showBackupPrompt ? `
+        <div class="sv3-recovery-note" id="sv3-credential-backup-prompt" style="border-color:rgba(0,214,143,.32);background:rgba(0,214,143,.08)">
+          <div class="sv3-recovery-note-badge" style="background:#00b370;color:white">OK</div>
+          <div style="flex:1;min-width:0">
+            <strong>${esc(setupText("setup.backup_prompt_title", "Back up your saved accounts"))}</strong>
+            <span>${esc(setupText("setup.backup_prompt_body", "Create an encrypted backup of the accounts saved on this device so you can restore them on another approved device."))}</span>
+          </div>
+          <button type="button" class="sv3-act-btn" id="sv3-backup-now-btn" style="white-space:nowrap;background:#00b370;color:#fff;border-color:#00b370">
+            ${esc(setupText("setup.backup_prompt_btn", "Back up now"))}
+          </button>
+        </div>
+      ` : ""}
+
       <div class="sv3-section">
         <div class="sv3-section-hd">
-          <span class="sv3-section-hd-icon">👥</span>
+          <span class="sv3-section-hd-icon">👤</span>
           <span class="sv3-section-hd-title">${t("setup.your_accounts")}</span>
         </div>
         <div class="sv3-section-desc">${t("setup.your_accounts_desc")}</div>
@@ -2582,7 +3267,7 @@ window.renderSetup = function (onComplete, initialStep) {
                title="${!canAdd ? esc(disabledReason) : t("setup.add_new_account_title")}">
             <div class="sv3-add-circle">+</div>
             <div class="sv3-add-label">${t("setup.add_account")}</div>
-            ${!canAdd ? `<div class="sv3-add-warn">⚠️ ${esc(disabledReason)}</div>` : ""}
+            ${!canAdd ? `<div class="sv3-add-warn">${esc(disabledReason)}</div>` : ""}
           </div>
         </div>
       </div>
@@ -2590,24 +3275,35 @@ window.renderSetup = function (onComplete, initialStep) {
       <div style="display:flex;justify-content:flex-end">
         <button class="sv3-run-btn" id="sv3-next-btn" style="width:auto;padding:12px 32px"
           ${accounts.length === 0 ? "disabled" : ""}>
-          ${t("setup.next_btn")}
+          ${window._teamLeaderEnabled || !hasRunnableAccounts ? (t("setup.nav_dashboard") || "Dashboard") : t("setup.next_btn")}
         </button>
       </div>
     `;
 
     content.querySelectorAll(".sv3-edit-btn").forEach(b => {
-      b.addEventListener("click", e => { e.stopPropagation(); openForm(b.dataset.id); });
+      b.addEventListener("click", e => {
+        e.stopPropagation();
+        if (accounts.find(a => a.id === b.dataset.id)?.locked) return;
+        openForm(b.dataset.id);
+      });
     });
     content.querySelectorAll(".sv3-member-name-btn").forEach(b => {
-      b.addEventListener("click", e => { e.stopPropagation(); openMemberNameEditor(b.dataset.id); });
+      b.addEventListener("click", e => {
+        e.stopPropagation();
+        openMemberNameEditor(b.dataset.id);
+      });
     });
     content.querySelectorAll(".sv3-del-btn").forEach(b => {
       b.addEventListener("click", async e => {
         e.stopPropagation();
+        if (accounts.find(a => a.id === b.dataset.id)?.locked) return;
         if (!confirm(t("setup.remove_confirm"))) return;
-        accounts = accounts.filter(a => a.id !== b.dataset.id);
+        const nextAccounts = accounts.filter(a => a.id !== b.dataset.id);
+        const result = await window.api.saveAllAccounts(nextAccounts);
+        if (result && result.success === false) return;
         selectedIds = selectedIds.filter(x => x !== b.dataset.id);
-        await window.api.saveAllAccounts(accounts);
+        await refreshAccountStateAfterMutation("accounts-updated");
+        if (accounts.length === 0) step = "accounts";
         renderStep();
       });
     });
@@ -2616,8 +3312,34 @@ window.renderSetup = function (onComplete, initialStep) {
       if (canAdd) openForm(null);
     });
 
+    document.getElementById("sv3-backup-now-btn")?.addEventListener("click", async (event) => {
+      const btn = event.currentTarget;
+      btn.disabled = true;
+      btn.textContent = setupText("setup.backup_prompt_working", "Backing up...");
+      const result = window.api.backupLicenseCredentialsNow
+        ? await window.api.backupLicenseCredentialsNow()
+        : { ok: false, reason: "backup_unavailable" };
+      if (result && result.ok) {
+        credentialBackupPrompt = Object.assign({}, credentialBackupPrompt, { show: false });
+        if (window.KhodUI && window.KhodUI.toast) {
+          window.KhodUI.toast(setupText("setup.backup_prompt_done", "Encrypted backup saved."), { kind: "success" });
+        }
+        renderStep();
+        return;
+      }
+      btn.disabled = false;
+      btn.textContent = setupText("setup.backup_prompt_btn", "Back up now");
+      if (window.KhodUI && window.KhodUI.toast) {
+        window.KhodUI.toast(setupText("setup.backup_prompt_failed", "Could not back up credentials. Try again."), { kind: "error" });
+      }
+    });
+
     document.getElementById("sv3-next-btn")?.addEventListener("click", () => {
       if (accounts.length) {
+        if (window._teamLeaderEnabled || !accounts.some(acc => acc.accountType !== "static")) {
+          goToDashboard();
+          return;
+        }
         step = "run"; runFlowStep = "users"; renderStep(); updateNav();
       }
     });
@@ -2630,39 +3352,44 @@ window.renderSetup = function (onComplete, initialStep) {
     const initial  = accountInitial(acc);
     const isLocked = !!acc.locked;
     const hasMemberName = !!String(acc.memberName || "").trim();
+    const country = accountCountryMeta(acc);
+    const isStatic = acc.accountType === "static";
     return `
       <div class="sv3-acc-card ${isLocked ? "sv3-acc-locked" : ""}" data-id="${acc.id}">
-        ${isLocked ? `<div class="sv3-lock-badge">🔒 ${t("setup.locked")}</div>` : ""}
-        <div class="sv3-avatar ${isLocked ? "lk" : ""}" style="margin-top:${isLocked ? "18px" : "8px"}">${isLocked ? "🔒" : initial}</div>
+        <div class="sv3-card-meta-stack sv3-manage-meta-row">
+          <div class="sv3-lock-badge ${isLocked ? "" : "unlocked"}">${isLocked ? t("setup.locked") : (t("setup.unlocked") || "Unlocked")}</div>
+          ${isStatic ? `<div class="sv3-country-badge">${esc(setupText("setup.static_badge", "Static"))}</div>` : `<div class="sv3-country-badge" title="${esc(country.label)}" aria-label="${esc(country.label)}">
+            <span class="${esc(country.flagClass)}" aria-hidden="true"></span>
+            <span>${esc(country.code)}</span>
+          </div>`}
+        </div>
+        <div class="sv3-avatar ${isLocked ? "lk" : ""}" style="margin-top:${isLocked ? "18px" : "8px"}">${initial}</div>
         <div class="sv3-acc-name" title="${esc(label)}">${esc(label)}</div>
         <div class="sv3-acc-email" title="${esc(emailLine)}">${esc(emailLine)}</div>
-        <button class="sv3-member-name-btn" type="button" data-id="${acc.id}">
+        ${isStatic ? "" : `<button class="sv3-member-name-btn" type="button" data-id="${acc.id}">
           ${hasMemberName ? t("setup.edit_member_name") : t("setup.add_member_name")}
-        </button>
-        <div class="sv3-status-pill ${isLocked ? "lk" : "ok"}">
-          <span class="sv3-dot"></span>${isLocked ? t("setup.locked") : t("setup.active")}
-        </div>
+        </button>`}
         ${!isLocked ? `<div class="sv3-hover-acts">
           <button class="sv3-act-btn sv3-edit-btn" data-id="${acc.id}">${t("setup.edit_btn")}</button>
-          ${!isLocked ? `
-            <button class="sv3-act-btn d sv3-del-btn" data-id="${acc.id}">🗑</button>
-          ` : ""}
+          <button class="sv3-act-btn d sv3-del-btn" data-id="${acc.id}">${t("setup.delete_btn") || "Delete"}</button>
         </div>` : ""}
       </div>`;
   }
 
-  // ─────────────────────────────────────────────────────────────────
-  // STEP 2 — RUN (combined: account selection + date + summary + run)
-  // ─────────────────────────────────────────────────────────────────
+  // â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+  // STEP 2 â€” RUN (combined: account selection + date + summary + run)
+  // â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
   function renderRunStep(content) {
     injectCalendarStyles();
+    const runnableAccounts = accounts.filter(acc => acc.accountType !== "static");
+    selectedIds = selectedIds.filter(id => runnableAccounts.some(acc => acc.id === id));
     const totalDays   = daysBetween(dateFrom, dateTo);
-    const selAccounts = accounts.filter(a => selectedIds.includes(a.id));
+    const selAccounts = runnableAccounts.filter(a => selectedIds.includes(a.id));
     const dateComplete = dateMode !== "range" || (!!dateFrom && !!dateTo);
     const canLaunch = selAccounts.length > 0 && dateComplete && !isDateRangeInvalid();
     const launchHint = selAccounts.length === 0 ? t("setup.select_user_to_launch") : t("setup.run_security");
     const onDateStep  = runFlowStep === "date";
-    const rangeLabel  = dateFrom === dateTo ? formatDisplayDate(dateFrom) : `${formatDisplayDate(dateFrom)} – ${formatDisplayDate(dateTo)}`;
+    const rangeLabel  = dateFrom === dateTo ? formatDisplayDate(dateFrom) : `${formatDisplayDate(dateFrom)} - ${formatDisplayDate(dateTo)}`;
 
     content.innerHTML = `
       <div class="sv3-run-stage">
@@ -2676,7 +3403,7 @@ window.renderSetup = function (onComplete, initialStep) {
         </div>
         <div class="sv3-flow-stepper ${onDateStep ? "date-active" : ""}" aria-label="Run setup steps">
           <div class="sv3-flow-node ${onDateStep ? "done" : "active"}">
-            <div class="sv3-flow-node-num">${onDateStep ? "✓" : "1"}</div>
+            <div class="sv3-flow-node-num">${onDateStep ? "OK" : "1"}</div>
             <div class="sv3-flow-node-text">
               <div class="sv3-flow-node-title">${t("setup.select_users")}</div>
               <div class="sv3-flow-node-sub" id="sv3-stepper-users">${t("setup.users_count")(selAccounts.length)}</div>
@@ -2703,39 +3430,51 @@ window.renderSetup = function (onComplete, initialStep) {
             </div>
           </div>
 
-          <div class="sv3-settings-dock">
-            <div class="sv3-setting-card">
+        </div>
+
+        <div class="sv3-settings-dock">
+            <div class="sv3-setting-card sv3-setting-card--compact">
               <div class="sv3-setting-row">
                 <div class="sv3-setting-copy">
-                  <div class="sv3-setting-icon">🚀</div>
+                  <div class="sv3-setting-icon">🪟</div>
                   <div>
-                    <div class="sv3-setting-title">${t("welcome.launch_min")}</div>
-                    <div class="sv3-setting-desc">${t("welcome.launch_min_desc")}</div>
+                    <div class="sv3-setting-title-row">
+                      <div class="sv3-setting-title">${t("welcome.launch_min")}</div>
+                      <button type="button" class="sv3-help-tip" aria-label="${t("welcome.launch_min_desc")}">
+                        ?
+                        <span class="sv3-help-tip-text" role="tooltip">${t("welcome.launch_min_desc")}</span>
+                      </button>
+                    </div>
                   </div>
                 </div>
-                <div style="display:flex;align-items:center;gap:7px;flex-shrink:0">
-                  <button id="sv3-btn-launchmin" class="sv3-toggle-btn">
+                <div class="sv3-setting-control">
+                  <span id="sv3-launchmin-label" class="sv3-toggle-label">${t("welcome.off")}</span>
+                  <button id="sv3-btn-launchmin" class="sv3-toggle-btn" type="button" aria-pressed="false">
                     <span id="sv3-launchmin-knob"></span>
                   </button>
-                  <span id="sv3-launchmin-label" class="sv3-toggle-label">${t("welcome.off")}</span>
                 </div>
               </div>
             </div>
 
-            <div class="sv3-setting-card">
+            <div class="sv3-setting-card sv3-setting-card--compact">
               <div class="sv3-setting-row">
                 <div class="sv3-setting-copy">
-                  <div class="sv3-setting-icon">✓</div>
+                  <div class="sv3-setting-icon">🔄</div>
                   <div>
-                    <div class="sv3-setting-title">${t("welcome.autorun")}</div>
-                    <div class="sv3-setting-desc">${t("welcome.autorun_desc")}</div>
+                    <div class="sv3-setting-title-row">
+                      <div class="sv3-setting-title">${t("welcome.autorun")}</div>
+                      <button type="button" class="sv3-help-tip" aria-label="${t("welcome.autorun_desc")}">
+                        ?
+                        <span class="sv3-help-tip-text" role="tooltip">${t("welcome.autorun_desc")}</span>
+                      </button>
+                    </div>
                   </div>
                 </div>
-                <div style="display:flex;align-items:center;gap:7px;flex-shrink:0">
-                  <button id="sv3-btn-autorun" class="sv3-toggle-btn">
+                <div class="sv3-setting-control">
+                  <span id="sv3-autorun-label" class="sv3-toggle-label">${t("welcome.off")}</span>
+                  <button id="sv3-btn-autorun" class="sv3-toggle-btn" type="button" aria-pressed="false">
                     <span id="sv3-autorun-knob"></span>
                   </button>
-                  <span id="sv3-autorun-label" class="sv3-toggle-label">${t("welcome.off")}</span>
                 </div>
               </div>
               <div id="sv3-autorun-interval-row" class="sv3-setting-meta" style="display:none">
@@ -2748,26 +3487,55 @@ window.renderSetup = function (onComplete, initialStep) {
               </div>
               <div id="sv3-autorun-next" style="margin-top:7px;font-size:11px;color:var(--text2);display:none"></div>
             </div>
-          </div>
+            <div class="sv3-setting-card sv3-setting-card--compact">
+              <div class="sv3-setting-row">
+                <div class="sv3-setting-copy">
+                  <div class="sv3-setting-icon">🤖</div>
+                  <div>
+                    <div class="sv3-setting-title">${esc(setupText("welcome.autoconfirm_title", "Auto-Confirm"))}</div>
+                    <div style="font-size:10px;color:var(--text2)">${esc(setupText("welcome.autoconfirm_desc", "When off, review and edit orders before submitting."))}</div>
+                  </div>
+                </div>
+                <div class="sv3-setting-control">
+                  <span id="sv3-autoconfirm-label" class="sv3-toggle-label">${setupText("welcome.off", "Off")}</span>
+                  <button id="sv3-btn-autoconfirm" class="sv3-toggle-btn" type="button" aria-pressed="false"><span id="sv3-autoconfirm-knob"></span></button>
+                </div>
+              </div>
+            </div>
+            <div class="sv3-setting-card sv3-setting-card--compact">
+              <div class="sv3-setting-row">
+                <div class="sv3-setting-copy">
+                  <div class="sv3-setting-icon">🔁</div>
+                  <div>
+                    <div class="sv3-setting-title">${esc(setupText("welcome.affiliate_recovery_title", "Affiliate Recovery"))}</div>
+                    <div style="font-size:10px;color:var(--text2)">${esc(setupText("welcome.affiliate_recovery_desc", "Resend real orders and convert missed orders to affiliates."))}</div>
+                  </div>
+                </div>
+                <div class="sv3-setting-control">
+                  <span id="sv3-affiliate-recovery-label" class="sv3-toggle-label">${setupText("welcome.off", "Off")}</span>
+                  <button id="sv3-btn-affiliate-recovery" class="sv3-toggle-btn" type="button" aria-pressed="false"><span id="sv3-affiliate-recovery-knob"></span></button>
+                </div>
+              </div>
+            </div>
         </div>
 
         <div class="sv3-users-toolbar">
           <div class="sv3-users-count" id="sv3-users-selected-count">
-            <strong>${t("setup.users_count")(selAccounts.length)}</strong> / ${t("setup.accounts_count")(accounts.length)}
+            <strong>${t("setup.users_count")(selAccounts.length)}</strong> / ${t("setup.accounts_count")(runnableAccounts.length)}
           </div>
         </div>
 
         <div class="sv3-grid sv3-run-accounts" id="sv3-run-acc-grid">
-          <div class="sv3-acc-card ${accounts.length > 0 && accounts.every(a => selectedIds.includes(a.id)) ? "selected" : ""}" id="sv3-all-card" style="border-style:dashed;cursor:pointer">
+          <div class="sv3-acc-card ${runnableAccounts.length > 0 && runnableAccounts.every(a => selectedIds.includes(a.id)) ? "selected" : ""}" id="sv3-all-card" style="border-style:dashed;cursor:pointer">
             <div class="sv3-check">
               <svg width="10" height="10" viewBox="0 0 10 10"><path d="M2 5l2.5 2.5L8 3" stroke="#fff" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" fill="none"/></svg>
             </div>
-            <div class="sv3-avatar" style="background:linear-gradient(135deg,#ff2d7a,#7c6af7);margin-top:8px">★</div>
+            <div class="sv3-avatar" style="background:linear-gradient(135deg,#ff2d7a,#7c6af7);margin-top:8px;font-size:11px">ALL</div>
             <div class="sv3-acc-name">${t("setup.all_users")}</div>
-            <div class="sv3-acc-email">${t("setup.accounts_count")(accounts.length)}</div>
+            <div class="sv3-acc-email">${t("setup.accounts_count")(runnableAccounts.length)}</div>
             <div class="sv3-status-pill ok"><span class="sv3-dot"></span>${t("setup.select_all")}</div>
           </div>
-          ${accounts.map((acc, index) => accountRunCard(acc, index + 1)).join("")}
+          ${runnableAccounts.map((acc, index) => accountRunCard(acc, index + 1)).join("")}
         </div>
 
         <div class="sv3-continue-row">
@@ -2799,14 +3567,14 @@ window.renderSetup = function (onComplete, initialStep) {
         <div id="sv3-date-inputs"></div>
 
         <div id="sv3-date-range-err" style="display:none;margin-top:12px;align-items:center;gap:8px;background:rgba(255,77,109,0.1);border:1px solid rgba(255,77,109,0.4);border-radius:8px;padding:10px 14px;font-size:12px;color:var(--danger);font-weight:600">
-          <span style="font-size:16px">⚠️</span>
+          <span style="font-size:16px">!</span>
           <span>${t("setup.date_range_err")}</span>
         </div>
 
         <div class="sv3-run-review">
           <div class="sv3-review-grid">
             <div class="sv3-review-metric">
-              <div class="sv3-review-icon users">👥</div>
+              <div class="sv3-review-icon users">👤</div>
               <div>
                 <div class="sv3-review-label">${t("setup.users_selected")}</div>
                 <div class="sv3-review-value">
@@ -2828,7 +3596,7 @@ window.renderSetup = function (onComplete, initialStep) {
               </div>
             </div>
             <div class="sv3-review-metric">
-              <div class="sv3-review-icon days">⏱</div>
+              <div class="sv3-review-icon days">🗓️</div>
               <div>
                 <div class="sv3-review-label">${t("setup.total_days")}</div>
                 <div class="sv3-review-value" id="sv3-sum-days">${t("setup.days_count")(totalDays)}</div>
@@ -2856,7 +3624,7 @@ window.renderSetup = function (onComplete, initialStep) {
 
     // Account card selection (All Users + individual)
     document.getElementById("sv3-all-card")?.addEventListener("click", () => {
-      const allIds = accounts.map(a => a.id);
+      const allIds = runnableAccounts.map(a => a.id);
       const allSel = allIds.every(id => selectedIds.includes(id));
       if (allSel) {
         selectedIds = allIds.length > 0 ? [allIds[0]] : selectedIds;
@@ -2865,9 +3633,7 @@ window.renderSetup = function (onComplete, initialStep) {
       }
       updateRunCards();
       if (typeof sv3AutoRunEnabled !== "undefined" && sv3AutoRunEnabled) {
-        selectedIds = [...allIds];
-        updateRunCards();
-        window.api.setAutoRunAccounts(allIds).catch(() => {});
+        window.api.setAutoRunAccounts(selectedIds).catch(() => {});
       }
     });
 
@@ -2883,16 +3649,13 @@ window.renderSetup = function (onComplete, initialStep) {
         }
         updateRunCards();
         if (typeof sv3AutoRunEnabled !== "undefined" && sv3AutoRunEnabled) {
-          const allIds = accounts.map(a => a.id);
-          selectedIds = [...allIds];
-          updateRunCards();
-          window.api.setAutoRunAccounts(allIds).catch(() => {});
+          window.api.setAutoRunAccounts(selectedIds).catch(() => {});
         }
       });
     });
 
     document.getElementById("sv3-continue-date")?.addEventListener("click", () => {
-      const sel = accounts.filter(a => selectedIds.includes(a.id));
+      const sel = runnableAccounts.filter(a => selectedIds.includes(a.id));
       if (!sel.length) return;
       runFlowStep = "date";
       renderStep();
@@ -2917,29 +3680,52 @@ window.renderSetup = function (onComplete, initialStep) {
     });
 
     document.getElementById("sv3-run-final")?.addEventListener("click", () => {
-      const sel = accounts.filter(a => selectedIds.includes(a.id));
+      const sel = runnableAccounts.filter(a => selectedIds.includes(a.id));
       const dateComplete = dateMode !== "range" || (!!dateFrom && !!dateTo);
       if (sel.length && dateComplete && !isDateRangeInvalid()) {
         onComplete({ dateFrom, dateTo, selectedAccountIds: selectedIds.length ? selectedIds : null });
       }
     });
 
-    // ── Launch Minimized toggle (setup page) ──
+    // â”€â”€ Launch Minimized toggle (setup page) â”€â”€
     let sv3LaunchMinEnabled = false;
+    function sv3SetSettingToggleVisual(btn, knob, label, enabled, tone) {
+      if (!btn || !knob || !label) return;
+      const tones = {
+        accent: { color: "var(--accent)", shadow: "0 0 0 3px rgba(124,106,247,.14)", cardClass: "is-accent", pill: "rgba(124,106,247,.14)" },
+        warning: { color: "var(--warning)", shadow: "0 0 0 3px rgba(245,158,11,.12)", cardClass: "is-warning", pill: "rgba(245,158,11,.12)" }
+      };
+      const current = tones[tone] || tones.accent;
+      const card = btn.closest(".sv3-setting-card");
+      btn.classList.toggle("is-on", enabled);
+      btn.setAttribute("aria-pressed", enabled ? "true" : "false");
+      if (card) {
+        card.classList.toggle("is-on", enabled);
+        card.classList.toggle("is-accent", enabled && current.cardClass === "is-accent");
+        card.classList.toggle("is-warning", enabled && current.cardClass === "is-warning");
+      }
+      if (enabled) {
+        btn.style.background = current.color;
+        btn.style.boxShadow = current.shadow;
+        knob.style.transform = "translateX(var(--sv3-toggle-travel, 24px))";
+        label.textContent = t("welcome.on");
+        label.style.color = current.color;
+        label.style.background = current.pill;
+      } else {
+        btn.style.background = "var(--border)";
+        btn.style.boxShadow = "none";
+        knob.style.transform = "translateX(0)";
+        label.textContent = t("welcome.off");
+        label.style.color = "var(--text2)";
+        label.style.background = "rgba(125,148,186,.1)";
+      }
+    }
     function sv3UpdateLaunchMinUI() {
       const btn   = document.getElementById("sv3-btn-launchmin");
       const knob  = document.getElementById("sv3-launchmin-knob");
       const label = document.getElementById("sv3-launchmin-label");
       if (!btn) return;
-      if (sv3LaunchMinEnabled) {
-        btn.style.background = "var(--accent)";
-        knob.style.transform = "translateX(20px)";
-        label.textContent = t("welcome.on"); label.style.color = "var(--accent)";
-      } else {
-        btn.style.background = "var(--border)";
-        knob.style.transform = "translateX(0)";
-        label.textContent = t("welcome.off"); label.style.color = "var(--text2)";
-      }
+      sv3SetSettingToggleVisual(btn, knob, label, sv3LaunchMinEnabled, "accent");
     }
     document.getElementById("sv3-btn-launchmin")?.addEventListener("click", async () => {
       sv3LaunchMinEnabled = !sv3LaunchMinEnabled;
@@ -2947,7 +3733,26 @@ window.renderSetup = function (onComplete, initialStep) {
       sv3UpdateLaunchMinUI();
     });
 
-    // ── Auto-Run toggle (setup page) ──
+    // Run policy toggles: Auto-Confirm controls submission, Affiliate Recovery
+    // controls EasyOrders resend/convert recovery actions.
+    let sv3AutoConfirmEnabled = false;
+    let sv3AffiliateRecoveryEnabled = false;
+    function sv3UpdateRunPoliciesUI() {
+      sv3SetSettingToggleVisual(document.getElementById("sv3-btn-autoconfirm"), document.getElementById("sv3-autoconfirm-knob"), document.getElementById("sv3-autoconfirm-label"), sv3AutoConfirmEnabled, "accent");
+      sv3SetSettingToggleVisual(document.getElementById("sv3-btn-affiliate-recovery"), document.getElementById("sv3-affiliate-recovery-knob"), document.getElementById("sv3-affiliate-recovery-label"), sv3AffiliateRecoveryEnabled, "warning");
+    }
+    document.getElementById("sv3-btn-autoconfirm")?.addEventListener("click", async () => {
+      sv3AutoConfirmEnabled = !sv3AutoConfirmEnabled;
+      await window.api.setAutoConfirm(sv3AutoConfirmEnabled);
+      sv3UpdateRunPoliciesUI();
+    });
+    document.getElementById("sv3-btn-affiliate-recovery")?.addEventListener("click", async () => {
+      sv3AffiliateRecoveryEnabled = !sv3AffiliateRecoveryEnabled;
+      await window.api.setEasyOrdersAffiliateRecoveryEnabled(sv3AffiliateRecoveryEnabled);
+      sv3UpdateRunPoliciesUI();
+    });
+
+    // â”€â”€ Auto-Run toggle (setup page) â”€â”€
     let sv3AutoRunEnabled      = false;
     let sv3AutoRunIntervalMins = 30;
     let sv3CountdownInterval   = null;
@@ -2961,17 +3766,12 @@ window.renderSetup = function (onComplete, initialStep) {
       const next   = document.getElementById("sv3-autorun-next");
       const intRow = document.getElementById("sv3-autorun-interval-row");
       if (!btn) return;
+      sv3SetSettingToggleVisual(btn, knob, label, sv3AutoRunEnabled, "warning");
       if (sv3AutoRunEnabled) {
-        btn.style.background = "var(--warning)";
-        knob.style.transform = "translateX(20px)";
-        label.textContent = t("welcome.on"); label.style.color = "var(--warning)";
         next.style.display = "block";
         intRow.style.display = "block";
         sv3StartCountdown(remainingMs);
       } else {
-        btn.style.background = "var(--border)";
-        knob.style.transform = "translateX(0)";
-        label.textContent = t("welcome.off"); label.style.color = "var(--text2)";
         next.style.display = "none";
         intRow.style.display = "none";
         sv3StopCountdown();
@@ -3008,7 +3808,7 @@ window.renderSetup = function (onComplete, initialStep) {
         const fn = t("welcome.next_run");
         if (next) next.textContent = typeof fn === "function"
           ? fn(m, String(s).padStart(2, "0"))
-          : `⏳ Next auto-run in ${m}:${String(s).padStart(2, "0")}`;
+          : `Next auto-run in ${m}:${String(s).padStart(2, "0")}`;
       };
       tick();
       sv3CountdownInterval = setInterval(tick, 1000);
@@ -3022,9 +3822,9 @@ window.renderSetup = function (onComplete, initialStep) {
       sv3AutoRunEnabled = !sv3AutoRunEnabled;
       await window.api.setAutoRun(sv3AutoRunEnabled);
       if (sv3AutoRunEnabled) {
-        const allIds = accounts.map(a => a.id);
-        const autoRunIds = allIds;
-        if (allIds.length) {
+        const allIds = runnableAccounts.map(a => a.id);
+        const autoRunIds = selectedIds.length ? selectedIds : allIds;
+        if (!selectedIds.length && allIds.length) {
           selectedIds = [...allIds];
           updateRunCards();
         }
@@ -3047,16 +3847,26 @@ window.renderSetup = function (onComplete, initialStep) {
     // Load saved state from store
     window.api.getCredentials().then(async (creds) => {
       sv3LaunchMinEnabled    = creds.launchMinimized || false;
+      sv3AutoConfirmEnabled  = creds.autoConfirm || false;
+      sv3AffiliateRecoveryEnabled = creds.easyOrdersAffiliateRecoveryEnabled || false;
       sv3AutoRunEnabled      = creds.autoRun         || false;
       sv3AutoRunIntervalMins = creds.autoRunInterval  || 30;
-      const allIds = accounts.map(a => a.id).filter(Boolean);
-      if (sv3AutoRunEnabled && allIds.length) {
-        selectedIds = [...allIds];
+      const savedAutoRunIds = Array.isArray(creds.autoRunAccountIds)
+        ? creds.autoRunAccountIds.filter(id => runnableAccounts.some(a => a.id === id))
+        : [];
+      if (sv3AutoRunEnabled && savedAutoRunIds.length) {
+        selectedIds = savedAutoRunIds;
         updateRunCards();
       }
       sv3UpdateLaunchMinUI();
+      sv3UpdateRunPoliciesUI();
       if (sv3AutoRunEnabled) {
-        const autoRunIds = allIds;
+        const allIds = runnableAccounts.map(a => a.id);
+        const autoRunIds = selectedIds.length ? selectedIds : allIds;
+        if (!selectedIds.length && allIds.length) {
+          selectedIds = [...allIds];
+          updateRunCards();
+        }
         await window.api.setAutoRunAccounts(autoRunIds);
         const prog = await window.api.getAutoRunProgress();
         sv3UpdateAutoRunUI(prog ? prog.remainingMs : undefined);
@@ -3072,12 +3882,19 @@ window.renderSetup = function (onComplete, initialStep) {
     const emailLine = accountEmailLine(acc);
     const isLocked = !!acc.locked;
     const isSel    = selectedIds.includes(acc.id);
+    const country  = accountCountryMeta(acc);
     return `
       <div class="sv3-acc-card sv3-run-acc-card ${isSel ? "selected" : ""}" data-id="${acc.id}" style="cursor:pointer">
         <div class="sv3-check">
           <svg width="10" height="10" viewBox="0 0 10 10"><path d="M2 5l2.5 2.5L8 3" stroke="#fff" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" fill="none"/></svg>
         </div>
-        ${isLocked ? `<div style="position:absolute;top:7px;left:8px;background:rgba(255,201,77,.15);border:1px solid rgba(255,201,77,.4);border-radius:99px;padding:2px 7px;font-size:9px;font-weight:700;color:#ffc94d;letter-spacing:.04em">🔒 ${t("setup.locked")}</div>` : ""}
+        <div class="sv3-card-meta-stack">
+          <div class="sv3-country-badge" title="${esc(country.label)}" aria-label="${esc(country.label)}">
+            <span class="${esc(country.flagClass)}" aria-hidden="true"></span>
+            <span>${esc(country.code)}</span>
+          </div>
+          ${isLocked ? `<div class="sv3-lock-badge">${t("setup.locked")}</div>` : ""}
+        </div>
         <div class="sv3-avatar sv3-run-index-avatar" style="margin-top:8px">${index}</div>
         <div class="sv3-acc-name" title="${esc(label)}">${esc(label)}</div>
         <div class="sv3-acc-email" title="${esc(emailLine)}">${esc(emailLine)}</div>
@@ -3085,7 +3902,7 @@ window.renderSetup = function (onComplete, initialStep) {
   }
 
   function updateLaunchState() {
-    const selAccounts = accounts.filter(a => selectedIds.includes(a.id));
+    const selAccounts = accounts.filter(a => a.accountType !== "static" && selectedIds.includes(a.id));
     const invalid = isDateRangeInvalid();
     const dateComplete = dateMode !== "range" || (!!dateFrom && !!dateTo);
     const canLaunch = selAccounts.length > 0 && dateComplete && !invalid;
@@ -3113,7 +3930,7 @@ window.renderSetup = function (onComplete, initialStep) {
     if (stepperDate) {
       stepperDate.textContent = invalid
         ? t("setup.date_before_start")
-        : (dateFrom === dateTo ? formatDisplayDate(dateFrom) : `${formatDisplayDate(dateFrom)} – ${formatDisplayDate(dateTo)}`);
+        : (dateFrom === dateTo ? formatDisplayDate(dateFrom) : `${formatDisplayDate(dateFrom)} - ${formatDisplayDate(dateTo)}`);
     }
 
     const nodes = document.querySelectorAll(".sv3-flow-node");
@@ -3123,7 +3940,7 @@ window.renderSetup = function (onComplete, initialStep) {
       first.classList.toggle("done", runFlowStep === "date");
       first.classList.toggle("active", runFlowStep !== "date");
       const num = first.querySelector(".sv3-flow-node-num");
-      if (num) num.textContent = runFlowStep === "date" ? "✓" : "1";
+      if (num) num.textContent = runFlowStep === "date" ? "OK" : "1";
     }
     if (second) {
       second.classList.toggle("active", runFlowStep === "date");
@@ -3131,7 +3948,8 @@ window.renderSetup = function (onComplete, initialStep) {
   }
 
   function updateRunCards() {
-    const allIds = accounts.map(a => a.id);
+    const runnableAccounts = accounts.filter(a => a.accountType !== "static");
+    const allIds = runnableAccounts.map(a => a.id);
     const allSel = allIds.length > 0 && allIds.every(id => selectedIds.includes(id));
 
     // Update All Users card
@@ -3145,12 +3963,12 @@ window.renderSetup = function (onComplete, initialStep) {
     });
 
     // Update summary
-    const selAccounts = accounts.filter(a => selectedIds.includes(a.id));
+    const selAccounts = runnableAccounts.filter(a => selectedIds.includes(a.id));
     const usersEl = document.getElementById("sv3-sum-users");
     const avsEl   = document.getElementById("sv3-mini-avs");
     const selectedCountEl = document.getElementById("sv3-users-selected-count");
     if (selectedCountEl) {
-      selectedCountEl.innerHTML = `<strong>${t("setup.users_count")(selAccounts.length)}</strong> / ${t("setup.accounts_count")(accounts.length)}`;
+      selectedCountEl.innerHTML = `<strong>${t("setup.users_count")(selAccounts.length)}</strong> / ${t("setup.accounts_count")(runnableAccounts.length)}`;
     }
     if (usersEl) usersEl.textContent = `${t("setup.users_count")(selAccounts.length)}`;
     if (avsEl) {
@@ -3219,16 +4037,16 @@ window.renderSetup = function (onComplete, initialStep) {
 
     if (dateMode === "range" && (!dateFrom || !dateTo)) {
       rangeEl.textContent = dateFrom
-        ? `${formatDisplayDate(dateFrom)} – ${t("setup.end_date")}`
-        : "—";
-      daysEl.textContent = "—";
+        ? `${formatDisplayDate(dateFrom)} - ${t("setup.end_date")}`
+        : "--";
+      daysEl.textContent = "--";
       updateLaunchState();
       return;
     }
 
     if (invalid) {
       rangeEl.innerHTML = `<span style="color:var(--danger);font-size:11px">${t("setup.date_before_start")}</span>`;
-      daysEl.innerHTML  = `<span style="color:var(--danger)">—</span>`;
+      daysEl.innerHTML  = `<span style="color:var(--danger)">--</span>`;
       updateLaunchState();
       return;
     }
@@ -3236,21 +4054,21 @@ window.renderSetup = function (onComplete, initialStep) {
     const totalDays = daysBetween(dateFrom, dateTo);
     rangeEl.textContent = dateFrom === dateTo
       ? formatDisplayDate(dateFrom)
-      : `${formatDisplayDate(dateFrom)} – ${formatDisplayDate(dateTo)}`;
+      : `${formatDisplayDate(dateFrom)} - ${formatDisplayDate(dateTo)}`;
     daysEl.textContent = `${t("setup.days_count")(totalDays)}`;
     updateLaunchState();
   }
 
   function formatDisplayDate(str) {
-    if (!str) return "—";
+    if (!str) return "--";
     const [y, m, d] = str.split("-");
     const months = window._t("calendar.months");
     return `${months[parseInt(m)-1]} ${parseInt(d)}, ${y}`;
   }
 
-  // ─────────────────────────────────────────────────────────────────
-  // FORM OVERLAY — Add / Edit account
-  // ─────────────────────────────────────────────────────────────────
+  // â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+  // FORM OVERLAY â€” Add / Edit account
+  // â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
   function openMemberNameEditor(accountId) {
     const acc = accounts.find(a => a.id === accountId);
     if (!acc) return;
@@ -3258,9 +4076,9 @@ window.renderSetup = function (onComplete, initialStep) {
     const overlay = document.createElement("div");
     overlay.className = "sv3-form-overlay";
     overlay.innerHTML = `
-      <div class="sv3-form-card">
+      <div class="sv3-form-card sv3-member-card">
         <div style="display:flex;align-items:center;gap:12px;margin-bottom:18px">
-          <button id="sv3-member-back" style="background:var(--bg3);border:1px solid var(--border);border-radius:8px;width:32px;height:32px;display:flex;align-items:center;justify-content:center;cursor:pointer;color:var(--text2);font-size:15px;flex-shrink:0;transition:all .15s">←</button>
+          <button id="sv3-member-back" style="background:var(--bg3);border:1px solid var(--border);border-radius:8px;width:32px;height:32px;display:flex;align-items:center;justify-content:center;cursor:pointer;color:var(--text2);font-size:15px;flex-shrink:0;transition:all .15s">&lt;</button>
           <div>
             <div style="font-size:16px;font-weight:800;color:var(--text)">${t("setup.member_name_title")}</div>
             <div style="font-size:12px;color:var(--text2);margin-top:2px">${t("setup.member_name_subtitle")}</div>
@@ -3276,11 +4094,11 @@ window.renderSetup = function (onComplete, initialStep) {
         <div style="font-size:11px;color:var(--text3);margin-top:10px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${esc(accountEmailLine(acc))}</div>
 
         <div id="sv3-member-err" class="notice-box danger mt-20" style="display:none">
-          <span class="notice-icon">⚠️</span>
+          <span class="notice-icon">!</span>
           <div class="notice-text" id="sv3-member-err-text">${t("setup.save_failed")}</div>
         </div>
 
-        <div class="mt-20" style="display:flex;gap:10px">
+        <div class="sv3-member-actions">
           <button class="btn full-width" id="sv3-member-clear" style="border:1px solid var(--border);background:var(--bg2);color:var(--text2)">${t("setup.clear_member_name")}</button>
           <button class="btn btn-primary full-width btn-lg" id="sv3-member-save">${t("setup.save_member_name")}</button>
         </div>
@@ -3304,8 +4122,11 @@ window.renderSetup = function (onComplete, initialStep) {
         saveBtn.textContent = t("setup.saving");
         saveBtn.disabled = true;
       }
-      accounts[idx] = { ...accounts[idx], memberName: String(value || "").trim() };
-      const result = await window.api.saveAllAccounts(accounts);
+      const nextAccounts = accounts.map(a => ({ ...a }));
+      nextAccounts[idx] = { ...nextAccounts[idx], memberName: String(value || "").trim() };
+      const result = window.api.updateAccount
+        ? await window.api.updateAccount({ accountId, patch: { memberName: String(value || "").trim() } })
+        : await window.api.saveAllAccounts(nextAccounts);
       if (result && result.success === false) {
         if (saveBtn) {
           saveBtn.textContent = t("setup.save_member_name");
@@ -3316,9 +4137,7 @@ window.renderSetup = function (onComplete, initialStep) {
         return;
       }
       close();
-      const fresh = await window.api.getCredentials();
-      accounts = fresh.accounts || [];
-      maxAccounts = fresh.maxAccounts || maxAccounts;
+      await refreshAccountStateAfterMutation("accounts-updated");
       renderStep();
     };
 
@@ -3332,75 +4151,101 @@ window.renderSetup = function (onComplete, initialStep) {
   function openForm(editId) {
     const isEdit = editId !== null;
     const acc    = isEdit ? accounts.find(a => a.id === editId) : null;
+    if (isEdit && (!acc || acc.locked)) return;
     const isLockedEdit = isEdit && !!acc?.locked;
-
+    const selectedAccountType = acc?.accountType === "static" ? "static" : "live";
+    const easyRequiredMark = '<span style="color:var(--danger)">*</span>';
     const overlay = document.createElement("div");
     overlay.className = "sv3-form-overlay";
     overlay.innerHTML = `
       <div class="sv3-form-card">
         <!-- Premium Header Lockup -->
-        <div style="display:flex;align-items:center;justify-content:between;gap:16px;margin-bottom:28px;padding-bottom:18px;border-bottom:1px solid rgba(255,255,255,0.06)">
+        <div style="display:flex;align-items:center;justify-content:space-between;gap:16px;margin-bottom:24px;padding-bottom:18px;border-bottom:1px solid rgba(255,255,255,0.06)">
           <div style="display:flex;align-items:center;gap:14px">
-            <div style="width:40px;height:40px;border-radius:12px;background:rgba(124,106,247,0.15);display:flex;align-items:center;justify-content:center;font-size:18px;color:var(--accent)">👤</div>
+            <div style="width:40px;height:40px;border-radius:12px;background:rgba(124,106,247,0.15);display:flex;align-items:center;justify-content:center;font-size:18px;font-weight:800;color:var(--accent)">👤</div>
             <div>
               <div style="font-size:18px;font-weight:800;color:var(--text);letter-spacing:-0.3px">${isEdit ? t("setup.edit_account") : t("setup.new_account")}</div>
               <div style="font-size:12px;color:var(--text2);margin-top:2px">${t("setup.form_subtitle")}</div>
             </div>
           </div>
-          <button id="sv3-form-back" style="margin-left:auto;background:rgba(255,255,255,0.03);border:1px solid var(--border);border-radius:10px;width:34px;height:34px;display:flex;align-items:center;justify-content:center;cursor:pointer;color:var(--text2);font-size:16px;flex-shrink:0;transition:all 0.2s ease" onmouseover="this.style.background='rgba(255,255,255,0.08)';this.style.color='var(--text)'" onmouseout="this.style.background='rgba(255,255,255,0.03)';this.style.color='var(--text2)'">×</button>
+          <button id="sv3-form-back" style="margin-left:auto;background:rgba(255,255,255,0.03);border:1px solid var(--border);border-radius:10px;width:34px;height:34px;display:flex;align-items:center;justify-content:center;cursor:pointer;color:var(--text2);font-size:16px;flex-shrink:0;transition:all 0.2s ease" onmouseover="this.style.background='rgba(255,255,255,0.08)';this.style.color='var(--text)'" onmouseout="this.style.background='rgba(255,255,255,0.03)';this.style.color='var(--text2)'">X</button>
         </div>
 
+        ${!isEdit ? `<div class="form-group" style="margin-bottom:20px">
+          <label>${esc(setupText("setup.account_type", "Account type"))}</label>
+          <input type="hidden" id="sv3-account-type" value="${esc(selectedAccountType)}" />
+          <div class="sv3-tab-control">
+            <button type="button" class="sv3-tab-btn ${selectedAccountType === "live" ? "is-active" : ""}" data-account-type="live">${esc(setupText("setup.normal_account", "Normal Account"))}</button>
+            <button type="button" class="sv3-tab-btn ${selectedAccountType === "static" ? "is-active" : ""}" data-account-type="static">${esc(setupText("setup.static_account", "Static Account"))}</button>
+          </div>
+        </div>` : `<input type="hidden" id="sv3-account-type" value="${esc(selectedAccountType)}" />`}
+
+        <div id="sv3-static-account-panel" class="sv3-form-panel" style="${selectedAccountType === "static" ? "" : "display:none;"}margin-bottom:20px">
+          <div class="form-section-title">${esc(setupText("setup.static_account", "Static Account"))}</div>
+          <div class="form-group">
+            <label>${esc(setupText("setup.static_name", "Account name"))} <span style="color:var(--danger)">*</span></label>
+            <input type="text" id="sv3-static-name" value="${esc(acc?.label || acc?.memberName || "")}" placeholder="${esc(setupText("setup.static_name_placeholder", "Example: Jake"))}" autocomplete="off" ${isLockedEdit ? "disabled" : ""} />
+            <div class="sv3-field-hint">${esc(setupText("setup.static_hint", "This account uses Excel Static Update and does not connect to KHOD WHAAT or EasyOrders."))}</div>
+          </div>
+        </div>
+
+        <div class="sv3-form-grid" id="sv3-live-account-panel" style="${selectedAccountType === "static" ? "display:none;" : ""}">
+          <div class="sv3-form-panel">
         <div class="form-section-title">
           <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><rect x="2" y="3" width="20" height="14" rx="2" ry="2"></rect><line x1="8" y1="21" x2="16" y2="21"></line><line x1="12" y1="17" x2="12" y2="21"></line></svg>
           ${t("setup.easy_section")}
         </div>
         <div class="form-group">
-          <label>${t("setup.store_label")} <span style="color:var(--danger)">*</span></label>
-          <input type="text" id="sv3-easy-store" placeholder="${t("setup.store_ph")}" value="${esc(acc?.easyStore||"")}" ${isLockedEdit ? "disabled" : ""} />
+          <label>${t("setup.store_label")} ${easyRequiredMark}</label>
+          <input type="text" id="sv3-easy-store" placeholder="${t("setup.store_ph")}" value="${esc(acc?.easyStore||"")}" required ${isLockedEdit ? "disabled" : ""} />
         </div>
         <div class="form-group">
-          <label>${t("setup.email_label")}</label>
-          <input type="email" id="sv3-easy-email" placeholder="${t("setup.email_ph")}" value="${esc(acc?.easyEmail||"")}" autocomplete="off" ${isLockedEdit ? "disabled" : ""} />
+          <label>${t("setup.email_label")} ${easyRequiredMark}</label>
+          <input type="email" id="sv3-easy-email" placeholder="${t("setup.email_ph")}" value="${esc(acc?.easyEmail||"")}" autocomplete="off" required ${isLockedEdit ? "disabled" : ""} />
         </div>
         <div class="form-group">
-          <label>${t("setup.pass_label")}</label>
+          <label>${t("setup.pass_label")} ${easyRequiredMark}</label>
           <div style="position:relative;display:flex;align-items:center">
-            <input type="password" id="sv3-easy-pass" placeholder="••••••••" autocomplete="new-password" ${isLockedEdit ? "disabled" : ""} style="padding-right:42px;width:100%" />
+            <input type="password" id="sv3-easy-pass" placeholder="********" autocomplete="new-password" required ${isLockedEdit ? "disabled" : ""} style="padding-right:42px;width:100%" />
             <button type="button" class="password-toggle-btn" data-target="sv3-easy-pass" style="position:absolute;right:10px;background:none;border:none;cursor:pointer;color:var(--text3);padding:4px;display:flex;align-items:center;justify-content:center;transition:color 0.2s;outline:none" tabindex="-1">
               <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="pointer-events:none"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"></path><circle cx="12" cy="12" r="3"></circle></svg>
             </button>
           </div>
-          ${isEdit ? `<div style="font-size:11px;color:var(--text2);margin-top:4px">${t("setup.keep_pass")}</div>` : ""}
+          ${isEdit ? `<div class="sv3-field-hint">${t("setup.keep_pass")}</div>` : ""}
+          <div class="sv3-field-hint">${setupText("setup.easy_required_hint", "EasyOrders store, email, and password are required for missed-order uploads.")}</div>
         </div>
 
-        <div class="form-section-title" style="margin-top:32px">
+          </div>
+          <div class="sv3-form-panel">
+        <div class="form-section-title">
           <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M6 2L3 6v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2V6l-3-4z"></path><line x1="3" y1="6" x2="21" y2="6"></line><path d="M16 10a4 4 0 0 1-8 0"></path></svg>
-          ${t("setup.khod_section")}
+          ${setupText("setup.khod_section", "KHOD WHAAT Account")}
+        </div>
+        <input type="hidden" id="sv3-khod-country" value="sa" />
+        <div class="form-group">
+          <label>${setupText("setup.country_label", "Market")}</label>
+          <input type="text" value="${setupText("setup.country_sa", "Saudi Arabia")}" disabled style="width:100%;height:44px;background:var(--bg3);border:1px solid var(--border);border-radius:10px;color:var(--text);padding:0 12px;outline:none" />
+          <div class="sv3-field-hint">${setupText("setup.country_sa_only", "KHOD WHAAT currently supports Saudi Arabia only.")}</div>
         </div>
         <div class="form-group">
-          <label>${t("setup.country_label")}</label>
-          <select id="sv3-khod-country" disabled style="width:100%;height:44px;background:var(--bg3);border:1px solid var(--border);border-radius:10px;color:var(--text);padding:0 12px;outline:none">
-            <option value="sa" selected>${t("setup.country_sa")}</option>
-          </select>
-          <div style="font-size:11px;color:var(--text2);margin-top:4px">${t("setup.country_sa_only")}</div>
+          <label>${t("setup.email_label")} <span style="color:var(--danger)">*</span></label>
+          <input type="email" id="sv3-khod-email" placeholder="${setupText("setup.khod_email_ph", "affiliate@khod-whaat.com")}" value="${esc(acc?.khodEmail||"")}" autocomplete="off" ${isLockedEdit ? "disabled" : ""} />
         </div>
-        <div class="form-group">
-          <label>${t("setup.email_label")}</label>
-          <input type="email" id="sv3-khod-email" placeholder="${t("setup.khod_email_ph")}" value="${esc(acc?.khodEmail||"")}" autocomplete="off" ${isLockedEdit ? "disabled" : ""} />
-        </div>
-        <div class="form-group">
-          <label>${t("setup.pass_label")}</label>
+        <div class="form-group" id="sv3-khod-pass-group">
+          <label>${t("setup.pass_label")} <span style="color:var(--danger)">*</span></label>
           <div style="position:relative;display:flex;align-items:center">
-            <input type="password" id="sv3-khod-pass" placeholder="••••••••" autocomplete="new-password" ${isLockedEdit ? "disabled" : ""} style="padding-right:42px;width:100%" />
+            <input type="password" id="sv3-khod-pass" placeholder="********" autocomplete="new-password" ${isLockedEdit ? "disabled" : ""} style="padding-right:42px;width:100%" />
             <button type="button" class="password-toggle-btn" data-target="sv3-khod-pass" style="position:absolute;right:10px;background:none;border:none;cursor:pointer;color:var(--text3);padding:4px;display:flex;align-items:center;justify-content:center;transition:color 0.2s;outline:none" tabindex="-1">
               <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="pointer-events:none"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"></path><circle cx="12" cy="12" r="3"></circle></svg>
             </button>
           </div>
-          ${isEdit ? `<div style="font-size:11px;color:var(--text2);margin-top:4px">${t("setup.khod_pass_hint")}</div>` : ""}
+          ${isEdit ? `<div class="sv3-field-hint">${setupText("setup.khod_pass_hint", "Leave blank to keep existing password")}</div>` : ""}
+        </div>
+          </div>
         </div>
 
         <div id="sv3-form-err" class="notice-box danger mt-20" style="display:none">
-          <span class="notice-icon">⚠️</span>
+          <span class="notice-icon">!</span>
           <div class="notice-text" id="sv3-form-err-text">${t("setup.err_missing")}</div>
         </div>
 
@@ -3412,6 +4257,23 @@ window.renderSetup = function (onComplete, initialStep) {
     `;
 
     document.body.appendChild(overlay);
+
+    const syncAccountTypeFields = () => {
+      const type = document.getElementById("sv3-account-type")?.value === "static" ? "static" : "live";
+      const staticPanel = document.getElementById("sv3-static-account-panel");
+      const livePanel = document.getElementById("sv3-live-account-panel");
+      if (staticPanel) staticPanel.style.display = type === "static" ? "" : "none";
+      if (livePanel) livePanel.style.display = type === "static" ? "none" : "";
+    };
+    overlay.querySelectorAll("[data-account-type]").forEach(btn => {
+      btn.addEventListener("click", () => {
+        const input = document.getElementById("sv3-account-type");
+        if (input) input.value = btn.dataset.accountType === "static" ? "static" : "live";
+        overlay.querySelectorAll("[data-account-type]").forEach(tab => tab.classList.toggle("is-active", tab === btn));
+        syncAccountTypeFields();
+      });
+    });
+    syncAccountTypeFields();
 
     overlay.querySelectorAll(".password-toggle-btn").forEach(btn => {
       btn.addEventListener("click", (e) => {
@@ -3441,12 +4303,15 @@ window.renderSetup = function (onComplete, initialStep) {
     document.getElementById("sv3-form-cancel")?.addEventListener("click", close);
 
     document.getElementById("sv3-form-save")?.addEventListener("click", async () => {
+      const accountType = document.getElementById("sv3-account-type")?.value === "static" ? "static" : "live";
+      const staticName = (document.getElementById("sv3-static-name")?.value || "").trim();
       const easyEmail    = document.getElementById("sv3-easy-email").value.trim();
       const easyPassword = document.getElementById("sv3-easy-pass").value;
       const easyStore    = document.getElementById("sv3-easy-store").value.trim();
-      const khodEmail    = document.getElementById("sv3-khod-email").value.trim();
+      const khodEmail = document.getElementById("sv3-khod-email").value.trim();
       const khodPassword = document.getElementById("sv3-khod-pass").value;
-      const khodCountry  = "sa";
+      const khodCountry = "sa";
+      const dashboardEnrichmentProvider = "none";
       const errEl        = document.getElementById("sv3-form-err");
       const errText      = document.getElementById("sv3-form-err-text");
       const saveBtn      = document.getElementById("sv3-form-save");
@@ -3456,7 +4321,13 @@ window.renderSetup = function (onComplete, initialStep) {
       const nextEasyEmail = isEdit ? (easyEmail || currentAccount?.easyEmail || "") : easyEmail;
       const nextKhodEmail = isEdit ? (khodEmail || currentAccount?.khodEmail || "") : khodEmail;
 
-      if (!nextEasyStore || (!isEdit && (!nextEasyEmail || !nextKhodEmail || !easyPassword || !khodPassword))) {
+      if (accountType === "static" && !staticName) {
+        errText.innerHTML = setupText("setup.static_name_required", "Account name is required.");
+        errEl.style.display = "flex";
+        return;
+      }
+
+      if (accountType !== "static" && (!nextEasyStore || !nextEasyEmail || (!isEdit && !easyPassword) || !nextKhodEmail || (!isEdit && !khodPassword))) {
         errText.innerHTML = t("setup.err_missing");
         errEl.style.display = "flex";
         return;
@@ -3465,43 +4336,71 @@ window.renderSetup = function (onComplete, initialStep) {
       saveBtn.textContent = t("setup.saving");
       saveBtn.disabled = true;
 
+      const nextAccounts = accounts.map(a => ({ ...a }));
+      let newAccountId = "";
+      let accountPatch = null;
+
       if (isEdit) {
-        const idx = accounts.findIndex(a => a.id === editId);
+        accountPatch = accountType === "static" ? {
+          label: staticName,
+          memberName: "",
+        } : {
+          easyEmail: nextEasyEmail,
+          easyStore: nextEasyStore,
+          khodEmail: nextKhodEmail,
+          khodCountry,
+          khodAffiliateCode: normalizeEmailForCompare(nextKhodEmail) === normalizeEmailForCompare(currentAccount?.khodEmail || "") ? (currentAccount?.khodAffiliateCode || "") : "",
+          dashboardEnrichmentProvider,
+          ...(easyPassword ? { easyPassword } : {}),
+          ...(khodPassword ? { khodPassword } : {}),
+        };
+        const idx = nextAccounts.findIndex(a => a.id === editId);
         if (idx !== -1) {
-          const previousKhodEmail = accounts[idx].khodEmail;
-          accounts[idx] = {
-            ...accounts[idx],
-            easyEmail: nextEasyEmail,
-            easyStore: nextEasyStore,
-            khodEmail: nextKhodEmail,
-            khodCountry,
-            khodAffiliateCode: normalizeEmailForCompare(nextKhodEmail) === normalizeEmailForCompare(previousKhodEmail) ? accounts[idx].khodAffiliateCode : "",
-            ...(easyPassword ? { easyPassword } : {}),
-            ...(khodPassword ? { khodPassword } : {}),
+          nextAccounts[idx] = {
+            ...nextAccounts[idx],
+            ...accountPatch,
           };
         }
-        // NOTE: relockAccount is called AFTER saveAllAccounts so that main.js
+        // NOTE: relockAccount is called AFTER save so that main.js
         // reads the already-updated credentials from store when computing the hash.
       } else {
-        const newId = "account_" + Date.now();
-        accounts.push({
-          id: newId,
+        newAccountId = "account_" + Date.now();
+        nextAccounts.push(accountType === "static" ? {
+          id: newAccountId,
+          accountType: "static",
+          label: staticName,
+          memberName: "",
+          khodCountry: "sa",
+          dashboardEnrichmentProvider: "none",
+        } : {
+          id: newAccountId,
+          accountType: "live",
           label: getNextLabel(),
           memberName: "",
-          easyEmail, easyPassword, easyStore, khodEmail, khodPassword, khodCountry, khodAffiliateCode: "",
+          easyEmail,
+          easyPassword,
+          easyStore,
+          khodEmail,
+          khodPassword,
+          khodCountry,
+          khodAffiliateCode: "",
+          dashboardEnrichmentProvider,
         });
-        selectedIds.push(newId);
       }
 
-      const result = await window.api.saveAllAccounts(accounts);
+      const result = isEdit && window.api.updateAccount
+        ? await window.api.updateAccount({ accountId: editId, patch: accountPatch })
+        : await window.api.saveAllAccounts(nextAccounts);
 
       if (result && result.success === false) {
         saveBtn.textContent = isEdit ? t("setup.save_btn2") : t("setup.add_btn");
         saveBtn.disabled = false;
         errText.innerHTML = result.reason === "account_locked"
           ? t("setup.err_locked")
-          : result.reason === "easy_store_required"
+          : result.reason === "easy_store_required" || result.reason === "easy_credentials_required" || result.reason === "khod_email_required" || result.reason === "khod_password_required"
           ? t("setup.err_missing")
+          : result.reason === "remote_slots_full"
+          ? setupText("setup.remote_slots_full", "This license already has account slots on the server. Re-add the same KHOD WHAAT account details to re-link them, or ask admin to clear stale slots.")
           : result.reason === "limit_reached"
           ? t("setup.limit_reached")
           : (result.reason || t("setup.save_failed"));
@@ -3515,12 +4414,8 @@ window.renderSetup = function (onComplete, initialStep) {
       }
 
       close();
-      // Re-fetch credentials from server so lock status is always fresh.
-      // Fixes: (1) partial admin unlock not showing Edit button for individual accounts,
-      // (2) newly-added accounts incorrectly showing Edit/Delete instead of being locked.
-      const fresh = await window.api.getCredentials();
-      accounts    = fresh.accounts || [];
-      maxAccounts = fresh.maxAccounts || maxAccounts;
+      if (newAccountId && accountType !== "static" && !selectedIds.includes(newAccountId)) selectedIds.push(newAccountId);
+      await refreshAccountStateAfterMutation("accounts-updated");
       renderStep();
     });
 
@@ -3530,9 +4425,9 @@ window.renderSetup = function (onComplete, initialStep) {
     });
   }
 
-  // ─────────────────────────────────────────────────────────────────
+  // â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
   // HELPERS
-  // ─────────────────────────────────────────────────────────────────
+  // â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
   function esc(s) {
     return String(s ?? "").replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/>/g,"&gt;").replace(/"/g,"&quot;");
   }
@@ -3547,8 +4442,9 @@ window.renderSetup = function (onComplete, initialStep) {
   }
 
   function accountEmailLine(acc) {
-    if (!acc) return "—";
-    return acc.easyEmail || acc.email || acc.khodEmail || "—";
+    if (acc && acc.accountType === "static") return setupText("setup.static_account", "Static Account");
+    if (!acc) return "--";
+    return acc.easyEmail || acc.email || acc.khodEmail || "--";
   }
 
   function accountInitial(acc) {
@@ -3590,7 +4486,7 @@ window.renderSetup = function (onComplete, initialStep) {
     });
   }
 
-  // ── Register in-place re-renderer for language switches ──
+  // â”€â”€ Register in-place re-renderer for language switches â”€â”€
   // Called by app.js reRenderCurrentPage() when lang changes on this page.
   // Re-renders only the current step content without resetting step state.
   window._renderSetupInPlace = function() {
@@ -3600,9 +4496,9 @@ window.renderSetup = function (onComplete, initialStep) {
   loadAccounts();
 };
 
-// ══════════════════════════════════════════════════════
-// ── Fast Custom Calendar — copied from welcome.js ──
-// ══════════════════════════════════════════════════════
+// â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•
+// â”€â”€ Fast Custom Calendar â€” copied from welcome.js â”€â”€
+// â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•
 
 function buildCalendar(container, initial, maxDate, onChange) {
   const parseLocal = (str) => {
@@ -3754,7 +4650,7 @@ function buildRangeCalendar(container, fromInitial, toInitial, maxDate, onChange
         <div class="fc-range-status">
           <div class="fc-range-status-part">
             <span>${window._t("setup.start_date")}</span>
-            <strong class="${from ? "active" : ""}">${from || "—"}</strong>
+            <strong class="${from ? "active" : ""}">${from || "--"}</strong>
           </div>
           <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
             <line x1="5" y1="12" x2="19" y2="12"></line>
@@ -3762,10 +4658,10 @@ function buildRangeCalendar(container, fromInitial, toInitial, maxDate, onChange
           </svg>
           <div class="fc-range-status-part end">
             <span>${window._t("setup.end_date")}</span>
-            <strong class="${to ? "active" : ""}">${to || "—"}</strong>
+            <strong class="${to ? "active" : ""}">${to || "--"}</strong>
           </div>
         </div>
-        <div class="fc-range-hint">▸ ${hint}</div>
+        <div class="fc-range-hint">&gt; ${hint}</div>
         <div class="fc-wrap">
           <div class="fc-header">
             <button class="fc-nav" data-dir="-1"${canPrev ? "" : " disabled"}>&#8249;</button>
@@ -3777,7 +4673,7 @@ function buildRangeCalendar(container, fromInitial, toInitial, maxDate, onChange
             ${cells}
           </div>
         </div>
-        ${(from || to) ? `<button class="fc-clear-range" type="button">× ${clear}</button>` : ""}
+        ${(from || to) ? `<button class="fc-clear-range" type="button">X ${clear}</button>` : ""}
       </div>
     `;
 

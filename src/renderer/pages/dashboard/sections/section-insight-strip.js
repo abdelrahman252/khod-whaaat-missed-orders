@@ -1,31 +1,41 @@
-/* ══════════════════════════════════════════════════════════════════════════════
+/* â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•
    section-insight-strip.js  (T-20)
    Renders a horizontally-scrollable strip of auto-generated insight cards
    produced by dashboard-insight-engine.js (T-19).
 
    Depends on:
-     window.runInsightEngine()     — from dashboard-insight-engine.js (T-19)
-     window.DashboardFilterBus     — from dashboard-filter-bus.js (T-13) [optional]
-     window.dashboardGeoData       — set by dashboard-aggregator.js after aggregation
+     window.runInsightEngine()     â€” from dashboard-insight-engine.js (T-19)
+     window.DashboardFilterBus     â€” from dashboard-filter-bus.js (T-13) [optional]
+     window.dashboardGeoData       â€” set by dashboard-aggregator.js after aggregation
 
    Exposed on window:
      window.renderInsightStrip(mountEl, geoData)
-       mountEl  — DOM element to render into
-       geoData  — aggregator output object (data); if omitted, reads window.dashboardGeoData
+       mountEl  â€” DOM element to render into
+       geoData  â€” aggregator output object (data); if omitted, reads window.dashboardGeoData
 
-   The strip shows up to 12 insights, priority-sorted (critical → high → medium → low).
-   Each card has a dismiss [✕] button that hides it locally.
+   The strip shows up to 12 insights, priority-sorted (critical â†’ high â†’ medium â†’ low).
+   Each card has a dismiss [âœ•] button that hides it locally.
    Clicking a city/product card tag syncs with DashboardFilterBus if available.
-   ══════════════════════════════════════════════════════════════════════════════ */
+   â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â• */
 (function () {
   'use strict';
   function getIsAr() {
     return window.dashboardI18n ? window.dashboardI18n.currentLocale === 'ar' : true;
   }
-  function s6Txt(en, ar) { return getIsAr() ? ar : en; }
-  function sTx(en, ar) { return getIsAr() ? ar : en; }
-  function tx(en, ar) { return getIsAr() ? ar : en; }
-  function dashText(en, ar) { return getIsAr() ? ar : en; }
+  function pick(en, ar) {
+    return window.dashboardI18n && window.dashboardI18n.pick
+      ? window.dashboardI18n.pick(en, ar)
+      : (getIsAr() ? ar : en);
+  }
+  function s6Txt(en, ar) { return pick(en, ar); }
+  function sTx(en, ar) { return pick(en, ar); }
+  function tx(en, ar) { return pick(en, ar); }
+  function dashText(en, ar) { return pick(en, ar); }
+  function pct(value) {
+    var n = Number(value);
+    if (!Number.isFinite(n)) n = 0;
+    return (n * 100).toFixed(2).replace(/(\.\d*?[1-9])0+$/, '$1').replace(/\.0+$/, '') + '%';
+  }
 
   var C = {
     card: '#0b1120',
@@ -38,29 +48,29 @@
     cod: '#F4B860'
   };
 
-  /* ── Helper: metric pill ─────────────────────────────────────────────────── */
+  /* â”€â”€ Helper: metric pill â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€ */
   function metricPill(label, value) {
     return '<div style="display:flex;flex-direction:column;align-items:center;' +
       'background:rgba(255,255,255,0.05);border-radius:8px;padding:5px 10px;min-width:52px;">' +
-      '<span style="font-size:14px;font-weight:900;color:#fff;line-height:1;">' + value + '</span>' +
+      '<span style="font-size:14px;font-weight:var(--weight-bold);color:#fff;line-height:1;">' + value + '</span>' +
       '<span style="font-size:9px;color:rgba(255,255,255,0.35);margin-top:2px;">' + label + '</span>' +
     '</div>';
   }
 
-  /* ── Build metric pills from insight.metric ──────────────────────────────── */
+  /* â”€â”€ Build metric pills from insight.metric â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€ */
   function buildMetrics(ins) {
     var m = ins.metric || {};
     var pills = [];
-    if (m.ndr !== undefined)         pills.push(metricPill('NDR',      Math.round(m.ndr * 100) + '%'));
-    if (m.dr !== undefined)          pills.push(metricPill('DR',       Math.round(m.dr  * 100) + '%'));
-    if (m.orders !== undefined)      pills.push(metricPill(sTx('Orders', 'طلبات'),    m.orders));
-    if (m.prepaidPct !== undefined)  pills.push(metricPill(sTx('Prepaid', 'مسبق'),     Math.round(m.prepaidPct * 100) + '%'));
-    if (m.codNdr !== undefined)      pills.push(metricPill('COD NDR',  Math.round(m.codNdr * 100) + '%'));
-    if (m.prepaidNdr !== undefined)  pills.push(metricPill(sTx('Prepaid NDR', 'مسبق NDR'), Math.round(m.prepaidNdr * 100) + '%'));
-    if (m.advantage !== undefined)   pills.push(metricPill(sTx('Advantage', 'فارق'),     '+' + Math.round(m.advantage * 100) + '%'));
-    if (m.provinceNdr !== undefined) pills.push(metricPill('NDR',      Math.round(m.provinceNdr * 100) + '%'));
-    if (m.scalingScore !== undefined)pills.push(metricPill(sTx('Scaling', 'توسع'),     m.scalingScore));
-    if (m.riskScore !== undefined)   pills.push(metricPill(sTx('Risk Score', 'خطورة'),    m.riskScore));
+    if (m.ndr !== undefined)         pills.push(metricPill('NDR',      pct(m.ndr)));
+    if (m.dr !== undefined)          pills.push(metricPill('DR',       pct(m.dr)));
+    if (m.orders !== undefined)      pills.push(metricPill(sTx('Orders', 'Ø·Ù„Ø¨Ø§Øª'),    m.orders));
+    if (m.prepaidPct !== undefined)  pills.push(metricPill(sTx('Prepaid', 'Ù…Ø³Ø¨Ù‚'),     Math.round(m.prepaidPct * 100) + '%'));
+    if (m.codNdr !== undefined)      pills.push(metricPill('COD NDR',  pct(m.codNdr)));
+    if (m.prepaidNdr !== undefined)  pills.push(metricPill(sTx('Prepaid NDR', 'Ù…Ø³Ø¨Ù‚ NDR'), pct(m.prepaidNdr)));
+    if (m.advantage !== undefined)   pills.push(metricPill(sTx('Advantage', 'ÙØ§Ø±Ù‚'),     '+' + Math.round(m.advantage * 100) + '%'));
+    if (m.provinceNdr !== undefined) pills.push(metricPill('NDR',      pct(m.provinceNdr)));
+    if (m.scalingScore !== undefined)pills.push(metricPill(sTx('Scaling', 'ØªÙˆØ³Ø¹'),     m.scalingScore));
+    if (m.riskScore !== undefined)   pills.push(metricPill(sTx('Risk Score', 'Ø®Ø·ÙˆØ±Ø©'),    m.riskScore));
 
     if (pills.length === 0) return '';
     return '<div style="display:flex;gap:6px;flex-wrap:wrap;margin-top:10px;margin-bottom:10px;">' + pills.join('') + '</div>';
@@ -85,31 +95,42 @@
       observation: '#90CAF9'       // Calm Light Blue
     };
     var typeEmojis = {
-      risk: '⚠️',
-      opportunity: '📈',
-      recommendation: '✨',
-      observation: '🔍'
+      risk: 'âš ï¸',
+      opportunity: 'ðŸ“ˆ',
+      recommendation: 'âœ¨',
+      observation: 'ðŸ”'
     };
 
     insights.forEach(function (ins) {
       var t = ins.type || 'observation';
       if (!recsState.data[t]) t = 'observation';
       var color = typeColors[t] || '#D4B15A';
+      var helper = window.TaagerSmartInsights;
+      var trust = ins.trust || 'measured';
+      var confidence = ins.confidence || (ins.metric && ins.metric.orders >= 30 ? 'strong' : (ins.metric && ins.metric.orders >= 15 ? 'developing' : 'limited'));
+      var evidence = Array.isArray(ins.evidence) ? ins.evidence.filter(Boolean) : [];
+      var trustLabel = helper && helper.trustLabel ? helper.trustLabel(trust) : (trust === 'estimated' ? 'Estimated' : 'Measured');
       
       var reasonHtml = ins.body;
       if (ins.recommendation) {
-        reasonHtml += '<div style="margin-top:8px;padding-top:8px;border-top:1px dashed rgba(255,255,255,0.1);color:' + color + ';">💡 ' + ins.recommendation + '</div>';
+        reasonHtml += '<div style="margin-top:8px;padding-top:8px;border-top:1px dashed rgba(255,255,255,0.1);color:' + color + ';">ðŸ’¡ ' + ins.recommendation + '</div>';
+      }
+
+      if (evidence.length) {
+        reasonHtml += '<div style="margin-top:8px;font-size:10px;color:rgba(255,255,255,0.42);line-height:1.45;">' + evidence.slice(0, 2).join(' Â· ') + '</div>';
       }
 
       recsState.data[t].push({
         id: ins.id,
         type: t,
         priority: ins.priority, // critical, high, medium, low
-        emoji: typeEmojis[t] || '💡',
+        emoji: typeEmojis[t] || 'ðŸ’¡',
         title: ins.title,
         city: ins.city || ins.province,
         product: ins.product,
         reason: reasonHtml,
+        trust: trustLabel,
+        confidence: confidence,
         accentColor: color,
         metricsHtml: buildMetrics(ins)
       });
@@ -144,12 +165,12 @@
     Object.keys(recsState.data).forEach(function(k) { totalActive += recsState.data[k].length; });
 
     var subtitleEl = document.getElementById('sc-ins-subtitle');
-    if (subtitleEl) subtitleEl.innerText = totalActive + sTx(' active insights', ' رؤية نشطة');
+    if (subtitleEl) subtitleEl.innerText = totalActive + sTx(' active insights', ' Ø±Ø¤ÙŠØ© Ù†Ø´Ø·Ø©');
 
     if (items.length === 0) {
       container.innerHTML = '<div style="display:flex;flex-direction:column;align-items:center;justify-content:center;height:200px;gap:12px;">' +
-          '<div style="font-size:32px;opacity:0.6;">✨</div>' +
-          '<div style="color:' + C.muted + ';font-size:13px;">' + sTx('No insights in this category', 'لا توجد رؤى في هذه الفئة') + '</div>' +
+          '<div style="font-size:32px;opacity:0.6;">âœ¨</div>' +
+          '<div style="color:' + C.muted + ';font-size:13px;">' + sTx('No insights in this category', 'Ù„Ø§ ØªÙˆØ¬Ø¯ Ø±Ø¤Ù‰ ÙÙŠ Ù‡Ø°Ù‡ Ø§Ù„ÙØ¦Ø©') + '</div>' +
         '</div>';
       return;
     }
@@ -222,7 +243,7 @@
               'font-size:10px;font-weight:600;cursor:pointer;transition:all 0.2s cubic-bezier(0.22, 1, 0.36, 1);box-shadow:none;transform:translateY(0);" ' +
               'onmouseover="this.style.background=\'' + btnHoverBg + '\';this.style.color=\'' + card.accentColor + '\';this.style.borderColor=\'' + btnHoverBorder + '\';this.style.boxShadow=\'' + btnHoverShadow + '\';this.style.transform=\'translateY(-1px)\'" ' +
               'onmouseout="this.style.background=\'rgba(255,255,255,0.015)\';this.style.color=\'rgba(255,255,255,0.4)\';this.style.borderColor=\'rgba(255,255,255,0.04)\';this.style.boxShadow=\'none\';this.style.transform=\'translateY(0)\'">' +
-              sTx('Details →', 'التفاصيل ←') +
+              sTx('Details â†’', 'Ø§Ù„ØªÙØ§ØµÙŠÙ„ â†') +
             '</button>'
           : '';
 
@@ -236,10 +257,11 @@
             'opacity:' + barOpacity + ';border-radius:0 12px 12px 0;"></div>' +
           '<div style="display:flex;align-items:center;gap:10px;margin-bottom:10px;min-width:0;">' +
             '<span style="font-size:' + emojiSize + ';opacity:0.9;">' + card.emoji + '</span>' +
-            '<span title="' + card.title.replace(/"/g, '&quot;') + '" style="font-size:' + titleSize + ';font-weight:700;letter-spacing:0.2px;color:' + titleColor + ';white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:100%;display:inline-block;vertical-align:bottom;">' + formattedTitle + '</span>' +
+            '<span title="' + card.title.replace(/"/g, '&quot;') + '" style="font-size:' + titleSize + ';font-weight:var(--weight-bold);letter-spacing:0.2px;color:' + titleColor + ';white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:100%;display:inline-block;vertical-align:bottom;">' + formattedTitle + '</span>' +
           '</div>' +
           '<div style="display:flex;flex-wrap:wrap;gap:6px;margin-bottom:10px;">' +
-            '' +
+            '<span style="font-size:9px;font-weight:var(--weight-semibold);letter-spacing:.04em;text-transform:uppercase;color:' + card.accentColor + ';background:' + card.accentColor + '18;border:1px solid ' + card.accentColor + '33;border-radius:999px;padding:2px 7px;">' + (card.trust || 'Measured') + '</span>' +
+            '<span style="font-size:9px;font-weight:var(--weight-bold);letter-spacing:.04em;text-transform:uppercase;color:rgba(255,255,255,0.42);background:rgba(255,255,255,0.035);border:1px solid rgba(255,255,255,0.06);border-radius:999px;padding:2px 7px;">' + (card.confidence || 'limited') + '</span>' +
           '</div>' +
           '<div style="font-size:' + reasonSize + ';color:' + reasonColor + ';line-height:1.5;margin-bottom:10px;">' + card.reason + '</div>' +
           card.metricsHtml + 
@@ -291,11 +313,11 @@
     var html = '<div style="display:flex;justify-content:center;gap:4px;margin-top:16px;">';
     
     var btnStyle = 'padding:6px 12px;border-radius:6px;font-size:12px;font-weight:600;border:1px solid rgba(255,255,255,0.06);background:rgba(255,255,255,0.02);color:rgba(255,255,255,0.7);transition:all 0.2s;';
-    var activeStyle = 'padding:6px 12px;border-radius:6px;font-size:12px;font-weight:800;border:1px solid rgba(255,255,255,0.15);background:rgba(255,255,255,0.1);color:#fff;';
+    var activeStyle = 'padding:6px 12px;border-radius:6px;font-size:12px;font-weight:var(--weight-semibold);border:1px solid rgba(255,255,255,0.15);background:rgba(255,255,255,0.1);color:#fff;';
     var disabledStyle = 'padding:6px 12px;border-radius:6px;font-size:12px;font-weight:600;border:1px solid rgba(255,255,255,0.02);background:transparent;color:rgba(255,255,255,0.2);cursor:not-allowed;';
 
     // Prev
-    html += '<button class="' + btnClass + '" data-page="' + (currentPage - 1) + '" style="' + (currentPage === 1 ? disabledStyle : btnStyle + 'cursor:pointer;') + '" ' + (currentPage === 1 ? 'disabled' : '') + '>←</button>';
+    html += '<button class="' + btnClass + '" data-page="' + (currentPage - 1) + '" style="' + (currentPage === 1 ? disabledStyle : btnStyle + 'cursor:pointer;') + '" ' + (currentPage === 1 ? 'disabled' : '') + '>â†</button>';
             
     // Pages
     var startP = Math.max(1, currentPage - 2);
@@ -311,7 +333,7 @@
     if (endP < totalPages) html += (endP < totalPages - 1 ? '<span style="color:rgba(255,255,255,0.3);align-self:center;">...</span>' : '') + '<button class="' + btnClass + '" data-page="' + totalPages + '" style="' + btnStyle + 'cursor:pointer;">' + totalPages + '</button>';
     
     // Next
-    html += '<button class="' + btnClass + '" data-page="' + (currentPage + 1) + '" style="' + (currentPage === totalPages ? disabledStyle : btnStyle + 'cursor:pointer;') + '" ' + (currentPage === totalPages ? 'disabled' : '') + '>→</button>';
+    html += '<button class="' + btnClass + '" data-page="' + (currentPage + 1) + '" style="' + (currentPage === totalPages ? disabledStyle : btnStyle + 'cursor:pointer;') + '" ' + (currentPage === totalPages ? 'disabled' : '') + '>â†’</button>';
             
     html += '</div>';
     return html;
@@ -321,10 +343,10 @@
     updateRecsState(insights, geo);
 
     var tabs = [
-      { id: 'risk', label: sTx('Risks', 'مخاطر'), icon: '⚠️', count: recsState.data.risk.length, color: '#F4B860' },
-      { id: 'opportunity', label: sTx('Opportunities', 'فرص'), icon: '📈', count: recsState.data.opportunity.length, color: '#81C784' },
-      { id: 'recommendation', label: sTx('Recommendations', 'توصيات'), icon: '✨', count: recsState.data.recommendation.length, color: '#9FA8DA' },
-      { id: 'observation', label: sTx('Observations', 'ملاحظات'), icon: '🔍', count: recsState.data.observation.length, color: '#90CAF9' }
+      { id: 'risk', label: sTx('Risks', 'Ù…Ø®Ø§Ø·Ø±'), icon: 'âš ï¸', count: recsState.data.risk.length, color: '#F4B860' },
+      { id: 'opportunity', label: sTx('Opportunities', 'ÙØ±Øµ'), icon: 'ðŸ“ˆ', count: recsState.data.opportunity.length, color: '#81C784' },
+      { id: 'recommendation', label: sTx('Recommendations', 'ØªÙˆØµÙŠØ§Øª'), icon: 'âœ¨', count: recsState.data.recommendation.length, color: '#9FA8DA' },
+      { id: 'observation', label: sTx('Observations', 'Ù…Ù„Ø§Ø­Ø¸Ø§Øª'), icon: 'ðŸ”', count: recsState.data.observation.length, color: '#90CAF9' }
     ];
 
     var totalActive = 0;
@@ -351,19 +373,19 @@
     '</div>';
 
     var legendHtml = '<div style="display:flex;align-items:center;gap:12px;margin-right:auto;font-size:10px;color:rgba(255,255,255,0.4);">' +
-      '<div style="display:flex;align-items:center;gap:4px;"><span style="color:#F4B860;font-size:14px;line-height:0.5;">●</span> ' + sTx('Risks', 'مخاطر') + '</div>' +
-      '<div style="display:flex;align-items:center;gap:4px;"><span style="color:#81C784;font-size:14px;line-height:0.5;">●</span> ' + sTx('Opportunities', 'فرص') + '</div>' +
-      '<div style="display:flex;align-items:center;gap:4px;"><span style="color:#9FA8DA;font-size:14px;line-height:0.5;">●</span> ' + sTx('Recommendations', 'توصيات') + '</div>' +
-      '<div style="display:flex;align-items:center;gap:4px;"><span style="color:#90CAF9;font-size:14px;line-height:0.5;">●</span> ' + sTx('Observations', 'ملاحظات') + '</div>' +
+      '<div style="display:flex;align-items:center;gap:4px;"><span style="color:#F4B860;font-size:14px;line-height:0.5;">â—</span> ' + sTx('Risks', 'Ù…Ø®Ø§Ø·Ø±') + '</div>' +
+      '<div style="display:flex;align-items:center;gap:4px;"><span style="color:#81C784;font-size:14px;line-height:0.5;">â—</span> ' + sTx('Opportunities', 'ÙØ±Øµ') + '</div>' +
+      '<div style="display:flex;align-items:center;gap:4px;"><span style="color:#9FA8DA;font-size:14px;line-height:0.5;">â—</span> ' + sTx('Recommendations', 'ØªÙˆØµÙŠØ§Øª') + '</div>' +
+      '<div style="display:flex;align-items:center;gap:4px;"><span style="color:#90CAF9;font-size:14px;line-height:0.5;">â—</span> ' + sTx('Observations', 'Ù…Ù„Ø§Ø­Ø¸Ø§Øª') + '</div>' +
     '</div>';
 
     var headerHtml = '<div style="display:flex;flex-direction:column;gap:14px;margin-bottom:16px;">' +
       '<div style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:16px;">' +
         '<div style="display:flex;align-items:center;gap:10px;">' +
-          '<div style="font-size:24px;">💡</div>' +
+          '<div style="font-size:24px;">ðŸ’¡</div>' +
           '<div>' +
-            '<div style="font-size:13px;font-weight:700;color:rgba(255,255,255,0.9);letter-spacing:0.3px;">' + sTx('Smart Insights', 'الرؤى الذكية') + '</div>' +
-            '<div id="sc-ins-subtitle" style="font-size:11px;color:rgba(255,255,255,0.4);margin-top:2px;">' + totalActive + sTx(' active insights', ' رؤية نشطة') + '</div>' +
+            '<div style="font-size:13px;font-weight:var(--weight-bold);color:rgba(255,255,255,0.9);letter-spacing:0.3px;">' + sTx('Smart Insights', 'Ø§Ù„Ø±Ø¤Ù‰ Ø§Ù„Ø°ÙƒÙŠØ©') + '</div>' +
+            '<div id="sc-ins-subtitle" style="font-size:11px;color:rgba(255,255,255,0.4);margin-top:2px;">' + totalActive + sTx(' active insights', ' Ø±Ø¤ÙŠØ© Ù†Ø´Ø·Ø©') + '</div>' +
           '</div>' +
         '</div>' +
         legendHtml +
@@ -407,9 +429,9 @@
     updateRecsPage();
   }
 
-  /* ══════════════════════════════════════════════════════════════════════════
+  /* â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•
      MAIN RENDER
-  ══════════════════════════════════════════════════════════════════════════ */
+  â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â• */
   window.renderInsightStrip = function (mountEl, geoData) {
     if (!mountEl) return;
 
@@ -429,15 +451,15 @@
       }
     }
 
-    /* ── Empty state ────────────────────────────────────────────────────────── */
+    /* â”€â”€ Empty state â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€ */
     if (insights.length === 0) {
       mountEl.innerHTML =
         '<div dir="' + (isAr ? 'rtl' : 'ltr') + '" style="display:flex;align-items:center;gap:10px;' +
           'padding:16px 20px;background:rgba(255,255,255,0.02);' +
           'border:1px solid rgba(255,255,255,0.06);border-radius:14px;' +
           'color:rgba(255,255,255,0.3);font-size:12px;font-weight:600;">' +
-          '<span style="font-size:18px">💡</span>' +
-          sTx('No insights yet — they will be generated after loading data', 'لا توجد رؤى بعد — سيتم توليدها بعد تحميل البيانات') +
+          '<span style="font-size:18px">ðŸ’¡</span>' +
+          sTx('No insights yet â€” they will be generated after loading data', 'Ù„Ø§ ØªÙˆØ¬Ø¯ Ø±Ø¤Ù‰ Ø¨Ø¹Ø¯ â€” Ø³ÙŠØªÙ… ØªÙˆÙ„ÙŠØ¯Ù‡Ø§ Ø¨Ø¹Ø¯ ØªØ­Ù…ÙŠÙ„ Ø§Ù„Ø¨ÙŠØ§Ù†Ø§Øª') +
         '</div>';
       return;
     }

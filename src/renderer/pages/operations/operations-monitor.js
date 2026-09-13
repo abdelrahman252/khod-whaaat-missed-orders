@@ -115,10 +115,10 @@ function renderOpsMonitor(container) {
 
 function _opsBindLiveEvents(container) {
   if (container._opsLiveUiHandler) {
-    window.removeEventListener("khod-ops-live-updated", container._opsLiveUiHandler);
+    window.removeEventListener("taager-ops-live-updated", container._opsLiveUiHandler);
   }
   container._opsLiveUiHandler = () => _opsSyncMonitorUI(container);
-  window.addEventListener("khod-ops-live-updated", container._opsLiveUiHandler);
+  window.addEventListener("taager-ops-live-updated", container._opsLiveUiHandler);
   return;
 
   if (window._opsMonitorBound) return;
@@ -198,8 +198,8 @@ function _opsSyncMonitorUI(container) {
   const subDelta  = container.querySelector("#ops-submitted-delta");
   const failDelta = container.querySelector("#ops-failed-delta");
 
-  if (subEl)  subEl.textContent  = live.submitted.toLocaleString();
-  if (failEl) failEl.textContent = live.failed.toLocaleString();
+  if (subEl)  subEl.textContent  = live.submitted.toLocaleString("en-US");
+  if (failEl) failEl.textContent = live.failed.toLocaleString("en-US");
   if (accEl)  accEl.textContent  = _opsShortEmail(live.currentAccount) || "—";
   if (accDelta && live.totalAccounts > 1) accDelta.textContent = `${live.currentAccountIdx + 1} / ${live.totalAccounts}`;
   if (subDelta && live.submitted > 0) subDelta.textContent = `+${live.submitted} ${window.t_ops('liveMonitor.vsLast15m')}`;
@@ -221,7 +221,7 @@ function _opsSyncMonitorUI(container) {
       if (phoneEl && live.currentOrder.phone) phoneEl.textContent = "📞 " + live.currentOrder.phone;
       if (statBadge && live.currentOrder.orderStatus) {
         const sc = _opsStatusColor(live.currentOrder.orderStatus);
-        statBadge.innerHTML = `<span style="background:${sc.bg};color:${sc.text};padding:2px 9px;border-radius:12px;font-size:11px;font-weight:700">${live.currentOrder.orderStatus}</span>`;
+        statBadge.innerHTML = `<span style="background:${sc.bg};color:${sc.text};padding:2px 9px;border-radius:var(--radius-sm);font-size:var(--type-caption);font-weight:var(--weight-semibold)">${live.currentOrder.orderStatus}</span>`;
       }
     } else {
       orderBox.style.display = "none";

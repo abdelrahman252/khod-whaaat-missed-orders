@@ -1,16 +1,49 @@
 <!doctype html>
-<html lang="en" dir="ltr">
+<html lang="ar" dir="rtl">
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <meta http-equiv="Content-Security-Policy" content="default-src 'self'; base-uri 'self'; object-src 'none'; frame-src 'none'; script-src 'self' 'unsafe-inline'; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src 'self' https://fonts.gstatic.com data:; img-src 'self' data: blob:; connect-src 'self' https://*.supabase.co https://generativelanguage.googleapis.com https://open.er-api.com https://*.ingest.sentry.io https://sentry.io;">
-    <title>Khod Whaat Bot</title>
-    <link rel="preconnect" href="https://fonts.googleapis.com">
-    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-    <!-- Load fonts async so a slow/offline network never blocks first paint -->
-    <link rel="preload" as="style" href="https://fonts.googleapis.com/css2?family=DM+Mono:ital,wght@0,300;0,400;0,500;1,300;1,400;1,500&family=Syne:wght@400..800&family=Tajawal:wght@200;300;400;500;700;800;900&display=swap" onload="this.rel='stylesheet'">
-    <noscript><link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=DM+Mono:ital,wght@0,300;0,400;0,500;1,300;1,400;1,500&family=Syne:wght@400..800&family=Tajawal:wght@200;300;400;500;700;800;900&display=swap"></noscript>
+    <meta http-equiv="Content-Security-Policy" content="default-src 'self'; base-uri 'self'; object-src 'none'; frame-src 'none'; script-src 'self' 'unsafe-inline'; style-src 'self' 'unsafe-inline'; font-src 'self' data:; img-src 'self' data: blob:; connect-src 'self' https://*.supabase.co https://generativelanguage.googleapis.com https://open.er-api.com https://*.ingest.sentry.io https://sentry.io;">
+    <title>KHOD WHAAT Bot</title>
+    <script>
+      (function () {
+        var lang = 'ar';
+        try { lang = localStorage.getItem('kbot-lang') || lang; } catch (e) {}
+        lang = lang === 'en' ? 'en' : 'ar';
+        window.__KHOD_BOOT_LANG = lang;
+        window.__TAAGER_BOOT_LANG = lang;
+        document.documentElement.setAttribute('lang', lang);
+        document.documentElement.setAttribute('dir', lang === 'ar' ? 'rtl' : 'ltr');
+      })();
+    </script>
+    <link rel="stylesheet" href="../../node_modules/country-flag-icons/3x2/flags.css" />
     <link rel="stylesheet" href="styles/main.css" />
+    <link rel="stylesheet" href="styles/typography.css" data-visual-system="true" />
+    <script>
+      // Start every UI face together. Electron cannot reliably reuse file://
+      // font preloads for CSS requests, so load the actual CSS faces directly.
+      window.khodFontsReady = document.fonts
+        ? Promise.all([
+            document.fonts.load('400 14px Inter'),
+            document.fonts.load('500 14px Inter'),
+            document.fonts.load('600 14px Inter'),
+            document.fonts.load('700 14px Inter'),
+            document.fonts.load('800 14px Inter'),
+            document.fonts.load('400 14px "IBM Plex Sans Arabic"'),
+            document.fonts.load('500 14px "IBM Plex Sans Arabic"'),
+            document.fonts.load('600 14px "IBM Plex Sans Arabic"'),
+            document.fonts.load('700 14px "IBM Plex Sans Arabic"'),
+            document.fonts.load('400 12px "DM Mono"'),
+            document.fonts.load('500 12px "DM Mono"'),
+            document.fonts.load('700 28px Syne'),
+            document.fonts.load('800 32px Syne')
+          ]).then(function () {
+            document.documentElement.classList.add('fonts-ready');
+            return true;
+          }).catch(function () { return false; })
+        : Promise.resolve(false);
+      window.taagerFontsReady = window.khodFontsReady;
+    </script>
     <style>
       /* ── Preloader Reset ── */
       html, body {
@@ -75,30 +108,40 @@
         display: flex;
         align-items: center;
         justify-content: center;
-        font-weight: 800;
+        font-family: var(--font-brand, var(--font-ui, Arial, Tahoma, sans-serif));
+        font-weight: var(--weight-bold, 700);
         color: white;
-        font-size: 16px;
+        font-size: 1rem;
         letter-spacing: 2px;
       }
       .preloader-copy {
         display: flex;
         flex-direction: column;
-        gap: 7px;
+        gap: 8px;
+        width: min(320px, 100%);
         max-width: 320px;
-        font-family: 'Tajawal', 'Segoe UI', sans-serif;
+        font-family: var(--font-ui, Arial, Tahoma, sans-serif);
       }
+      [dir="rtl"] .preloader-copy { font-family: var(--font-arabic, Tahoma, Arial, sans-serif); }
       .preloader-title {
         color: #ffffff;
-        font-size: 15px;
-        font-weight: 800;
+        font-size: var(--type-component-title, .9375rem);
+        font-weight: var(--weight-semibold, 600);
         line-height: 1.35;
       }
+      [lang="ar"] [data-preloader-lang="en"],
+      [lang="en"] [data-preloader-lang="ar"] { display: none; }
       .preloader-body {
+        position: relative;
+        min-height: 20px;
         color: rgba(226, 232, 240, 0.72);
-        font-size: 12px;
-        font-weight: 600;
+        font-size: var(--type-label, .75rem);
+        font-weight: var(--weight-semibold, 600);
         line-height: 1.55;
+        overflow: hidden;
       }
+      .preloader-body .preloader-phrase { display: none; }
+      .preloader-body .preloader-phrase:first-child { display: block; }
       @keyframes preloader-spin {
         to {
           transform: rotate(360deg);
@@ -115,7 +158,6 @@
           opacity: 1;
         }
       }
-
       [data-theme="light"] #preloader {
         background: #f6f7f9;
       }
@@ -127,6 +169,9 @@
       }
       [data-theme="light"] .preloader-body {
         color: #64748b;
+      }
+      @media (prefers-reduced-motion: reduce) {
+        .ring, .glow { animation: none; }
       }
 
       /* ── Titlebar overrides ── */
@@ -209,6 +254,64 @@
         background: var(--border);
         margin: 0 6px;
         flex-shrink: 0;
+      }
+
+      .tb-zoom-control {
+        display: inline-flex;
+        align-items: center;
+        height: 28px;
+        border: 1px solid var(--border);
+        border-radius: 7px;
+        background: color-mix(in srgb, var(--bg2) 84%, var(--accent) 16%);
+        overflow: hidden;
+        -webkit-app-region: no-drag;
+        flex-shrink: 0;
+      }
+      .tb-zoom-btn,
+      .tb-zoom-value {
+        height: 27px;
+        border: 0;
+        background: transparent;
+        color: var(--text2);
+        cursor: pointer;
+        font-family: "Segoe UI", Arial, sans-serif;
+        font-weight: 800;
+        line-height: 1;
+      }
+      .tb-zoom-btn { width: 27px; font-size: 16px; }
+      .tb-zoom-value {
+        min-width: 48px;
+        padding: 0 6px;
+        border-inline: 1px solid var(--border);
+        font-size: 10px;
+      }
+      .tb-zoom-btn:hover,
+      .tb-zoom-value:hover {
+        background: color-mix(in srgb, var(--accent) 18%, transparent);
+        color: var(--text);
+      }
+      .tb-zoom-btn:disabled { cursor: default; opacity: .35; }
+
+      @media (max-width: 1100px) {
+        #top-bar-info,
+        #top-bar-accounts,
+        #btn-copy-license,
+        #btn-admin-refresh .refresh-label,
+        .titlebar-left .app-name {
+          display: none !important;
+        }
+        #btn-admin-refresh { width: 28px; padding: 0; }
+        .tb-divider-secondary,
+        .tb-lang-switch,
+        .tb-theme-switch {
+          display: none !important;
+        }
+        .titlebar { padding-inline: 8px !important; gap: 4px !important; }
+      }
+      @media (max-width: 560px) {
+        .titlebar-left,
+        .tb-divider-brand { display: none !important; }
+        .tb-zoom-value { min-width: 44px; }
       }
 
       /* ── Lang toggle (pill) ── */
@@ -337,8 +440,15 @@
         pointer-events: none;
       }
       #btn-admin-refresh .refresh-icon {
-        display: inline-block;
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
         transition: transform 0.6s ease;
+      }
+      #btn-admin-refresh .refresh-icon svg {
+        width: 13px;
+        height: 13px;
+        display: block;
       }
       #btn-admin-refresh.refreshing .refresh-icon {
         animation: spin-once 0.7s linear forwards;
@@ -485,20 +595,28 @@
           <div class="logo">MO</div>
         </div>
         <div class="preloader-copy" role="status" aria-live="polite">
-          <div class="preloader-title" id="preloader-title">Preparing workspace...</div>
-          <div class="preloader-body" id="preloader-body">Loading your saved account, permissions, and app settings.</div>
+          <div class="preloader-title" id="preloader-title">
+            <span data-preloader-lang="en">Preparing workspace...</span>
+            <span data-preloader-lang="ar">جارٍ تجهيز مساحة العمل...</span>
+          </div>
+          <div class="preloader-body" id="preloader-body">
+            <span class="preloader-phrase">
+              <span data-preloader-lang="en">Checking your saved session...</span>
+              <span data-preloader-lang="ar">جارٍ فحص الجلسة المحفوظة...</span>
+            </span>
+          </div>
         </div>
       </div>
     </div>
 
-    <!-- Titlebar: [⚡ App Name] ···· [avatar + name + days] ···· [EN 🌐] [Dark 🌙] [— □ ✕] -->
+    <!-- Titlebar: [⚡ App Name] ···· [avatar + name + days] ···· [EN 🌐] [Dark 🌙] [— □ ✖] -->
     <div class="titlebar" id="main-titlebar">
       <!-- App branding -->
       <div class="titlebar-left">
         <span class="app-icon">⚡</span>
-        <span class="app-name">Khod Whaat Bot</span>
+        <span class="app-name">KHOD WHAAT Bot</span>
       </div>
-      <div class="titlebar-divider"></div>
+      <div class="titlebar-divider tb-divider-brand"></div>
 
       <!-- User info (hidden until licensed) -->
       <div id="top-bar-center">
@@ -525,7 +643,7 @@
         </button>
       </div>
       <!-- Toggles -->
-      <div class="titlebar-divider"></div>
+      <div class="titlebar-divider tb-divider-secondary"></div>
 
       <!-- Admin Refresh button — syncs license + account state from Supabase -->
       <button
@@ -534,10 +652,15 @@
         aria-label="Sync account and license status"
         data-tooltip="Sync license and account permissions from the admin panel."
       >
-        <span class="refresh-icon">↻</span>
+        <span class="refresh-icon" aria-hidden="true">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.25" stroke-linecap="round" stroke-linejoin="round">
+            <path d="M20 11a8.1 8.1 0 0 0-15.5-2M4 4v5h5"></path>
+            <path d="M4 13a8.1 8.1 0 0 0 15.5 2M20 20v-5h-5"></path>
+          </svg>
+        </span>
         <span class="refresh-label">Sync</span>
       </button>
-      <div class="titlebar-divider"></div>
+      <div class="titlebar-divider tb-divider-secondary"></div>
 
       <!-- Lang toggle: EN ↔ AR -->
       <div class="tb-lang-switch">
@@ -552,7 +675,7 @@
         <span class="lang-on">AR</span>
         <span class="lang-off">EN</span>
       </div>
-      <div class="titlebar-divider"></div>
+      <div class="titlebar-divider tb-divider-secondary"></div>
 
       <!-- Theme toggle: light ↔ dark -->
       <label class="tb-theme-switch" title="Switch theme" data-tooltip="Switch between light and dark theme.">
@@ -578,11 +701,17 @@
       <!-- Spacer: drags the window, pushes controls right -->
       <div class="titlebar-spacer"></div>
 
+      <div class="tb-zoom-control" role="group" aria-label="Application zoom">
+        <button class="tb-zoom-btn" id="btn-zoom-out" type="button" aria-label="Zoom out" data-tooltip="Zoom out">-</button>
+        <button class="tb-zoom-value" id="btn-zoom-reset" type="button" aria-label="Reset zoom" data-tooltip="Reset zoom to 100%">100%</button>
+        <button class="tb-zoom-btn" id="btn-zoom-in" type="button" aria-label="Zoom in" data-tooltip="Zoom in">+</button>
+      </div>
+
       <div class="titlebar-right">
         <div class="titlebar-controls">
           <button class="tb-btn" id="btn-minimize" aria-label="Minimize window" title="Minimize" data-tooltip="Minimize window">&#8212;</button>
           <button class="tb-btn" id="btn-maximize" aria-label="Maximize window" title="Maximize" data-tooltip="Maximize or restore window">&#9633;</button>
-          <button class="tb-btn tb-close" id="btn-close" aria-label="Close window" title="Close" data-tooltip="Close Khod Whaat Order Bot">&#10005;</button>
+          <button class="tb-btn tb-close" id="btn-close" aria-label="Close window" title="Close" data-tooltip="Close KHOD WHAAT Order Bot">&#10005;</button>
         </div>
       </div>
     </div>
@@ -600,14 +729,16 @@
     </div>
 
     <script src="../monitoring/sentry.renderer.js"></script>
+    <script src="support.js"></script>
     <script src="pages/license.js"></script>
     <script src="pages/expired-overlay.js"></script>
     <script src="pages/license-expiry-warning.js"></script>
+    <script src="admin-notifications.js"></script>
     <script src="pages/analytics/analytics-utils.js"></script>
     <script src="pages/setup.js"></script>
     <script src="pages/run.js?v=sidebar-fix-20260523"></script>
     <script src="pages/results.js"></script>
-    <!-- SheetJS (XLSX export for Analytics) — served locally, no network request -->
+    <script src="pages/bulk-orders.js"></script>
     <script src="tooltip.js"></script>
     <script src="app.js"></script>
     <script>
@@ -629,7 +760,7 @@
         min-width: 260px;
         max-width: 320px;
         box-shadow: 0 8px 32px rgba(0,0,0,.4);
-        font-family: 'Tajawal', 'Segoe UI', sans-serif;
+        font-family: var(--font-ui, 'Segoe UI', sans-serif);
       }
       #updateTitle { font-weight: 700; font-size: 13px; color: var(--text); }
       #updateSub   { font-size: 11px; color: var(--text2); margin-top: 1px; }
@@ -644,7 +775,7 @@
           <div id="updateTitle">Update Available</div>
           <div id="updateSub"></div>
         </div>
-        <button onclick="document.getElementById('updateToast').style.display='none'" style="margin-inline-start:auto;background:none;border:none;color:var(--text2);cursor:pointer;padding:2px;font-size:16px;line-height:1;">✕</button>
+        <button onclick="document.getElementById('updateToast').style.display='none'" style="margin-inline-start:auto;background:none;border:none;color:var(--text2);cursor:pointer;padding:2px;font-size:16px;line-height:1;">✖</button>
       </div>
       <!-- progress bar (hidden until download starts) -->
       <div id="updateProgressWrap" style="display:none;margin-bottom:10px;">
@@ -657,19 +788,25 @@
         <button id="updateActionBtn" onclick="handleUpdateAction()" style="
           flex:1;padding:8px 12px;border-radius:8px;border:none;cursor:pointer;
           background:linear-gradient(135deg,#7b5cf0,#a78bfa);color:#fff;
-          font-weight:700;font-size:12px;font-family:'DM Sans',sans-serif;
+          font-weight:700;font-size:12px;font-family:var(--font-ui,'Segoe UI',sans-serif);
         ">Download Update</button>
       </div>
     </div>
 
     <script>
     "use strict";
-    // ════════════════════════════════════════════════════════════════
+    // ══════════════════════════════════════════════════════════════════════════════════════════════════
     //  AUTO-UPDATER UI
-    // ════════════════════════════════════════════════════════════════
+    // ══════════════════════════════════════════════════════════════════════════════════════════════════
     let _updateState = 'idle'; // idle | checking | available | downloading | downloaded | error
 
-    function _updLog() {}
+    function _updLog(level, ...args) {
+      const ts = new Date().toISOString();
+      const prefix = `[AutoUpdate][${ts}]`;
+      if (level === 'error') console.error(prefix, ...args);
+      else if (level === 'warn')  console.warn(prefix, ...args);
+      else                        console.log(prefix, ...args);
+    }
 
     function showUpdateToast(title, sub, btnLabel, showProgress) {
       _updLog('info', `showUpdateToast → title="${title}" btn="${btnLabel}" progress=${showProgress}`);
@@ -799,6 +936,17 @@
         return;
       }
 
+      window.api.getAppVersion().then(v => {
+        window._appVersion = v;
+        const versionEl = document.getElementById("sv3-app-version-label");
+        if (versionEl) {
+          const textFn = window._t ? window._t("setup.app_version") : null;
+          versionEl.textContent = typeof textFn === 'function' ? textFn(v) : `App version is v${v}`;
+        }
+      }).catch(err => {
+        _updLog('error', 'failed to get app version:', err);
+      });
+
       window.api.onUpdateAvailable(({ version }) => {
         _updLog('info', `onUpdateAvailable fired — version=${version}`);
         _updateState = 'available';
@@ -880,3 +1028,4 @@
     </script>
   </body>
 </html>
+

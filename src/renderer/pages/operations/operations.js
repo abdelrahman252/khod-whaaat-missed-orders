@@ -3,14 +3,6 @@
 async function renderOperations(onBack) {
   const root = document.getElementById("page-operations");
   if (!root) return;
-  if (root._opsDocumentClickHandler) {
-    document.removeEventListener("click", root._opsDocumentClickHandler);
-    root._opsDocumentClickHandler = null;
-  }
-  if (root._opsRunsUpdatedHandler) {
-    window.removeEventListener("khod-analytics-runs-updated", root._opsRunsUpdatedHandler);
-    root._opsRunsUpdatedHandler = null;
-  }
 
   let _allRuns       = [];
   let _selectedRunId = null;
@@ -18,8 +10,10 @@ async function renderOperations(onBack) {
   let _odTablePage = 1;
   let _activeTab = "overview";
   let _activeAccount = "";
-  const _skeletonShownAt = performance.now();
-  const _minSkeletonMs = 0;
+  let _activeFilter = "today";
+  let _customFrom = null;
+  let _customTo = null;
+  let _settings = {};
 
   // ── Shell (rendered immediately so skeleton is visible during data fetch) ──
   root.innerHTML = `
@@ -35,33 +29,55 @@ async function renderOperations(onBack) {
     <div id="ops-skeleton" class="page-skeleton-overlay" style="background:var(--bg);padding:20px;gap:16px;">
       <!-- Row 1: order details + live monitor -->
       <div style="display:grid;grid-template-columns:1fr 1fr 320px;gap:16px;flex-shrink:0;">
-        <div class="sk" style="height:260px;border-radius:12px;grid-column:span 2;"></div>
-        <div class="sk" style="height:260px;border-radius:12px;"></div>
+        <div class="sk" style="height:260px;border-radius:var(--radius-sm);grid-column:span 2;"></div>
+        <div class="sk" style="height:260px;border-radius:var(--radius-sm);"></div>
       </div>
       <!-- Row 2: account perf + insights + run history -->
       <div style="display:grid;grid-template-columns:1fr 1fr 320px;gap:16px;flex-shrink:0;">
-        <div class="sk" style="height:180px;border-radius:12px;"></div>
-        <div class="sk" style="height:180px;border-radius:12px;"></div>
-        <div class="sk" style="height:180px;border-radius:12px;"></div>
+        <div class="sk" style="height:180px;border-radius:var(--radius-sm);"></div>
+        <div class="sk" style="height:180px;border-radius:var(--radius-sm);"></div>
+        <div class="sk" style="height:180px;border-radius:var(--radius-sm);"></div>
       </div>
       <!-- Row 3: product table full width -->
       <div style="flex-shrink:0;">
-        <div class="sk" style="height:220px;border-radius:12px;"></div>
+        <div class="sk" style="height:220px;border-radius:var(--radius-sm);"></div>
       </div>
     </div>
 
       <div class="ops-page">
-      <div class="ops-tour-row">
-        <button type="button" class="khod-tour-quick-guide" id="ops-tour-btn" title="${window.t_ops('tour.common.quickGuide', { default: 'Quick Guide' })}">
-          <span class="khod-tour-guide-mark">?</span><span>${window.t_ops('tour.common.quickGuide', { default: 'Quick Guide' })}</span>
-        </button>
-      </div>
-      <div class="ops-first-run-guidance" id="ops-first-run-guidance" style="display:none;margin:0 0 14px;padding:14px 16px;border:1px solid var(--border);border-radius:12px;background:var(--bg2);align-items:center;justify-content:space-between;gap:14px;box-shadow:0 10px 28px rgba(0,0,0,.10);">
-        <div style="min-width:0;">
-          <div style="font-size:13px;font-weight:800;color:var(--text);margin-bottom:3px;">${window.t_ops('emptyGuidance.title', { default: 'Operations is ready' })}</div>
-          <div style="font-size:12px;color:var(--text2);line-height:1.5;">${window.t_ops('emptyGuidance.body', { default: 'Run the bot once to populate each operations section with run history, order details, account performance, product performance, and live activity.' })}</div>
+      <div class="ops-header-bar">
+        <div class="ops-header-left">
+          <div class="ops-header-title">${window._t ? window._t("topbar.operations") : "Operations"}</div>
         </div>
-        <button type="button" class="btn btn-primary" id="ops-first-run-btn" style="white-space:nowrap;font-size:12px;padding:8px 12px;">${window.t_ops('emptyGuidance.action', { default: 'Go to Run' })}</button>
+        <div class="ops-header-right">
+          <div class="analytics-tabs-group" id="ops-date-tabs">
+            <button class="analytics-tab-btn active" data-filter="today">${window.t_anl('tabs.today')}</button>
+            <button class="analytics-tab-btn" data-filter="yesterday">${window.t_anl('tabs.yesterday')}</button>
+            <button class="analytics-tab-btn" data-filter="last2">${window.t_anl('tabs.last2')}</button>
+            <button class="analytics-tab-btn" data-filter="7d">${window.t_anl('tabs.7d')}</button>
+            <button class="analytics-tab-btn" data-filter="thisMonth">${window.t_anl('tabs.thisMonth')}</button>
+            <button class="analytics-tab-btn" data-filter="custom">${window.t_anl('tabs.custom')}</button>
+          </div>
+          <div class="analytics-date-custom-inline" id="ops-date-custom-inline" style="display:none">
+            <input type="date" class="date-input-inline" id="ops-custom-from">
+            <span style="color:#64748b; font-size:var(--type-caption);">${window.t_anl('dateCustom.to')}</span>
+            <input type="date" class="date-input-inline" id="ops-custom-to">
+            <button class="btn-apply-inline" id="ops-custom-apply-btn">${window.t_anl('dateCustom.apply')}</button>
+          </div>
+          <button type="button" class="analytics-uploaded-update-btn" id="ops-uploaded-update-btn">
+            ${window.t_ops('actions.updateUploadedOrders', { default: 'Update Uploaded Orders' })}
+          </button>
+          <button type="button" class="taager-tour-quick-guide" id="ops-tour-btn" title="${window.t_ops('tour.common.quickGuide', { default: 'Quick Guide' })}">
+            <span class="taager-tour-guide-mark">?</span><span>${window.t_ops('tour.common.quickGuide', { default: 'Quick Guide' })}</span>
+          </button>
+        </div>
+      </div>
+      <div class="ops-first-run-guidance" id="ops-first-run-guidance" style="display:none;margin:0 0 14px;padding:14px 16px;border:1px solid var(--border);border-radius:var(--radius-sm);background:var(--bg2);align-items:center;justify-content:space-between;gap:14px;box-shadow:0 10px 28px rgba(0,0,0,.10);">
+        <div style="min-width:0;">
+          <div style="font-size:var(--type-control);font-weight:var(--weight-semibold);color:var(--text);margin-bottom:3px;">${window.t_ops('emptyGuidance.title', { default: 'Operations is ready' })}</div>
+          <div style="font-size:var(--type-label);color:var(--text2);line-height:1.5;">${window.t_ops('emptyGuidance.body', { default: 'Run the bot once to populate each operations section with run history, order details, account performance, product performance, and live activity.' })}</div>
+        </div>
+        <button type="button" class="btn btn-primary" id="ops-first-run-btn" style="white-space:nowrap;font-size:var(--type-label);padding:8px 12px;">${window.t_ops('emptyGuidance.action', { default: 'Go to Run' })}</button>
       </div>
       <div class="ops-account-tabs" id="ops-account-tabs"></div>
       <div class="ops-grid" id="ops-main-grid">
@@ -94,6 +110,7 @@ async function renderOperations(onBack) {
 
       </div>
     </div><!-- /ops-page -->
+    <div class="dashboard-update-overlay analytics-uploaded-update-overlay" data-dashboard-update-overlay hidden aria-live="polite" aria-busy="false"></div>
       </div><!-- /scrollable content -->
     </div><!-- /sv3-shell -->`;
   // ── Fetch data first; the optimized IPC path keeps this fast and stable ─────
@@ -101,22 +118,28 @@ async function renderOperations(onBack) {
   wireSharedSidebar(root);
 
   async function _loadOperationRuns() {
-    if (window.KhodPremiumPreview && window.KhodPremiumPreview.isActive("operations")) {
-      return window.KhodPremiumPreview.runs();
+    if (window.TaagerPremiumPreview && window.TaagerPremiumPreview.isActive("operations")) {
+      return window.TaagerPremiumPreview.runs();
     }
-    const cache = window.__analyticsRunsCache;
-    if (cache && Array.isArray(cache.runs)) return cache.runs;
     try {
       const r = await window.api.getAnalyticsRuns();
-      const runs = Array.isArray(r) ? r : (r?.runs || []);
-      window.__analyticsRunsCache = { runs, loadedAt: Date.now() };
-      return runs;
+      return Array.isArray(r) ? r : (r?.runs || []);
     } catch(e) {
       return [];
     }
   }
 
-  _allRuns = await _loadOperationRuns();
+  const [runsResp, settingsResp] = await Promise.all([
+    _loadOperationRuns(),
+    window.api.getAnalyticsSettings().catch(() => ({})),
+  ]);
+  _allRuns = Array.isArray(runsResp) ? runsResp : [];
+  _settings = settingsResp || {};
+  if (_settings.defaultDate && ["today", "yesterday", "last2", "7d", "thisMonth", "custom"].includes(_settings.defaultDate)) {
+    _activeFilter = _settings.defaultDate;
+  }
+  _autoSelectAvailableDateFilter();
+  _syncDateControls();
 
   // Apply entrance animation classes to mount points BEFORE filling content
   const _opsPanels = [
@@ -134,24 +157,54 @@ async function renderOperations(onBack) {
 
   // ── Render all panels ──────────────────────────────────────────────────────
   _renderPanels();
-  if (window.KhodPremiumPreview) window.KhodPremiumPreview.mount(root, "operations");
+  if (window.TaagerPremiumPreview) window.TaagerPremiumPreview.mount(root, "operations");
 
   // Fade out skeleton only after the first real panels are in the DOM.
   const opsSk = document.getElementById("ops-skeleton");
   if (opsSk) {
-    const elapsed = performance.now() - _skeletonShownAt;
-    const waitMs = Math.max(0, _minSkeletonMs - elapsed);
-    setTimeout(() => {
-      requestAnimationFrame(() => {
-        opsSk.classList.add("sk-exit");
-        setTimeout(() => opsSk.remove(), 220);
-      });
-    }, waitMs);
+    requestAnimationFrame(() => {
+      opsSk.classList.add("sk-exit");
+      setTimeout(() => opsSk.remove(), 120);
+    });
   }
 
   // ── Wire sidebar nav ────────────────────────────────────────────────────────
   // Back button (order details panel)
   root.querySelector("#ops-back-to-orders")?.addEventListener("click", _clearOrderDetails);
+  root.querySelectorAll("#ops-date-tabs .analytics-tab-btn").forEach(btn => {
+    btn.addEventListener("click", () => {
+      _activeFilter = btn.dataset.filter;
+      _selectedRunId = null;
+      _selectedOrderIdx = 0;
+      _syncDateControls();
+      if (_activeFilter !== "custom") _renderPanels();
+    });
+  });
+  root.querySelector("#ops-custom-apply-btn")?.addEventListener("click", () => {
+    const fromEl = root.querySelector("#ops-custom-from");
+    const toEl = root.querySelector("#ops-custom-to");
+    if (!fromEl?.value || !toEl?.value) return;
+
+    _customFrom = new Date(fromEl.value);
+    _customTo = new Date(toEl.value);
+    _customTo.setHours(23, 59, 59, 999);
+    _selectedRunId = null;
+    _selectedOrderIdx = 0;
+    _renderPanels();
+  });
+  root.querySelector("#ops-uploaded-update-btn")?.addEventListener("click", async () => {
+    if (typeof window._onUpdateUploadedOrdersForAnalytics !== "function") return;
+    const range = _resolveDateRange();
+    if (!range) {
+      if (window.TaagerUI) window.TaagerUI.toast("Choose a date range before updating uploaded orders.", { kind: "info" });
+      return;
+    }
+    await window._onUpdateUploadedOrdersForAnalytics({
+      accountIds: _uploadedUpdateAccountIds(range),
+      dateFrom: _dateParam(range.from),
+      dateTo: _dateParam(range.to)
+    });
+  });
   root.addEventListener("click", (e) => {
     if (e.target.closest("#ops-scroll-history")) _scrollToRunHistory();
     if (e.target.closest("#ops-first-run-btn") && typeof goToSetup === "function") goToSetup("run");
@@ -162,7 +215,7 @@ async function renderOperations(onBack) {
   }
 
   if (root._opsRunsUpdatedHandler) {
-    window.removeEventListener("khod-analytics-runs-updated", root._opsRunsUpdatedHandler);
+    window.removeEventListener("taager-analytics-runs-updated", root._opsRunsUpdatedHandler);
   }
   root._opsRunsUpdatedHandler = async function opsRunsUpdatedHandler() {
     try {
@@ -172,29 +225,135 @@ async function renderOperations(onBack) {
       console.warn("[Operations] Failed to refresh runs:", e);
     }
   };
-  window.addEventListener("khod-analytics-runs-updated", root._opsRunsUpdatedHandler);
+  window.addEventListener("taager-analytics-runs-updated", root._opsRunsUpdatedHandler);
 
-  if (window.KhodGuidedTour) {
+  if (window.TaagerGuidedTour) {
     const guideOpts = { root };
     document.getElementById("ops-tour-btn")?.addEventListener("click", () => {
-      window.KhodGuidedTour.start("operations", guideOpts);
+      window.TaagerGuidedTour.start("operations", guideOpts);
     });
-    setTimeout(() => window.KhodGuidedTour.mountPagePrompt("operations", guideOpts), 700);
+    setTimeout(() => window.TaagerGuidedTour.mountPagePrompt("operations", guideOpts), 700);
   }
 
   // Global click to close custom dropdown
-  root._opsDocumentClickHandler = e => {
+  document.addEventListener("click", e => {
     if (!e.target.closest(".ops-custom-select")) {
       document.querySelectorAll(".ops-cs-menu").forEach(m => m.style.display = "none");
     }
-  };
-  document.addEventListener("click", root._opsDocumentClickHandler);
+  });
 
   // ── Order Details ──────────────────────────────────────────────────────────
+  function _syncDateControls() {
+    const customWrap = root.querySelector("#ops-date-custom-inline");
+    root.querySelectorAll("#ops-date-tabs .analytics-tab-btn").forEach(btn => {
+      btn.classList.toggle("active", btn.dataset.filter === _activeFilter);
+    });
+    if (customWrap) customWrap.style.display = _activeFilter === "custom" ? "flex" : "none";
+  }
+
+  function _resolveDateRange() {
+    if (_activeFilter === "custom" && _customFrom && _customTo) {
+      return { from: _customFrom, to: _customTo };
+    }
+    return _resolvePresetDateRange(_activeFilter);
+  }
+
+  function _dateParam(date) {
+    if (!(date instanceof Date) || isNaN(date.getTime())) return "";
+    const yyyy = date.getFullYear();
+    const mm = String(date.getMonth() + 1).padStart(2, "0");
+    const dd = String(date.getDate()).padStart(2, "0");
+    return `${yyyy}-${mm}-${dd}`;
+  }
+
+  function _isUploadedAnalyticsOrder(order) {
+    const source = String(order && order.source || "real").toLowerCase();
+    return source === "missed" || source === "real";
+  }
+
+  function _uploadedUpdateAccountIds(dateRange) {
+    const runs = _filterRunsByDate(_allRuns, dateRange);
+    const scopedRuns = _activeAccount
+      ? runs.filter(r => _opsAccountMatches(r, _activeAccount))
+      : runs;
+    const ids = [];
+    scopedRuns.forEach(function (run) {
+      if (!Array.isArray(run.orders) || !run.orders.some(_isUploadedAnalyticsOrder)) return;
+      const id = run.accountId || "__single__";
+      if (ids.indexOf(id) === -1) ids.push(id);
+    });
+    return ids;
+  }
+
+  function _resolvePresetDateRange(filter) {
+    const now = new Date();
+    const today = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+    const endOfDay = (d) => {
+      const e = new Date(d);
+      e.setHours(23, 59, 59, 999);
+      return e;
+    };
+
+    if (filter === "today") return { from: today, to: endOfDay(today) };
+    if (filter === "yesterday") {
+      const y = new Date(today);
+      y.setDate(today.getDate() - 1);
+      return { from: y, to: endOfDay(y) };
+    }
+    if (filter === "last2") {
+      const from = new Date(today);
+      from.setDate(today.getDate() - 1);
+      return { from, to: endOfDay(today) };
+    }
+    if (filter === "7d") {
+      const from = new Date(today);
+      from.setDate(today.getDate() - 6);
+      return { from, to: endOfDay(today) };
+    }
+    if (filter === "thisMonth") {
+      const from = new Date(now.getFullYear(), now.getMonth(), 1);
+      return { from, to: endOfDay(today) };
+    }
+    return null;
+  }
+
+  function _filterRunsByDate(runs, dateRange) {
+    if (!dateRange) return runs || [];
+    return (runs || []).filter(r => {
+      if (!r.runTimestamp) return false;
+      return r.runTimestamp >= dateRange.from.getTime() &&
+             r.runTimestamp <= dateRange.to.getTime();
+    });
+  }
+
+  function _getDateFilteredRuns() {
+    return _filterRunsByDate(_allRuns, _resolveDateRange());
+  }
+
+  function _autoSelectAvailableDateFilter() {
+    if (!_allRuns.length || _activeFilter === "custom") return;
+    const currentRuns = _filterRunsByDate(_allRuns, _resolveDateRange());
+    if (currentRuns.length > 0) return;
+
+    const latestRun = [..._allRuns]
+      .filter(r => r.runTimestamp)
+      .sort((a, b) => b.runTimestamp - a.runTimestamp)[0];
+    if (!latestRun) return;
+
+    const candidateFilters = ["today", "yesterday", "last2", "7d", "thisMonth"];
+    const latestTs = latestRun.runTimestamp;
+    const matchedFilter = candidateFilters.find(filter => {
+      const range = _resolvePresetDateRange(filter);
+      return range && latestTs >= range.from.getTime() && latestTs <= range.to.getTime();
+    });
+    _activeFilter = matchedFilter || "thisMonth";
+  }
+
   function _getFilteredRuns() {
+    const dateRuns = _getDateFilteredRuns();
     return _activeAccount
-      ? (_allRuns || []).filter(r => _opsAccountMatches(r, _activeAccount))
-      : (_allRuns || []);
+      ? dateRuns.filter(r => _opsAccountMatches(r, _activeAccount))
+      : dateRuns;
   }
 
   function _getLatestRun(runs) {
@@ -223,9 +382,8 @@ async function renderOperations(onBack) {
     renderOpsInsights(root.querySelector("#ops-insights-mount"), filteredRuns);
     renderOpsProductPerf(root.querySelector("#ops-product-mount"), filteredRuns);
 
-    const selectedRun = _allRuns.find(r => String(r.runId) === String(_selectedRunId));
-    const selectedVisible = selectedRun && _opsAccountMatches(selectedRun, _activeAccount);
-    const runToShow = selectedVisible && _opsRunHasOrders(selectedRun)
+    const selectedRun = filteredRuns.find(r => String(r.runId) === String(_selectedRunId));
+    const runToShow = selectedRun && _opsRunHasOrders(selectedRun)
       ? selectedRun
       : _getLatestRunWithOrders(filteredRuns);
     renderOpsHistory(root.querySelector("#ops-history-mount"), filteredRuns, _onSelectRun, runToShow?.runId || null);
@@ -239,6 +397,7 @@ async function renderOperations(onBack) {
     if (!tabBar) return;
 
     const accounts = _opsUniqueAccounts(_allRuns).filter(a => a.key);
+    const dateRuns = _getDateFilteredRuns();
     if (accounts.length <= 1) {
       tabBar.innerHTML = "";
       _activeAccount = "";
@@ -249,7 +408,7 @@ async function renderOperations(onBack) {
     if (_activeAccount && !validKeys.has(_activeAccount)) _activeAccount = "";
 
     const countFor = key => {
-      const runs = key ? (_allRuns || []).filter(r => _opsAccountMatches(r, key)) : (_allRuns || []);
+      const runs = key ? dateRuns.filter(r => _opsAccountMatches(r, key)) : dateRuns;
       const rowCount = _opsFlattenRuns(runs).length;
       const submittedCount = runs.reduce((n, r) => n + (Number(r.ordersSubmitted) || 0), 0);
       return Math.max(rowCount, submittedCount);
@@ -257,11 +416,14 @@ async function renderOperations(onBack) {
     const label = (window.t_anl && window.t_anl('account.label')) || window.t_ops('orderDetails.fields.account').replace(' (Data Entry)', '');
     const allLabel = (window.t_anl && window.t_anl('account.allAccounts')) || window.t_ops('productPerf.allAccounts');
     const ordersLabel = window.t_ops('history.ordersCount');
-    const options = [{ value: "", label: `${allLabel}  ${countFor("").toLocaleString()} ${ordersLabel}` }]
+    const allCountLabel = `${allLabel}  ${countFor("").toLocaleString("en-US")} ${ordersLabel}`;
+    const options = [{ value: "", label: allCountLabel, labelHtml: '<span style="display:inline-flex;align-items:center;gap:7px">' + allAccountsCountryFlagsHtml(_allRuns) + '<span>' + analyticsEscapeHtml(allCountLabel) + '</span></span>' }]
       .concat(accounts.map(a => ({
         value: a.key,
-        label: `${a.label || a.email || a.key}  ${countFor(a.key).toLocaleString()} ${ordersLabel}`,
-        subLabel: a.email && a.email !== a.label ? a.email : "",
+        label: `${a.label || a.email || a.key}  ${countFor(a.key).toLocaleString("en-US")} ${ordersLabel}`,
+        labelHtml: accountOptionLabelHtml(`${a.label || a.email || a.key}  ${countFor(a.key).toLocaleString("en-US")} ${ordersLabel}`, a.country),
+        subLabel: [a.email && a.email !== a.label ? a.email : "", accountCountryLabel({ taagerCountry: a.country })].filter(Boolean).join(" - "),
+        searchText: [a.label, a.email, a.country, accountCountryLabel({ taagerCountry: a.country })].filter(Boolean).join(" "),
       })));
 
     tabBar.innerHTML = `
@@ -288,7 +450,7 @@ async function renderOperations(onBack) {
     const opts = arguments[1] || {};
     _selectedRunId = runId;
     _selectedOrderIdx = 0;
-    const run = _allRuns.find(r => String(r.runId) === String(runId));
+    const run = _getFilteredRuns().find(r => String(r.runId) === String(runId));
     if (!run) return;
     if (!_opsRunHasOrders(run)) {
       _showEmptyOrderDetails();
@@ -320,9 +482,19 @@ async function renderOperations(onBack) {
     const firstOrder = orders[_selectedOrderIdx] || orders[0];
     const ts       = run.runTimestamp ? new Date(run.runTimestamp) : null;
     const orderStatus = firstOrder?.orderStatus || "Pending";
-    const sc       = _opsStatusColor(orderStatus);
-    const stLabel  = orderStatus;
+    const orderStatusBucket = typeof _opsStatusBucket === "function" ? _opsStatusBucket(firstOrder) : orderStatus;
+    const sc       = _opsStatusColor(orderStatusBucket);
+    const stLabel  = window.TaagerStatus ? window.TaagerStatus.display(orderStatusBucket) : orderStatus;
     const fmtTs    = d => d ? d.toLocaleString("en-US", { month: "short", day: "numeric", year: "numeric", hour: "2-digit", minute: "2-digit" }) : "—";
+    const orderCreatedAt = firstOrder?.easyCreatedAt || firstOrder?.createdAt || firstOrder?.date || "";
+    const fmtOrderCreatedAt = value => {
+      if (!value) return "—";
+      if (typeof value === "string" && /^\d{4}-\d{2}-\d{2}$/.test(value)) return value;
+      const date = typeof value === "string" && /^\d{4}-\d{2}-\d{2} \d{2}:\d{2}/.test(value)
+        ? new Date(value.replace(" ", "T"))
+        : new Date(value);
+      return isNaN(date.getTime()) ? String(value) : fmtTs(date);
+    };
 
     panel.innerHTML = `
       <div class="ops-od-body">
@@ -349,7 +521,7 @@ async function renderOperations(onBack) {
             <div style="display:flex; align-items:center; gap:12px; position:relative" id="ops-od-dropdown-wrap">
               <div class="ops-custom-select" id="ops-od-selector">
                 <div class="ops-cs-trigger">
-                  <span id="ops-cs-val">Order ${_selectedOrderIdx + 1} of ${orders.length} - ${firstOrder?.khodOrderNumber ? '#' + firstOrder.khodOrderNumber : (firstOrder?.name ? firstOrder.name : 'Unknown')}</span>
+                  <span id="ops-cs-val">Order ${_selectedOrderIdx + 1} of ${orders.length} - ${firstOrder?.taagerOrderNumber ? '#' + firstOrder.taagerOrderNumber : (firstOrder?.name ? firstOrder.name : 'Unknown')}</span>
                   <span class="ops-cs-chevron">▼</span>
                 </div>
                 <div class="ops-cs-menu" style="display:none">
@@ -358,7 +530,7 @@ async function renderOperations(onBack) {
                   </div>
                   <div class="ops-cs-options">
                     ${orders.map((o, idx) => {
-                      const label = window.t_ops('orderDetails.orderOf', { current: idx + 1, total: orders.length }) + ' - ' + (o.khodOrderNumber ? '#' + o.khodOrderNumber : (o.name ? o.name : window.t_ops('orderDetails.unknown')));
+                      const label = window.t_ops('orderDetails.orderOf', { current: idx + 1, total: orders.length }) + ' - ' + (o.taagerOrderNumber ? '#' + o.taagerOrderNumber : (o.name ? o.name : window.t_ops('orderDetails.unknown')));
                       const phone = o.phone || "";
                       const name = o.name || "";
                       return `<div class="ops-cs-option ${idx === _selectedOrderIdx ? "selected" : ""}" data-idx="${idx}" data-search="${label.toLowerCase()} ${phone.toLowerCase()} ${name.toLowerCase()}">${label}</div>`;
@@ -381,7 +553,7 @@ async function renderOperations(onBack) {
             </div>
             <div class="ops-od-meta-block">
               <div class="ops-od-meta-label">${window.t_ops('orderDetails.orderDate')}</div>
-              <div class="ops-od-meta-val" style="font-size:11px">${ts ? fmtTs(ts) : "—"}</div>
+              <div class="ops-od-meta-val" style="font-size:var(--type-caption)">${fmtOrderCreatedAt(orderCreatedAt)}</div>
             </div>
             <div class="ops-od-meta-block">
               <div class="ops-od-meta-label">${window.t_ops('orderDetails.city')}</div>
@@ -510,19 +682,19 @@ async function renderOperations(onBack) {
           <div class="ops-od-meta-row">
             <div class="ops-od-meta-block">
               <div class="ops-od-meta-label">${window.t_ops('orderDetails.fields.submitted')}</div>
-              <div class="ops-od-meta-val">${(run.ordersSubmitted || 0).toLocaleString()}</div>
+              <div class="ops-od-meta-val">${(run.ordersSubmitted || 0).toLocaleString("en-US")}</div>
             </div>
             <div class="ops-od-meta-block">
               <div class="ops-od-meta-label">${window.t_ops('orderDetails.fields.failed')}</div>
-              <div class="ops-od-meta-val">${(run.ordersFailed || 0).toLocaleString()}</div>
+              <div class="ops-od-meta-val">${(run.ordersFailed || 0).toLocaleString("en-US")}</div>
             </div>
             <div class="ops-od-meta-block">
               <div class="ops-od-meta-label">${window.t_ops('orderDetails.fields.runTime')}</div>
-              <div class="ops-od-meta-val" style="font-size:11px">${ts ? fmtTs(ts) : "—"}</div>
+              <div class="ops-od-meta-val" style="font-size:var(--type-caption)">${ts ? fmtTs(ts) : "—"}</div>
             </div>
             <div class="ops-od-meta-block">
               <div class="ops-od-meta-label">${window.t_ops('orderDetails.fields.runId')}</div>
-              <div class="ops-od-meta-val" style="font-size:11px">${run.runId || "—"}</div>
+              <div class="ops-od-meta-val" style="font-size:var(--type-caption)">${run.runId || "—"}</div>
             </div>
           </div>
           <div id="ops-od-tab-body">
@@ -588,7 +760,7 @@ async function renderOperations(onBack) {
   function _opsOdHistoryHTML(run) {
     const ts = run.runTimestamp ? new Date(run.runTimestamp) : null;
     return `<div class="ops-od-overview">
-      <div class="ops-od-field-row"><span class="ops-od-field-icon">🔑</span><div class="ops-od-field-label">${window.t_ops('orderDetails.fields.runId')}</div><div class="ops-od-field-val" style="font-size:11px;color:var(--text3)">${run.runId || "—"}</div></div>
+      <div class="ops-od-field-row"><span class="ops-od-field-icon">🔑</span><div class="ops-od-field-label">${window.t_ops('orderDetails.fields.runId')}</div><div class="ops-od-field-val" style="font-size:var(--type-caption);color:var(--text3)">${run.runId || "—"}</div></div>
       <div class="ops-od-field-row"><span class="ops-od-field-icon">🕒</span><div class="ops-od-field-label">${window.t_ops('orderDetails.fields.runTime')}</div><div class="ops-od-field-val">${ts ? ts.toLocaleString() : "—"}</div></div>
       <div class="ops-od-field-row"><span class="ops-od-field-icon">💼</span><div class="ops-od-field-label">${window.t_ops('orderDetails.fields.account').replace(' (Data Entry)', '')}</div><div class="ops-od-field-val">${_opsAccountDisplay(run)}</div></div>
       <div class="ops-od-field-row"><span class="ops-od-field-icon">✓</span><div class="ops-od-field-label">${window.t_ops('orderDetails.fields.submitted')}</div><div class="ops-od-field-val">${(run.ordersSubmitted || 0).toLocaleString()}</div></div>
@@ -602,8 +774,13 @@ async function renderOperations(onBack) {
     const fmt  = d => d ? d.toLocaleString("en-US", { month: "short", day: "numeric", year: "numeric", hour: "2-digit", minute: "2-digit" }) : "—";
     
     const status = order?.orderStatus || "Pending";
-    const isFail = status.toLowerCase() === "failed";
-    const isDone = status.toLowerCase() === "delivered" || status.toLowerCase() === "completed";
+    const bucket = typeof _opsStatusBucket === "function" ? _opsStatusBucket(order) : String(status || "").toLowerCase();
+    const isFail = typeof _opsIsFailed === "function"
+      ? _opsIsFailed(order)
+      : bucket === "failed";
+    const isDone = typeof _opsIsDelivered === "function"
+      ? _opsIsDelivered(order)
+      : (bucket === "delivered" || bucket === "completed");
     
     const steps = [
       { label: window.t_ops('orderDetails.timelineSteps.botStarted'), time: date ? fmt(date) : "—", done: true },

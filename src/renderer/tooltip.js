@@ -24,7 +24,8 @@ window.KhodTooltip = (() => {
     document.body.addEventListener("keydown", handleKeyDown, true);
     tooltipEl.addEventListener("mouseenter", cancelHide);
     tooltipEl.addEventListener("mouseleave", scheduleHide);
-
+    
+    // Keep visible tooltips attached to their target while the viewport moves.
     window.addEventListener("scroll", reposition, true);
     window.addEventListener("resize", reposition, { passive: true });
   }
@@ -55,9 +56,11 @@ window.KhodTooltip = (() => {
     if (e.type === "mouseout" && e.relatedTarget && target.contains(e.relatedTarget)) {
       return;
     }
+
     if (e.type === "mouseout" && e.relatedTarget && tooltipEl && tooltipEl.contains(e.relatedTarget)) {
       return;
     }
+
     scheduleHide();
   }
 
@@ -102,8 +105,10 @@ window.KhodTooltip = (() => {
 
   function setContent(target) {
     const templateId = target.getAttribute("data-tooltip-template");
+    const variant = target.getAttribute("data-tooltip-variant") || "";
     tooltipEl.replaceChildren();
     tooltipEl.classList.toggle("is-structured", !!templateId);
+    tooltipEl.classList.toggle("is-success", variant === "success");
     if (templateId) {
       const template = document.getElementById(templateId);
       if (!template) return false;
@@ -143,17 +148,21 @@ window.KhodTooltip = (() => {
     currentTarget = null;
   }
 
+  function refresh(target) {
+    if (!tooltipEl || !target || currentTarget !== target || !tooltipEl.classList.contains("is-visible")) return;
+    show(target);
+  }
+
   function updatePosition(target) {
     if (!tooltipEl || !target) return;
+    
+    const targetRect = target.getBoundingClientRect();
+    const tooltipRect = tooltipEl.getBoundingClientRect();
+    
+    const offset = 8;
     const padding = 10;
     const viewportWidth = document.documentElement.clientWidth || window.innerWidth;
     const viewportHeight = document.documentElement.clientHeight || window.innerHeight;
-    tooltipEl.style.maxWidth = `${Math.max(0, viewportWidth - (padding * 2))}px`;
-    tooltipEl.style.maxHeight = `${Math.max(0, viewportHeight - (padding * 2))}px`;
-
-    const targetRect = target.getBoundingClientRect();
-    const tooltipRect = tooltipEl.getBoundingClientRect();
-    const offset = 8;
     const spaceAbove = Math.max(0, targetRect.top - padding - offset);
     const spaceBelow = Math.max(0, viewportHeight - targetRect.bottom - padding - offset);
     const placeAbove = tooltipRect.height <= spaceAbove || spaceAbove > spaceBelow;
@@ -162,19 +171,11 @@ window.KhodTooltip = (() => {
       : targetRect.bottom + offset;
     let left = targetRect.left + (targetRect.width / 2) - (tooltipRect.width / 2);
 
-    top = Math.max(padding, Math.min(top, Math.max(padding, viewportHeight - tooltipRect.height - padding)));
-    left = Math.max(padding, Math.min(left, Math.max(padding, viewportWidth - tooltipRect.width - padding)));
+    top = Math.max(padding, Math.min(top, viewportHeight - tooltipRect.height - padding));
+    left = Math.max(padding, Math.min(left, viewportWidth - tooltipRect.width - padding));
 
     tooltipEl.classList.toggle("is-above", placeAbove);
     tooltipEl.classList.toggle("is-below", !placeAbove);
-    tooltipEl.style.top = `${top}px`;
-    tooltipEl.style.left = `${left}px`;
-
-    const positionedRect = tooltipEl.getBoundingClientRect();
-    if (positionedRect.left < padding) left += padding - positionedRect.left;
-    if (positionedRect.right > viewportWidth - padding) left -= positionedRect.right - (viewportWidth - padding);
-    if (positionedRect.top < padding) top += padding - positionedRect.top;
-    if (positionedRect.bottom > viewportHeight - padding) top -= positionedRect.bottom - (viewportHeight - padding);
     tooltipEl.style.top = `${top}px`;
     tooltipEl.style.left = `${left}px`;
   }
@@ -186,5 +187,5 @@ window.KhodTooltip = (() => {
     init();
   }
 
-  return { init, hide, updatePosition };
+  return { init, hide, refresh, updatePosition };
 })();

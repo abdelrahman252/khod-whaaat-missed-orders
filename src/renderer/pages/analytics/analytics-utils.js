@@ -28,8 +28,34 @@ const STATUS_COLORS_LIGHT = {
   "":                 { bg: "#f5f5f5", text: "#555555", border: "#d4d4d4" },
 };
 
+// Taager dashboard/status/NDR migration:
+// Analytics and Operations share TaagerStatus so Arabic statuses, labels, and
+// color buckets match the dashboard and AI data model.
 function getStatusColor(status) {
   const isLight = document.documentElement.getAttribute("data-theme") === "light";
+  if (window.TaagerStatus) {
+    const bucket = window.TaagerStatus.normalize(status).bucket;
+    const palette = isLight ? {
+      delivered: { bg: "#ecfdf5", text: "#166534", border: "#6ee7b7" },
+      failed: { bg: "#fef2f2", text: "#991b1b", border: "#fca5a5" },
+      return_verified: { bg: "#fff1f2", text: "#9f1239", border: "#fda4af" },
+      canceled_by_you: { bg: "#f5f5f5", text: "#555555", border: "#d4d4d4" },
+      received: { bg: "#eff6ff", text: "#1d5fad", border: "#93c5fd" },
+      confirmed: { bg: "#edfaf3", text: "#1a7a4a", border: "#7ddba8" },
+      shipping: { bg: "#fff7ed", text: "#9a4c0a", border: "#fbb97a" }
+    } : {
+      delivered: { bg: "#0f2a1e", text: "#2dd98a", border: "#0f4a2e" },
+      failed: { bg: "#2a1010", text: "#ff5c5c", border: "#5a1010" },
+      return_verified: { bg: "#2a1010", text: "#ff8a8a", border: "#5a1010" },
+      canceled_by_you: { bg: "#1e1e1e", text: "#888780", border: "#333" },
+      received: { bg: "#1a2535", text: "#4fa8e8", border: "#1e3a5a" },
+      confirmed: { bg: "#0f2218", text: "#34c97a", border: "#0d3d22" },
+      shipping: { bg: "#2a1f10", text: "#e8963a", border: "#5a3a10" }
+    };
+    return palette[bucket] || (isLight
+      ? { bg: "#f5f5f5", text: "#555555", border: "#d4d4d4" }
+      : { bg: "#1e1e1e", text: "#888780", border: "#333" });
+  }
   const map = isLight ? STATUS_COLORS_LIGHT : STATUS_COLORS;
   return map[status] || map[""];
 }
@@ -42,6 +68,67 @@ function formatSAR(amount) {
     style: "currency", currency: "SAR",
     minimumFractionDigits: 0, maximumFractionDigits: 0,
   }).format(n);
+}
+
+function analyticsMoneyValue(value) {
+  if (value == null || value === "") return 0;
+  if (typeof value === "number") return isFinite(value) ? value : 0;
+  const n = Number(String(value).replace(/[^\d.-]/g, ""));
+  return isNaN(n) ? 0 : n;
+}
+
+function analyticsTaagerProfit(order) {
+  if (!order) return 0;
+  if (window.TaagerStatus && typeof window.TaagerStatus.taagerProfit === "function") {
+    return analyticsMoneyValue(window.TaagerStatus.taagerProfit(order));
+  }
+  return analyticsMoneyValue(
+    order.profitAfterTax != null ? order.profitAfterTax :
+    order.taagerProfit != null ? order.taagerProfit :
+    order.profitAfterFees != null ? order.profitAfterFees :
+    order.commission != null ? order.commission :
+    order.marketerCommission
+  );
+}
+
+function analyticsIsDeliveredOrder(order) {
+  return analyticsStatusBucketFromOrder(order) === "delivered";
+}
+
+function analyticsStatusBucketFromOrder(orderOrStatus) {
+  var explicit = "";
+  var status = orderOrStatus;
+  if (orderOrStatus && typeof orderOrStatus === "object") {
+    explicit = String(orderOrStatus.orderStatusBucket || orderOrStatus.exactStatusBucket || orderOrStatus.statusBucket || "").trim();
+    status = orderOrStatus.orderStatus || orderOrStatus.status || "";
+  }
+  if (explicit) return explicit;
+  if (window.TaagerStatus) return window.TaagerStatus.normalize(status).bucket;
+  return String(status || "").toLowerCase();
+}
+
+function analyticsIsFailedOrder(orderOrStatus) {
+  var bucket = analyticsStatusBucketFromOrder(orderOrStatus);
+  if (window.TaagerStatus && typeof window.TaagerStatus.statusInfo === "function") {
+    return window.TaagerStatus.statusInfo(bucket).businessGroup === "lost";
+  }
+  return bucket === "failed" ||
+    bucket === "return_verified" ||
+    bucket === "customer_refused_confirmation" ||
+    bucket === "out_of_stock" ||
+    bucket === "after_sales_done";
+}
+
+function analyticsIsNdrEligibleOrder(orderOrStatus) {
+  return analyticsStatusBucketFromOrder(orderOrStatus) !== "canceled_by_you";
+}
+
+function analyticsDashboardRevenueValue(order) {
+  return analyticsIsDeliveredOrder(order) ? analyticsTaagerProfit(order) : 0;
+}
+
+function sumDashboardRevenue(orders) {
+  return (orders || []).reduce((acc, order) => acc + analyticsDashboardRevenueValue(order), 0);
 }
 
 function formatTimeSaved(totalOrders, minutesPerOrder) {
@@ -96,15 +183,13 @@ function groupBy(arr, key) {
 }
 
 function flattenRuns(runs) {
-  if (!Array.isArray(runs) || runs.length === 0) return [];
-  if (!window.__analyticsFlattenCache) window.__analyticsFlattenCache = new WeakMap();
-  if (window.__analyticsFlattenCache.has(runs)) return window.__analyticsFlattenCache.get(runs);
-  const flattened = runs.flatMap(r =>
+  return runs.flatMap(r =>
     (r.orders || []).map(o => ({
       ...o,
       accountEmail: r.accountEmail || "",
       accountId:    r.accountId    || "",
       accountLabel: r.accountLabel || r.accountEmail || "",
+      taagerCountry: o.taagerCountry || r.taagerCountry || "sa",
       runId:        r.runId        || "",
       runDate:      r.runDate      || "",
       runTimestamp: r.runTimestamp || null,
@@ -112,21 +197,91 @@ function flattenRuns(runs) {
       runEndedAt:   r.runEndedAt   || null,
     }))
   );
-  window.__analyticsFlattenCache.set(runs, flattened);
-  return flattened;
+}
+
+function analyticsEscapeHtml(value) {
+  return String(value ?? "").replace(/[&<>"']/g, ch => ({
+    "&": "&amp;",
+    "<": "&lt;",
+    ">": "&gt;",
+    '"': "&quot;",
+    "'": "&#39;"
+  })[ch]);
+}
+
+function accountCountry(item) {
+  return String(item && item.taagerCountry || "sa").toLowerCase();
+}
+
+function countryFlagHtml(countryCode) {
+  var country = window.TaagerCountry;
+  var value = String(countryCode || "sa").toLowerCase();
+  var item = country && country.get ? country.get(value) : { code: value.toUpperCase() };
+  var flagCls = country && country.flagClass ? country.flagClass(value) : "taager-country-flag flag:SA";
+  var label = country && country.label ? country.label(value) : (item.code || value.toUpperCase());
+  return '<span class="' + analyticsEscapeHtml(flagCls) + '" title="' + analyticsEscapeHtml(label) + '" aria-label="' + analyticsEscapeHtml(label) + '" style="display:inline-block;width:18px;min-width:18px;height:13px;border-radius:2px;box-shadow:0 0 0 1px rgba(255,255,255,.18);vertical-align:-2px"></span>';
+}
+
+function accountCountryLabel(item) {
+  var country = window.TaagerCountry;
+  var value = accountCountry(item);
+  return country && country.label ? country.label(value) : value.toUpperCase();
+}
+
+function accountOptionLabelHtml(label, countryCode) {
+  return '<span style="display:inline-flex;align-items:center;gap:7px;min-width:0">' +
+    countryFlagHtml(countryCode) +
+    '<span style="min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">' + analyticsEscapeHtml(label) + '</span>' +
+  '</span>';
+}
+
+function allAccountsCountryFlagsHtml(runs) {
+  var seen = [];
+  (runs || []).forEach(function (run) {
+    var code = accountCountry(run);
+    if (seen.indexOf(code) === -1) seen.push(code);
+  });
+  if (!seen.length) seen = ["sa"];
+  return '<span style="display:inline-flex;align-items:center;gap:4px">' +
+    seen.slice(0, 5).map(countryFlagHtml).join("") +
+  '</span>';
 }
 
 function analyticsLocale() {
   return (window._kbotLang || "en") === "ar" ? "ar-EG-u-nu-latn" : "en-US";
 }
 
+function parseAnalyticsDateValue(value) {
+  if (value instanceof Date) return value;
+  if (typeof value === "string" && /^\d{4}-\d{2}-\d{2} \d{2}:\d{2}/.test(value)) {
+    return new Date(value.replace(" ", "T"));
+  }
+  return new Date(value);
+}
+
 function formatAnalyticsDate(value, opts) {
-  var d = value instanceof Date ? value : new Date(value);
+  var d = parseAnalyticsDateValue(value);
   if (isNaN(d.getTime())) return "—";
   return d.toLocaleDateString(analyticsLocale(), opts || { month: "short", day: "numeric", year: "numeric" });
 }
 
+function formatAnalyticsDateTime(value) {
+  var d = parseAnalyticsDateValue(value);
+  if (isNaN(d.getTime())) return value ? String(value) : "—";
+  return d.toLocaleString(analyticsLocale(), {
+    month: "short",
+    day: "numeric",
+    year: "numeric",
+    hour: "2-digit",
+    minute: "2-digit"
+  });
+}
+
 function analyticsStatusLabel(status) {
+  if (window.TaagerStatus) {
+    var meta = window.TaagerStatus.normalize(status);
+    return (window._kbotLang || "en") === "ar" ? meta.ar : meta.en;
+  }
   var isAr = (window._kbotLang || "en") === "ar";
   if (!isAr) return status || "—";
   var map = {
@@ -207,9 +362,9 @@ function renderCustomSelect(container, options, currentValue, onChange, config) 
   })[ch]);
   const optionLabel = option => option ? String(option.label ?? "") : "";
   const optionSubLabel = option => option ? String(option.subLabel || option.email || "") : "";
-  const optionText = option => [optionLabel(option), optionSubLabel(option)].filter(Boolean).join(" ");
+  const optionText = option => option && option.searchText ? String(option.searchText) : [optionLabel(option), optionSubLabel(option)].filter(Boolean).join(" ");
   const optionMarkup = (option, compact) => {
-    const labelText = escapeSelectHtml(optionLabel(option));
+    const labelText = option && option.labelHtml ? String(option.labelHtml) : escapeSelectHtml(optionLabel(option));
     const subText = escapeSelectHtml(optionSubLabel(option));
     if (!subText) return `<span class="custom-select-label">${labelText}</span>`;
     return `
@@ -234,7 +389,7 @@ function renderCustomSelect(container, options, currentValue, onChange, config) 
       : (document.documentElement.getAttribute('dir') || 'rtl');
     searchHtml = `
       <div class="custom-select-search-wrap" style="padding: 8px; position: sticky; top: 0; background: #0b1120; z-index: 2; border-bottom: 1px solid rgba(255,255,255,0.06);">
-        <input type="text" class="custom-select-search-input" placeholder="${escapeSelectHtml(searchPlaceholder)}" style="width: 100%; padding: 6px 10px; background: rgba(255,255,255,0.05); border: 1px solid rgba(255,255,255,0.1); border-radius: 6px; color: #fff; font-size: 12px; direction: ${searchDir}; text-align: start;" onclick="event.stopPropagation()" />
+        <input type="text" class="custom-select-search-input" placeholder="${escapeSelectHtml(searchPlaceholder)}" style="width: 100%; padding: 6px 10px; background: rgba(255,255,255,0.05); border: 1px solid rgba(255,255,255,0.1); border-radius:var(--radius-xs); color: #fff; font-size:var(--type-label); direction: ${searchDir}; text-align: start;" onclick="event.stopPropagation()" />
       </div>
     `;
   }
@@ -269,7 +424,6 @@ function renderCustomSelect(container, options, currentValue, onChange, config) 
   const dropdownHome = document.createComment("custom-select-dropdown-home");
   dropdown.parentNode.insertBefore(dropdownHome, dropdown);
   let dropdownPortaled = false;
-  let portalPreferredWidth = 0;
 
   const resetDropdownPosition = () => {
     dropdown.classList.remove("custom-select-portal-open");
@@ -289,7 +443,6 @@ function renderCustomSelect(container, options, currentValue, onChange, config) 
   };
   const closeSelect = () => {
     wrapper.classList.remove("open");
-    wrapper.classList.remove("open-up");
     wrapper.classList.remove("custom-select-fixed-open");
     trigger.setAttribute("aria-expanded", "false");
     resetDropdownPosition();
@@ -297,9 +450,9 @@ function renderCustomSelect(container, options, currentValue, onChange, config) 
     if (window._customSelectPositionActive === positionDropdown) window._customSelectPositionActive = null;
     if (window._customSelectCloseActive === closeSelect) window._customSelectCloseActive = null;
   };
-
   const positionDropdown = () => {
-    if (!usePortal || !wrapper.classList.contains("open")) return;
+    if (!usePortal) return;
+    if (!wrapper.classList.contains("open")) return;
     if (!trigger.isConnected) {
       closeSelect();
       return;
@@ -310,14 +463,14 @@ function renderCustomSelect(container, options, currentValue, onChange, config) 
     const viewportWidth = document.documentElement.clientWidth || window.innerWidth;
     const viewportHeight = document.documentElement.clientHeight || window.innerHeight;
     const dropdownWidth = Math.min(
-      Math.max(rect.width, portalPreferredWidth || dropdown.offsetWidth || rect.width),
+      Math.max(rect.width, 140),
       Math.max(140, viewportWidth - (margin * 2))
     );
     const isRtl = (document.documentElement.getAttribute("dir") || "").toLowerCase() === "rtl" ||
       (container.closest && container.closest("[dir='rtl']"));
     let left = isRtl ? rect.right - dropdownWidth : rect.left;
-    left = Math.max(margin, Math.min(left, viewportWidth - dropdownWidth - margin));
 
+    left = Math.max(margin, Math.min(left, viewportWidth - dropdownWidth - margin));
     const configuredMaxHeight = Math.max(80, parseFloat(config.maxHeight) || viewportHeight);
     const spaceBelow = Math.max(0, viewportHeight - rect.bottom - gap - margin);
     const spaceAbove = Math.max(0, rect.top - gap - margin);
@@ -336,7 +489,6 @@ function renderCustomSelect(container, options, currentValue, onChange, config) 
     dropdown.style.setProperty("overflow-y", "auto", "important");
     dropdown.classList.toggle("custom-select-opens-up", openAbove);
   };
-
   const openSelect = () => {
     if (typeof window._customSelectCloseActive === "function" && window._customSelectCloseActive !== closeSelect) {
       window._customSelectCloseActive();
@@ -345,7 +497,6 @@ function renderCustomSelect(container, options, currentValue, onChange, config) 
     wrapper.classList.toggle("custom-select-fixed-open", usePortal);
     trigger.setAttribute("aria-expanded", "true");
     if (usePortal && !dropdownPortaled) {
-      portalPreferredWidth = dropdown.offsetWidth || trigger.getBoundingClientRect().width;
       document.body.appendChild(dropdown);
       dropdownPortaled = true;
       dropdown.classList.add("custom-select-portal-open");
@@ -354,8 +505,6 @@ function renderCustomSelect(container, options, currentValue, onChange, config) 
     if (usePortal) window._customSelectPositionActive = positionDropdown;
     positionDropdown();
   };
-
-  wrapper._customSelectClose = closeSelect;
 
   // Toggle open
   trigger.addEventListener("click", function(e) {
@@ -438,9 +587,10 @@ function renderCustomSelect(container, options, currentValue, onChange, config) 
       });
     }
   }
+
 }
 
-window.renderKhodDropdown = renderCustomSelect;
+window.renderTaagerDropdown = renderCustomSelect;
 
 // Global click-outside listener to close any open custom selects
 if (!window._customSelectInitialized) {
@@ -453,12 +603,18 @@ if (!window._customSelectInitialized) {
       return;
     }
     document.querySelectorAll(".custom-select-container").forEach(el => {
-      if (typeof el._customSelectClose === "function") el._customSelectClose();
-      else {
-        el.classList.remove("open");
-        el.querySelector(".custom-select-trigger")?.setAttribute("aria-expanded", "false");
+      el.classList.remove("open");
+      el.classList.remove("custom-select-fixed-open");
+      el.querySelector(".custom-select-trigger")?.setAttribute("aria-expanded", "false");
+      const dropdown = el.querySelector(".custom-select-dropdown");
+      if (dropdown) {
+        dropdown.style.left = "";
+        dropdown.style.right = "";
+        dropdown.style.top = "";
+        dropdown.style.width = "";
       }
     });
+    window._customSelectPositionActive = null;
   });
   document.addEventListener("keydown", function(event) {
     if (event.key === "Escape" && typeof window._customSelectCloseActive === "function") {
@@ -505,18 +661,18 @@ function renderSharedSidebar(activeNav) {
       '<div class="sv3-sb-logo">' +
         '<div class="sv3-sb-logo-icon">⚡</div>' +
         '<div>' +
-          '<div class="sv3-sb-logo-text">Khod Whaat Bot</div>' +
+          '<div class="sv3-sb-logo-text">Taager Bot</div>' +
           '<div class="sv3-sb-logo-sub">' + (t('setup.sub_title') || 'Setup') + '</div>' +
         '</div>' +
       '</div>' +
 
       '<div class="' + itemClass('accounts') + '" id="nav-accounts" data-step="accounts">' +
-        '<div class="sv3-step-num" style="font-size:14px">👤</div>' +
+        '<div class="sv3-step-num" style="font-size:var(--type-body)">👤</div>' +
         lbl(t('setup.nav_accounts') || 'Accounts') +
       '</div>' +
 
       '<div class="' + itemClass('run') + '" id="nav-run" data-step="run">' +
-        '<div class="sv3-step-num" style="font-size:14px">🚀</div>' +
+        '<div class="sv3-step-num" style="font-size:var(--type-body)">🚀</div>' +
         lbl(t('setup.nav_run') || 'Run') +
       '</div>' +
 
@@ -536,42 +692,51 @@ function renderSharedSidebar(activeNav) {
       '</div>' +
 
       '<div class="sv3-sidebar-footer">' +
+        '<button class="sv3-report-btn" onclick="if (window.KhodSupport && typeof window.KhodSupport.open === \'function\') window.KhodSupport.open()" style="display:flex;align-items:center;justify-content:center;gap:6px">' +
+          '<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" style="flex-shrink:0"><path d="M21 11.5a8.38 8.38 0 0 1-.9 3.8 8.5 8.5 0 0 1-7.6 4.7 8.38 8.38 0 0 1-3.8-.9L3 21l1.9-5.7a8.38 8.38 0 0 1-.9-3.8 8.5 8.5 0 0 1 4.7-7.6 8.38 8.38 0 0 1 3.8-.9h.5a8.48 8.48 0 0 1 8 8v.5z"/></svg>' +
+          '<span>' + (t('setup.report_issue_btn') || 'Report an Issue') + '</span>' +
+        '</button>' +
         '<button class="sv3-update-btn" id="sv3-update-btn" onclick="checkForUpdatesManual()" style="display:flex;align-items:center;justify-content:center;gap:6px">' +
           '<svg width="13" height="13" viewBox="0 0 16 16" fill="currentColor" style="flex-shrink:0"><path fill-rule="evenodd" d="M8 3a5 5 0 1 0 4.546 2.914.5.5 0 0 1 .908-.417A6 6 0 1 1 8 2v1z"/><path d="M8 4.466V.534a.25.25 0 0 1 .41-.192l2.36 1.966c.12.1.12.284 0 .384L8.41 4.658A.25.25 0 0 1 8 4.466z"/></svg>' +
           '<span id="sv3-update-btn-label">' + (t('setup.check_updates_btn') || 'Check for Updates') + '</span>' +
         '</button>' +
+        '<div id="sv3-app-version-label" style="font-size:var(--type-caption);color:var(--text2);margin-top:4px;text-align:center;width:100%">' +
+          (() => {
+            const v = window._appVersion || "";
+            if (!v) return "";
+            const textFn = t("setup.app_version");
+            return typeof textFn === 'function' ? textFn(v) : `App version is v${v}`;
+          })() +
+        '</div>' +
       '</div>' +
 
     '</div>'
   );
 }
 
-// Applies live sidebar state: done checkmarks on accounts/run, correct reset btn disable.
+// Applies live sidebar state shared by app-level pages.
 // Called by wireSharedSidebar for analytics / operations / dashboard pages.
 function refreshSharedSidebarState(container) {
-  var t = window._t || function(k) { return k; };
   function qs(id) {
     return container && container.querySelector
       ? container.querySelector('#' + id)
       : document.getElementById(id);
   }
 
-  // Accounts step — always done when user has reached analytics/ops/dashboard
+  // Keep setup entries in their normal nav state on app-level pages.
   var accountsItem = qs('nav-accounts');
   if (accountsItem) {
-    accountsItem.classList.remove('active');
-    accountsItem.classList.add('done');
+    accountsItem.classList.remove('done');
     var an = accountsItem.querySelector('.sv3-step-num');
-    if (an) an.textContent = '✓';
+    if (an) an.textContent = '👤';
   }
 
-  // Run step — always done when there is data to view
+  // Run should look like a regular destination, not a completed checklist item.
   var runItem = qs('nav-run');
   if (runItem) {
-    runItem.classList.remove('active');
-    runItem.classList.add('done');
+    runItem.classList.remove('done');
     var rn = runItem.querySelector('.sv3-step-num');
-    if (rn) rn.textContent = '✓';
+    if (rn) rn.textContent = '🚀';
   }
 
 }

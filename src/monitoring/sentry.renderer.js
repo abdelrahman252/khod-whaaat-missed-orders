@@ -50,7 +50,7 @@
     });
   });
 
-  window.KhodMonitoring = {
+  const api = {
     addBreadcrumb,
     captureException,
     captureMessage: function captureMessage(message, level, context) {
@@ -122,4 +122,5 @@
       };
     },
   };
+  window.KhodMonitoring = api;
 })();

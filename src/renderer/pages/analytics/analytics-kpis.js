@@ -11,25 +11,54 @@ function _prevPeriodLabel(activeFilter) {
   return window.t_anl('kpi.prevPeriod');
 }
 
+// Taager dashboard/status/NDR migration: analytics KPI percentages use the
+// same Arabic Taager status map as Dashboard and Operations.
+function _analyticsStatusBucket(order) {
+  if (typeof analyticsStatusBucketFromOrder === "function") return analyticsStatusBucketFromOrder(order);
+  if (window.TaagerStatus) return window.TaagerStatus.normalize(order && order.orderStatus).bucket;
+  return String(order && order.orderStatus || "").toLowerCase();
+}
+
+function _analyticsIsDelivered(order) {
+  return typeof analyticsIsDeliveredOrder === "function"
+    ? analyticsIsDeliveredOrder(order)
+    : _analyticsStatusBucket(order) === "delivered";
+}
+
+function _analyticsIsFailed(order) {
+  return typeof analyticsIsFailedOrder === "function"
+    ? analyticsIsFailedOrder(order)
+    : ["failed", "return_verified", "customer_refused_confirmation", "out_of_stock", "after_sales_done"].includes(_analyticsStatusBucket(order));
+}
+
+function _analyticsIsNdrEligible(order) {
+  return typeof analyticsIsNdrEligibleOrder === "function"
+    ? analyticsIsNdrEligibleOrder(order)
+    : _analyticsStatusBucket(order) !== "canceled_by_you";
+}
+
 function renderKpiSection(container, runs, dateRange, settings, activeFilter) {
   const orders      = flattenRuns(runs);
   const runtimeMs   = _sumRunRuntimeMs(runs);
 
   const totalOrders  = orders.length;
-  const totalRevenue = sumField(orders, "subtotal");
+  const totalRevenue = sumDashboardRevenue(orders);
   const totalCOD     = sumField(orders, "amountDue");
 
   // Delivered % and Failed % — based on orderStatus field
-  var delivered = orders.filter(function(o) {
+  var eligibleOrders = orders.filter(_analyticsIsNdrEligible);
+  var delivered = eligibleOrders.filter(function(o) {
     var s = (o.orderStatus || "").toLowerCase();
     return s === "delivered" || s === "تم التوصيل";
   }).length;
-  var failed = orders.filter(function(o) {
+  var failed = eligibleOrders.filter(function(o) {
     var s = (o.orderStatus || "").toLowerCase();
     return s === "failed" || s === "فشل" || s === "مفقود";
   }).length;
-  var deliveredPct = totalOrders > 0 ? ((delivered / totalOrders) * 100).toFixed(1) : "0.0";
-  var failedPct    = totalOrders > 0 ? ((failed    / totalOrders) * 100).toFixed(1) : "0.0";
+  delivered = eligibleOrders.filter(_analyticsIsDelivered).length;
+  failed = eligibleOrders.filter(_analyticsIsFailed).length;
+  var deliveredPct = eligibleOrders.length > 0 ? ((delivered / eligibleOrders.length) * 100).toFixed(1) : "0.0";
+  var failedPct    = eligibleOrders.length > 0 ? ((failed    / eligibleOrders.length) * 100).toFixed(1) : "0.0";
 
   // Previous period for deltas — filter by runTimestamp (same as current period) for consistency
   var prevOrders = [];
@@ -47,19 +76,22 @@ function renderKpiSection(container, runs, dateRange, settings, activeFilter) {
   var periodLabel = _prevPeriodLabel(activeFilter);
 
   var prevTotal   = prevOrders.length;
-  var prevRevenue = sumField(prevOrders, "subtotal");
+  var prevRevenue = sumDashboardRevenue(prevOrders);
   var prevCOD     = sumField(prevOrders, "amountDue");
   var prevRuntimeMs = _sumRunRuntimeMs(prevRuns || []);
-  var prevDelivered = prevOrders.filter(function(o) {
+  var prevEligibleOrders = prevOrders.filter(_analyticsIsNdrEligible);
+  var prevDelivered = prevEligibleOrders.filter(function(o) {
     var s = (o.orderStatus || "").toLowerCase();
     return s === "delivered" || s === "تم التوصيل";
   }).length;
-  var prevFailed = prevOrders.filter(function(o) {
+  var prevFailed = prevEligibleOrders.filter(function(o) {
     var s = (o.orderStatus || "").toLowerCase();
     return s === "failed" || s === "فشل" || s === "مفقود";
   }).length;
-  var prevDeliveredPct = prevOrders.length > 0 ? ((prevDelivered / prevOrders.length) * 100) : 0;
-  var prevFailedPct    = prevOrders.length > 0 ? ((prevFailed    / prevOrders.length) * 100) : 0;
+  prevDelivered = prevEligibleOrders.filter(_analyticsIsDelivered).length;
+  prevFailed = prevEligibleOrders.filter(_analyticsIsFailed).length;
+  var prevDeliveredPct = prevEligibleOrders.length > 0 ? ((prevDelivered / prevEligibleOrders.length) * 100) : 0;
+  var prevFailedPct    = prevEligibleOrders.length > 0 ? ((prevFailed    / prevEligibleOrders.length) * 100) : 0;
 
   // Time Saved now reflects real bot runtime saved on each completed run.
   var timeDiffMin = Math.round((runtimeMs - prevRuntimeMs) / 60000);
@@ -76,9 +108,9 @@ function renderKpiSection(container, runs, dateRange, settings, activeFilter) {
       deltaStr = absMin + "m";
     }
     var cls = timeDiffMin >= 0 ? "up" : "down";
-    timeSavedDeltaHtml = '<span class="kpi-delta ' + cls + '">' + sign + ' ' + deltaStr + ' <span style="font-weight:400;opacity:.65">' + periodLabel + '</span></span>';
+    timeSavedDeltaHtml = '<span class="kpi-delta ' + cls + '">' + sign + ' ' + deltaStr + ' <span style="font-weight:var(--weight-regular);opacity:.65">' + periodLabel + '</span></span>';
   } else {
-    timeSavedDeltaHtml = '<span class="kpi-delta flat">— <span style="font-weight:400;opacity:.65">' + periodLabel + '</span></span>';
+    timeSavedDeltaHtml = '<span class="kpi-delta flat">— <span style="font-weight:var(--weight-regular);opacity:.65">' + periodLabel + '</span></span>';
   }
 
   var kpis = [
@@ -87,7 +119,7 @@ function renderKpiSection(container, runs, dateRange, settings, activeFilter) {
       icon: "🛍️",
       iconClass: "purple",
       label: window.t_anl('kpi.totalOrders'),
-      displayValue: totalOrders.toLocaleString(),
+      displayValue: totalOrders.toLocaleString("en-US"),
       delta: calcDelta(totalOrders, prevTotal),
       periodLabel: periodLabel,
       color: "purple",
@@ -201,10 +233,10 @@ function _kpiCardHtml(k) {
     var cls    = isGood ? "up" : "down";
     var sign   = k.delta.positive ? "▲" : "▼";
     var lbl    = k.periodLabel || window.t_anl('kpi.prevPeriod');
-    deltaHtml = '<span class="kpi-delta ' + cls + '">' + sign + ' ' + k.delta.pct + '% <span style="font-weight:400;opacity:.65">' + lbl + '</span></span>';
+    deltaHtml = '<span class="kpi-delta ' + cls + '">' + sign + ' ' + k.delta.pct + '% <span style="font-weight:var(--weight-regular);opacity:.65">' + lbl + '</span></span>';
   } else {
     var lbl = k.periodLabel || window.t_anl('kpi.prevPeriod');
-    deltaHtml = '<span class="kpi-delta flat">— <span style="font-weight:400;opacity:.65">' + lbl + '</span></span>';
+    deltaHtml = '<span class="kpi-delta flat">— <span style="font-weight:var(--weight-regular);opacity:.65">' + lbl + '</span></span>';
   }
 
   // Get high-quality SVG based on ID to match mockup mockup icons
@@ -227,7 +259,7 @@ function _kpiCardHtml(k) {
 
   var helperHtml = "";
   if (k.id === "time-saved") {
-    helperHtml = '<div class="kpi-card-helper" style="font-size:8px;color:#64748b;margin-top:2px;line-height:1.2;font-weight:500;">' + window.t_anl('kpi.timeSavedHelper') + '</div>';
+    helperHtml = '<div class="kpi-card-helper" style="font-size:var(--type-micro);color:#64748b;margin-top:2px;line-height:1.2;font-weight:var(--weight-medium);">' + window.t_anl('kpi.timeSavedHelper') + '</div>';
   }
 
   return '<div class="kpi-card" data-kpi-id="' + k.id + '" data-color="' + k.color + '">' +
@@ -250,7 +282,7 @@ function _animateCounter(el, target, prefix, isLarge) {
     var progress = Math.min((now - startTs) / duration, 1);
     var eased    = 1 - Math.pow(1 - progress, 3);
     var current  = Math.round(target * eased);
-    el.textContent = prefix ? (prefix + current.toLocaleString()) : current.toLocaleString();
+    el.textContent = prefix ? (prefix + current.toLocaleString("en-US")) : current.toLocaleString("en-US");
     if (progress < 1) requestAnimationFrame(frame);
     else el.textContent = origText;
   }

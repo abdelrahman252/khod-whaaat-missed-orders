@@ -12,6 +12,36 @@ var _insightsPanelState = {
   perPage: 5,
 };
 
+// Taager dashboard/status/NDR migration:
+// Smart insights must classify the real Taager Arabic statuses through the
+// shared helper instead of comparing old English TAAGER status strings.
+function _insightStatusBucket(orderOrStatus) {
+  if (typeof analyticsStatusBucketFromOrder === "function") return analyticsStatusBucketFromOrder(orderOrStatus);
+  var status = orderOrStatus && typeof orderOrStatus === "object"
+    ? (orderOrStatus.orderStatus || orderOrStatus.status)
+    : orderOrStatus;
+  if (window.TaagerStatus) return window.TaagerStatus.normalize(status).bucket;
+  return String(status || "").toLowerCase();
+}
+
+function _insightIsDelivered(order) {
+  return _insightStatusBucket(order) === "delivered";
+}
+
+function _insightIsFailed(order) {
+  if (typeof analyticsIsFailedOrder === "function") return analyticsIsFailedOrder(order);
+  var bucket = _insightStatusBucket(order);
+  return bucket === "failed" ||
+    bucket === "return_verified" ||
+    bucket === "customer_refused_confirmation" ||
+    bucket === "out_of_stock" ||
+    bucket === "after_sales_done";
+}
+
+function _insightIsBucket(order, buckets) {
+  return buckets.indexOf(_insightStatusBucket(order)) !== -1;
+}
+
 /**
  * Render Smart Insights panel.
  * @param {HTMLElement} container
@@ -32,7 +62,7 @@ function renderInsightsPanel(container, runs, dateRange, allRuns) {
           </div>
         </div>
         <div class="insights-empty">
-          <div style="font-size:28px;margin-bottom:8px">🔍</div>
+          <div style="font-size:var(--type-page-title);margin-bottom:8px">🔍</div>
           ${window.t_anl('insights.emptyHint')}
         </div>
       </div>`;
@@ -51,7 +81,7 @@ function renderInsightsPanel(container, runs, dateRange, allRuns) {
         <div class="insights-panel-title">
           <span class="insights-panel-title-icon">✨</span> ${window.t_anl('insights.title')}
         </div>
-        <span style="font-size:11px;color:var(--text3)">${window.t_anl('insights.count', { count: insights.length })}</span>
+        <span style="font-size:var(--type-caption);color:var(--text3)">${window.t_anl('insights.count', { count: insights.length })}</span>
       </div>
       <div class="insights-list">
         ${visibleInsights.map(i => _insightItemHtml(i)).join("")}
@@ -98,6 +128,9 @@ function _generateInsights(runs, dateRange, allRuns) {
   const insights = [];
   const orders   = flattenRuns(runs);
   if (orders.length === 0) return insights;
+  const insightEvidence = (label, n, d) => window.TaagerSmartInsights && window.TaagerSmartInsights.rateEvidence
+    ? window.TaagerSmartInsights.rateEvidence(label, n, d)
+    : `${label}: ${n}${d != null ? ` / ${d}` : ""}`;
 
   // 1. Order volume trend (vs prev 7 days) — use allRuns for wider history
   if (dateRange) {
@@ -123,7 +156,7 @@ function _generateInsights(runs, dateRange, allRuns) {
   }
 
   // 2. Failed city concentration
-  const failedOrders  = orders.filter(o => o.orderStatus === "Failed");
+  const failedOrders  = orders.filter(_insightIsFailed);
   if (failedOrders.length > 0) {
     const byCityFailed = groupBy(failedOrders, "city");
     const topFail      = byCityFailed[0];
@@ -133,6 +166,7 @@ function _generateInsights(runs, dateRange, allRuns) {
         type: "warning",
         icon: "⚠️",
         text: window.t_anl('insights.dynamic.failedCity', { city: topFail.key, count: topFail.count, rate: failRate }),
+        evidence: [insightEvidence("Failed orders", failedOrders.length, orders.length), `${topFail.key}: ${topFail.count}`],
       });
     }
   }
@@ -145,6 +179,7 @@ function _generateInsights(runs, dateRange, allRuns) {
       type: "info",
       icon: "🏆",
       text: window.t_anl('insights.dynamic.bestProduct', { product: top.key || window.t_anl('insights.dynamic.unknown'), count: top.count }),
+      evidence: [`${top.key || window.t_anl('insights.dynamic.unknown')}: ${top.count} / ${orders.length} orders`],
     });
   }
 
@@ -160,7 +195,7 @@ function _generateInsights(runs, dateRange, allRuns) {
 
   // 5. Best execution hours
   const hourCounts = new Array(24).fill(0);
-  for (const o of orders.filter(o => o.orderStatus === "Delivered")) {
+  for (const o of orders.filter(_insightIsDelivered)) {
     const h = o.date ? new Date(o.date).getHours() : -1;
     if (h >= 0) hourCounts[h]++;
   }
@@ -176,8 +211,12 @@ function _generateInsights(runs, dateRange, allRuns) {
     });
   }
 
-  // 6. Commission summary
-  const totalComm = sumField(orders, "marketerCommission");
+  // 6. Taager profit summary. marketerCommission is a legacy storage alias for
+  // Taager profit = order profit - tax profit in migrated rows.
+  const totalComm = orders.reduce((sum, o) => {
+    if (window.TaagerStatus) return sum + window.TaagerStatus.taagerProfit(o);
+    return sum + (Number(o.taagerProfit != null ? o.taagerProfit : o.profitAfterTax != null ? o.profitAfterTax : o.profitAfterFees != null ? o.profitAfterFees : o.marketerCommission) || 0);
+  }, 0);
   if (totalComm > 0) {
     const avgComm = Math.round(totalComm / orders.length);
     insights.push({
@@ -204,7 +243,7 @@ function _generateInsights(runs, dateRange, allRuns) {
   }
 
   // 8. Under processing backlog
-  const processing = orders.filter(o => o.orderStatus === "Under processing").length;
+  const processing = orders.filter(o => _insightIsBucket(o, ["received", "after_sales_done", "after_sales_progress"])).length;
   if (processing > 5) {
     insights.push({
       type: "warning",
@@ -214,12 +253,13 @@ function _generateInsights(runs, dateRange, allRuns) {
   }
 
   // 9. In shipping pipeline
-  const inShipping = orders.filter(o => o.orderStatus === "In shipping").length;
+  const inShippingOrders = orders.filter(o => _insightIsBucket(o, ["shipping", "delivery_suspended"]));
+  const inShipping = inShippingOrders.length;
   if (inShipping > 0) {
-    const inShippingComm = sumField(
-      orders.filter(o => o.orderStatus === "In shipping"),
-      "marketerCommission"
-    );
+    const inShippingComm = inShippingOrders.reduce((sum, o) => {
+      if (window.TaagerStatus) return sum + window.TaagerStatus.taagerProfit(o);
+      return sum + (Number(o.taagerProfit != null ? o.taagerProfit : o.profitAfterTax != null ? o.profitAfterTax : o.profitAfterFees != null ? o.profitAfterFees : o.marketerCommission) || 0);
+    }, 0);
     insights.push({
       type: "info",
       icon: "\uD83D\uDE9A",
@@ -231,7 +271,7 @@ function _generateInsights(runs, dateRange, allRuns) {
   }
 
   // 10. Waiting backlog — orders stuck in Waiting status
-  const waiting = orders.filter(o => o.orderStatus === "Waiting").length;
+  const waiting = orders.filter(o => _insightIsBucket(o, ["waiting", "on_hold", "out_of_stock"])).length;
   if (waiting > 0) {
     insights.push({
       type: "warning",
@@ -241,7 +281,7 @@ function _generateInsights(runs, dateRange, allRuns) {
   }
 
   // 11. Confirmed orders (positive signal — confirmed but not yet shipped)
-  const confirmed = orders.filter(o => o.orderStatus === "Confirmed").length;
+  const confirmed = orders.filter(o => _insightIsBucket(o, ["confirmed"])).length;
   if (confirmed > 0) {
     insights.push({
       type: "positive",
@@ -251,7 +291,7 @@ function _generateInsights(runs, dateRange, allRuns) {
   }
 
   // 12. Cancellation rate warning
-  const canceled = orders.filter(o => o.orderStatus === "Canceled" || o.orderStatus === "Cancelled").length;
+  const canceled = orders.filter(o => _insightIsBucket(o, ["canceled_by_you"])).length;
   if (canceled > 0 && orders.length > 0) {
     const cancelRate = Math.round((canceled / orders.length) * 100);
     if (cancelRate >= 20) {
@@ -259,6 +299,7 @@ function _generateInsights(runs, dateRange, allRuns) {
         type: "negative",
         icon: "🚫",
         text: window.t_anl('insights.dynamic.canceled', { rate: cancelRate, count: canceled }),
+        evidence: [insightEvidence("Canceled by you", canceled, orders.length)],
       });
     }
   }
@@ -268,10 +309,16 @@ function _generateInsights(runs, dateRange, allRuns) {
 
 
 function _insightItemHtml(insight) {
+  const trust = window.TaagerSmartInsights && window.TaagerSmartInsights.trustLabel
+    ? window.TaagerSmartInsights.trustLabel(insight.trust || "measured")
+    : "Measured";
+  const evidence = Array.isArray(insight.evidence) && insight.evidence.length
+    ? `<div class="insight-evidence" style="font-size:var(--type-micro);color:var(--text3);margin-top:4px">${insight.evidence.slice(0, 2).join(" · ")}</div>`
+    : "";
   return `
     <div class="insight-item ${insight.type}">
       <span class="insight-icon">${insight.icon}</span>
-      <div class="insight-text">${insight.text}</div>
+      <div class="insight-text"><span style="font-size:var(--type-micro);font-weight:var(--weight-semibold);text-transform:uppercase;color:var(--text3);margin-inline-end:6px">${trust}</span>${insight.text}${evidence}</div>
     </div>`;
 }
 
@@ -337,7 +384,7 @@ function renderActivityTimeline(container, runs, pageNum) {
         <div class="timeline-panel-title">
           <span>📋</span> ${window.t_anl('timeline.title')}
         </div>
-        <span style="font-size:11px;color:var(--text3)">${window.t_anl('timeline.eventsCount', { count: events.length })}</span>
+        <span style="font-size:var(--type-caption);color:var(--text3)">${window.t_anl('timeline.eventsCount', { count: events.length })}</span>
       </div>
       <div class="timeline-list">
         ${itemsHtml}

@@ -11,13 +11,40 @@ function normalizeError(input) {
   return new Error(String(input == null ? "Unknown error" : input));
 }
 
-function safeContext(context) {
-  if (!context || typeof context !== "object") return {};
-  const copy = { ...context };
-  ["password", "easyPassword", "khodPassword", "token", "licenseKey", "key", "apikey"].forEach((key) => {
-    if (Object.prototype.hasOwnProperty.call(copy, key)) copy[key] = "[Filtered]";
+const SENSITIVE_CONTEXT_KEYS = new Set([
+  "password",
+  "easypassword",
+  "taagerpassword",
+  "khodpassword",
+  "token",
+  "licensekey",
+  "key",
+  "apikey",
+]);
+
+function shouldFilterContextKey(key) {
+  const normalized = String(key || "").toLowerCase();
+  return SENSITIVE_CONTEXT_KEYS.has(normalized)
+    || /^pwd_khod/.test(normalized)
+    || /^pwd_taager/.test(normalized)
+    || /khod.*password/.test(normalized);
+}
+
+function redactSensitiveFields(value, seen = new WeakSet()) {
+  if (!value || typeof value !== "object") return value;
+  if (seen.has(value)) return "[Circular]";
+  seen.add(value);
+  if (Array.isArray(value)) return value.map((item) => redactSensitiveFields(item, seen));
+  const copy = {};
+  Object.keys(value).forEach((key) => {
+    copy[key] = shouldFilterContextKey(key) ? "[Filtered]" : redactSensitiveFields(value[key], seen);
   });
   return copy;
+}
+
+function safeContext(context) {
+  if (!context || typeof context !== "object") return {};
+  return redactSensitiveFields(context);
 }
 
 function captureException(Sentry, error, context) {

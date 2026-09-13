@@ -1,24 +1,35 @@
-/* ══════════════════════════════════════════════════════════════════════════════
+/* â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•
    section-product-matrix.js  (T-23)
-   Product Insight Table — displays top products with their overall performance 
+   Product Insight Table â€” displays top products with their overall performance 
    and highlights their best and worst-performing cities.
 
    Exposed on window:
      window.renderProductMatrix(mountEl, geoData, filterBus?)
 
    Depends on:
-     window.CityIntelligenceDrawer.open()        — T-21
-     window.DashboardFilterBus                   — T-13
-   ══════════════════════════════════════════════════════════════════════════════ */
+     window.CityIntelligenceDrawer.open()        â€” T-21
+     window.DashboardFilterBus                   â€” T-13
+   â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â• */
 (function () {
   'use strict';
   function getIsAr() {
     return window.dashboardI18n ? window.dashboardI18n.currentLocale === 'ar' : true;
   }
-  function s6Txt(en, ar) { return getIsAr() ? ar : en; }
-  function sTx(en, ar) { return getIsAr() ? ar : en; }
-  function tx(en, ar) { return getIsAr() ? ar : en; }
-  function dashText(en, ar) { return getIsAr() ? ar : en; }
+  function pick(en, ar) {
+    var value = window.dashboardI18n && window.dashboardI18n.pick
+      ? window.dashboardI18n.pick(en, ar)
+      : (getIsAr() ? ar : en);
+    return String(value == null ? '' : value)
+      .replace(/\bTaager Profit(?: After Tax)?\b/g, 'Marketer Commission')
+      .replace(/\bTaager profit(?: after tax)?\b/g, 'marketer commission')
+      .replace(/\bTiger Profit(?: After Tax)?\b/g, 'Marketer Commission')
+      .replace(/\bTiger profit(?: after tax)?\b/g, 'marketer commission')
+      .replace(/Ø±Ø¨Ø­ ØªØ§Ø¬Ø±(?: Ø¨Ø¹Ø¯ Ø§Ù„Ø¶Ø±ÙŠØ¨Ø©)?/g, 'Ø¹Ù…ÙˆÙ„Ø© Ø§Ù„Ù…Ø³ÙˆÙ‚');
+  }
+  function s6Txt(en, ar) { return pick(en, ar); }
+  function sTx(en, ar) { return pick(en, ar); }
+  function tx(en, ar) { return pick(en, ar); }
+  function dashText(en, ar) { return pick(en, ar); }
 
   var PAGE_SIZE = 5;
   var currentPage = 0;
@@ -27,9 +38,9 @@
   function normalizeProductSearch(value) {
     return String(value || '')
       .replace(/[\u064B-\u065F\u0670]/g, '')
-      .replace(/[أإآا]/g, 'ا')
-      .replace(/ة/g, 'ه')
-      .replace(/ى/g, 'ي')
+      .replace(/[Ø£Ø¥Ø¢Ø§]/g, 'Ø§')
+      .replace(/Ø©/g, 'Ù‡')
+      .replace(/Ù‰/g, 'ÙŠ')
       .trim()
       .toLowerCase();
   }
@@ -41,6 +52,13 @@
       .replace(/</g, '&lt;')
       .replace(/>/g, '&gt;');
   }
+  function pctValue(value, decimals) {
+    var n = Number(value);
+    if (!Number.isFinite(n)) n = 0;
+    return n.toFixed(decimals == null ? 2 : decimals)
+      .replace(/(\.\d*?[1-9])0+$/, '$1')
+      .replace(/\.0+$/, '');
+  }
 
   function getAllProducts(geoData) {
     var rankedList = (geoData && geoData.products && geoData.products.rankedList) || [];
@@ -49,6 +67,7 @@
 
   function renderTable(wrapper, geoData, provFilter) {
     var unfilteredProducts = getAllProducts(geoData);
+    var activeCurrency = (geoData && geoData.meta && geoData.meta.activeCurrency) || window.dashboardActiveCurrency || 'SAR';
     var query = normalizeProductSearch(productSearchQuery);
     var allProducts = query
       ? unfilteredProducts.filter(function (p) {
@@ -73,16 +92,16 @@
     var titleBar = document.createElement('div');
     titleBar.style.cssText = 'display:flex;align-items:center;justify-content:space-between;gap:12px;margin-bottom:16px;flex-wrap:wrap';
     titleBar.innerHTML =
-      '<div style="font-size:13px;font-weight:800;color:rgba(255,255,255,0.85)">' +
-        sTx('📊 Performance of Products in Cities', '📊 أداء المنتجات في المدن') +
+      '<div style="font-size:13px;font-weight:var(--weight-semibold);color:rgba(255,255,255,0.85)">' +
+        sTx('ðŸ“Š Performance of Products in Cities', 'ðŸ“Š Ø£Ø¯Ø§Ø¡ Ø§Ù„Ù…Ù†ØªØ¬Ø§Øª ÙÙŠ Ø§Ù„Ù…Ø¯Ù†') +
       '</div>' +
       '<input id="spm-product-search" type="text" value="' + escapeAttr(productSearchQuery) + '" placeholder="' + sTx('Search product name or SKU...', 'Search product name or SKU...') + '" style="' +
         'flex:1;min-width:220px;max-width:360px;background:#0b1120;border:1px solid rgba(255,255,255,0.1);border-radius:10px;' +
-        'color:#fff;font-family:Cairo,sans-serif;font-size:12px;padding:8px 12px;outline:none;box-sizing:border-box;transition:border-color 0.2s;" />' +
+        'color:#fff;font-family:var(--font-ui);font-size:12px;padding:8px 12px;outline:none;box-sizing:border-box;transition:border-color 0.2s;" />' +
       '<div style="font-size:11px;color:rgba(255,255,255,0.3)">' +
-        sTx('Total ', 'إجمالي ') + totalProducts + sTx(' products', ' منتجات') +
+        sTx('Total ', 'Ø¥Ø¬Ù…Ø§Ù„ÙŠ ') + totalProducts + sTx(' products', ' Ù…Ù†ØªØ¬Ø§Øª') +
         (query ? ' <span style="color:rgba(255,255,255,0.18)">/ ' + unfilteredProducts.length + '</span>' : '') +
-        (provFilter ? ' · <span style="color:#a855f7">' + sTx('Region Filter Active', 'فلتر المنطقة مُفعّل') + '</span>' : '') +
+        (provFilter ? ' Â· <span style="color:#a855f7">' + sTx('Region Filter Active', 'ÙÙ„ØªØ± Ø§Ù„Ù…Ù†Ø·Ù‚Ø© Ù…ÙÙØ¹Ù‘Ù„') + '</span>' : '') +
       '</div>';
     wrapper.appendChild(titleBar);
 
@@ -105,7 +124,7 @@
     if (totalProducts === 0) {
       var noData = document.createElement('div');
       noData.style.cssText = 'padding:24px;text-align:center;color:rgba(255,255,255,0.3);font-size:13px';
-      noData.innerHTML = sTx('Insufficient data to display performance', 'لا توجد بيانات كافية لعرض الأداء');
+      noData.innerHTML = sTx('Insufficient data to display performance', 'Ù„Ø§ ØªÙˆØ¬Ø¯ Ø¨ÙŠØ§Ù†Ø§Øª ÙƒØ§ÙÙŠØ© Ù„Ø¹Ø±Ø¶ Ø§Ù„Ø£Ø¯Ø§Ø¡');
       wrapper.appendChild(noData);
       return;
     }
@@ -114,12 +133,12 @@
     table.style.cssText = 'width:100%;min-width:750px;display:flex;flex-direction:column;gap:8px;';
     
     // Header
-    table.innerHTML += '<div style="display:grid;grid-template-columns:2.5fr 1fr 1fr 1.25fr 1.25fr;gap:10px;padding:0 12px 8px;border-bottom:1px solid rgba(255,255,255,0.06);font-size:11px;font-weight:700;color:rgba(255,255,255,0.4);flex-shrink:0">' +
-      '<div>' + sTx('Product', 'المنتج') + '</div><div style="text-align:center">' + sTx('Orders', 'الطلبات') + '</div><div style="text-align:center">' + sTx('Delivery', 'التسليم') + '</div><div style="text-align:center">' + sTx('Best City (NDR)', 'أفضل مدينة (NDR)') + '</div><div style="text-align:center">' + sTx('Worst City (NDR)', 'أسوأ مدينة (NDR)') + '</div>' +
+    table.innerHTML += '<div style="display:grid;grid-template-columns:2.5fr 0.8fr 0.8fr 1fr 1.25fr 1.25fr;gap:10px;padding:0 12px 8px;border-bottom:1px solid rgba(255,255,255,0.06);font-size:11px;font-weight:var(--weight-bold);color:rgba(255,255,255,0.4);flex-shrink:0">' +
+      '<div>' + sTx('Product', 'Ø§Ù„Ù…Ù†ØªØ¬') + '</div><div style="text-align:center">' + sTx('Orders', 'Ø§Ù„Ø·Ù„Ø¨Ø§Øª') + '</div><div style="text-align:center;color:#00e676">' + sTx('Net Orders', 'ØµØ§ÙÙŠ Ø§Ù„Ø·Ù„Ø¨Ø§Øª') + '</div><div style="text-align:center">' + sTx('Delivery', 'Ø§Ù„ØªØ³Ù„ÙŠÙ…') + '</div><div style="text-align:center">' + sTx('Best City (NDR)', 'Ø£ÙØ¶Ù„ Ù…Ø¯ÙŠÙ†Ø© (NDR)') + '</div><div style="text-align:center">' + sTx('Worst City (NDR)', 'Ø£Ø³ÙˆØ£ Ù…Ø¯ÙŠÙ†Ø© (NDR)') + '</div>' +
     '</div>';
 
     pageProducts.forEach(function(p) {
-      var productKey = p.sku || p.name;
+      var productKey = (p.sku || p.name || '').toLowerCase();
       var validCities = [];
       Object.keys(geoMap).forEach(function(cityName) {
         if (provFilter) {
@@ -128,7 +147,7 @@
         }
         var cell = geoMap[cityName][productKey];
         if (cell && cell.orders > 0) {
-          validCities.push({ name: cityName, ndr: cell.ndr, dr: cell.dr, orders: cell.orders });
+          validCities.push({ name: cityName, ndr: cell.ndr, dr: cell.dr, orders: cell.orders, delivered: cell.delivered || 0 });
         }
       });
       
@@ -145,24 +164,22 @@
         }
       }
 
-      var nameStr = p.name || p.sku || '؟';
+      var nameStr = p.name || p.sku || 'ØŸ';
       // Removed truncation to show full name
-      var nameHtml = '<div style="font-size:12px;font-weight:700;color:rgba(255,255,255,0.85);word-break:break-word" title="' + nameStr + '">' + nameStr + '</div>';
+      var nameHtml = '<div data-i18n-preserve style="font-size:12px;font-weight:var(--weight-bold);color:rgba(255,255,255,0.85);word-break:break-word" title="' + nameStr + '">' + nameStr + '</div>';
       var skuHtml = (p.sku && p.sku !== p.name) ? '<div style="font-size:10px;font-weight:600;color:rgba(255,255,255,0.4);word-break:break-all;margin-top:2px" title="' + p.sku + '">' + p.sku + '</div>' : '';
       
       var overallDr = p.deliveryPct || 0;
       var drColor = window.dashboardRateColor ? window.dashboardRateColor(overallDr) : (overallDr >= 40 ? '#22d3ee' : overallDr >= 30 ? '#00e676' : overallDr >= 20 ? '#f59e0b' : '#ef4444');
       var activeDr = p.drRate || 0;
       var activeDrColor = window.dashboardRateColor ? window.dashboardRateColor(activeDr) : (activeDr >= 40 ? '#22d3ee' : activeDr >= 30 ? '#00e676' : activeDr >= 20 ? '#f59e0b' : '#ef4444');
-      var productAvgCommission = window.KhodFinancialMetrics.averageCommission(
-        p.commission,
-        p.deliveredCount
-      );
+      // p.commission is the compatibility carrier for KHOD marketer commission.
+      var productAvgCommission = (p.deliveredCount || 0) > 0 ? ((Number(p.commission) || 0) / p.deliveredCount) : 0;
       var productBreakEvenCpa = productAvgCommission * ((Number(p.ndrPct || p.deliveryRate || 0)) / 100);
       var drBadge = '<div style="display:flex;flex-direction:column;gap:4px;align-items:center">' +
-          '<div style="font-size:10px;font-weight:700;color:' + drColor + ';background:' + drColor + '18;padding:2px 6px;border-radius:12px;border:1px solid ' + drColor + '44">' + overallDr.toFixed(1) + '% <span style="opacity:0.5;font-size:9px">NDR</span></div>' +
-          '<div style="font-size:10px;font-weight:700;color:' + activeDrColor + ';background:' + activeDrColor + '18;padding:2px 6px;border-radius:12px;border:1px solid ' + activeDrColor + '44">' + activeDr.toFixed(1) + '% <span style="opacity:0.5;font-size:9px">DR</span></div>' +
-          '<div style="font-size:9px;font-weight:800;color:#c084fc;margin-top:2px;" title="' + sTx('Break-even CPA = avg commission × NDR', 'تكلفة التعادل = متوسط العمولة × NDR') + '">BE: ' + productBreakEvenCpa.toFixed(2) + ' SAR</div>' +
+          '<div style="font-size:10px;font-weight:var(--weight-bold);color:' + drColor + ';background:' + drColor + '18;padding:2px 6px;border-radius:12px;border:1px solid ' + drColor + '44">' + pctValue(overallDr) + '% <span style="opacity:0.5;font-size:9px">NDR</span></div>' +
+          '<div style="font-size:10px;font-weight:var(--weight-bold);color:' + activeDrColor + ';background:' + activeDrColor + '18;padding:2px 6px;border-radius:12px;border:1px solid ' + activeDrColor + '44">' + activeDr.toFixed(1) + '% <span style="opacity:0.5;font-size:9px">DR</span></div>' +
+          '<div style="font-size:9px;font-weight:var(--weight-semibold);color:#c084fc;margin-top:2px;" title="' + sTx('Break-even CPA = simulator marketer commission per delivered order Ã— NDR', 'ØªÙƒÙ„ÙØ© Ø§Ù„ØªØ¹Ø§Ø¯Ù„ = Ø¹Ù…ÙˆÙ„Ø© Ø§Ù„Ù…Ø³ÙˆÙ‚ ÙÙŠ Ø§Ù„Ù…Ø­Ø§ÙƒØ§Ø© Ù„ÙƒÙ„ Ø·Ù„Ø¨ Ù…Ø³Ù„Ù… Ã— NDR') + '">BE: ' + productBreakEvenCpa.toFixed(2) + ' ' + activeCurrency + '</div>' +
         '</div>';
 
       function cityBadge(cityObj) {
@@ -172,22 +189,27 @@
         var cDr = (cityObj.dr * 100);
         var cDrColor = window.dashboardRateColor ? window.dashboardRateColor(cDr) : (cDr >= 40 ? '#22d3ee' : cDr >= 30 ? '#00e676' : cDr >= 20 ? '#f59e0b' : '#ef4444');
         return '<div class="insight-city-btn" data-city="' + cityObj.name + '" style="cursor:pointer;display:inline-flex;flex-direction:column;align-items:center;background:rgba(255,255,255,0.03);border:1px solid rgba(255,255,255,0.06);padding:6px 12px;border-radius:6px;transition:background 0.2s">' +
-          '<div style="font-size:11px;font-weight:700;color:rgba(255,255,255,0.85);max-width:120px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis" title="' + cityObj.name + '">' + cityObj.name + '</div>' +
+          '<div style="font-size:11px;font-weight:var(--weight-bold);color:rgba(255,255,255,0.85);max-width:120px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis" title="' + cityObj.name + '">' + cityObj.name + '</div>' +
           '<div style="display:flex;gap:6px;margin-top:4px">' +
-            '<div style="font-size:10px;font-weight:800;color:' + cNdrColor + '">' + cNdr.toFixed(1) + '% <span style="opacity:0.5;font-size:8px">NDR</span></div>' +
-            '<div style="font-size:10px;font-weight:800;color:' + cDrColor + '">' + cDr.toFixed(1) + '% <span style="opacity:0.5;font-size:8px">DR</span></div>' +
+            '<div style="font-size:10px;font-weight:var(--weight-semibold);color:' + cNdrColor + '">' + pctValue(cNdr) + '% <span style="opacity:0.5;font-size:8px">NDR</span></div>' +
+            '<div style="font-size:10px;font-weight:var(--weight-semibold);color:' + cDrColor + '">' + cDr.toFixed(1) + '% <span style="opacity:0.5;font-size:8px">DR</span></div>' +
           '</div>' +
         '</div>';
       }
 
+      /* Net Orders = net placed orders for this product */
+      var netOrders = p.netOrderCount !== undefined ? p.netOrderCount : (p.placedCount || 0);
+      var netColor = window.dashboardRateColor ? window.dashboardRateColor(overallDr) : drColor;
+
       var rowEl = document.createElement('div');
-      rowEl.style.cssText = 'display:grid;grid-template-columns:2.5fr 1fr 1fr 1.25fr 1.25fr;gap:10px;align-items:center;padding:12px;background:rgba(255,255,255,0.02);border-radius:8px;border:1px solid rgba(255,255,255,0.03);transition:background 0.2s;flex-shrink:0';
+      rowEl.style.cssText = 'display:grid;grid-template-columns:2.5fr 0.8fr 0.8fr 1fr 1.25fr 1.25fr;gap:10px;align-items:center;padding:12px;background:rgba(255,255,255,0.02);border-radius:8px;border:1px solid rgba(255,255,255,0.03);transition:background 0.2s;flex-shrink:0';
       rowEl.onmouseenter = function() { this.style.background = 'rgba(255,255,255,0.04)'; };
       rowEl.onmouseleave = function() { this.style.background = 'rgba(255,255,255,0.02)'; };
       
       rowEl.innerHTML = 
         '<div style="display:flex;flex-direction:column;overflow:hidden">' + nameHtml + skuHtml + '</div>' +
-        '<div style="font-size:12px;font-weight:700;color:rgba(255,255,255,0.6);text-align:center">' + (p.placedCount || 0).toLocaleString('en-US') + '</div>' +
+        '<div style="font-size:12px;font-weight:var(--weight-bold);color:rgba(255,255,255,0.6);text-align:center">' + (p.placedCount || 0).toLocaleString('en-US') + '</div>' +
+        '<div style="font-size:12px;font-weight:var(--weight-semibold);color:' + netColor + ';text-align:center">' + netOrders.toLocaleString('en-US') + '</div>' +
         '<div style="text-align:center">' + drBadge + '</div>' +
         '<div style="text-align:center">' + cityBadge(bestCity) + '</div>' +
         '<div style="text-align:center">' + cityBadge(worstCity) + '</div>';
@@ -210,7 +232,7 @@
           totalItems: allProducts.length,
           startItem: startIdx + 1,
           endItem: Math.min(endIdx, allProducts.length),
-          itemLabel: sTx('products', 'منتج'),
+          itemLabel: sTx('products', 'Ù…Ù†ØªØ¬'),
           pageButtonClass: 'spm-page-btn',
           prevClass: 'spm-page-prev',
           nextClass: 'spm-page-next',
@@ -243,18 +265,18 @@
       pagContainer.style.cssText = 'display:flex;align-items:center;justify-content:center;gap:16px;margin-top:16px;padding-top:12px;border-top:1px solid rgba(255,255,255,0.06)';
       
       var prevBtn = document.createElement('button');
-      prevBtn.innerHTML = sTx('Previous', 'السابق');
+      prevBtn.innerHTML = sTx('Previous', 'Ø§Ù„Ø³Ø§Ø¨Ù‚');
       prevBtn.disabled = (currentPage === 0);
-      prevBtn.style.cssText = 'padding:6px 16px;font-size:12px;font-weight:700;border-radius:6px;background:rgba(255,255,255,0.05);color:#fff;border:none;cursor:' + (currentPage === 0 ? 'not-allowed;opacity:0.3' : 'pointer');
+      prevBtn.style.cssText = 'padding:6px 16px;font-size:12px;font-weight:var(--weight-bold);border-radius:6px;background:rgba(255,255,255,0.05);color:#fff;border:none;cursor:' + (currentPage === 0 ? 'not-allowed;opacity:0.3' : 'pointer');
       
       var nextBtn = document.createElement('button');
-      nextBtn.innerHTML = sTx('Next', 'التالي');
+      nextBtn.innerHTML = sTx('Next', 'Ø§Ù„ØªØ§Ù„ÙŠ');
       nextBtn.disabled = (currentPage === totalPages - 1);
-      nextBtn.style.cssText = 'padding:6px 16px;font-size:12px;font-weight:700;border-radius:6px;background:rgba(255,255,255,0.05);color:#fff;border:none;cursor:' + (currentPage === totalPages - 1 ? 'not-allowed;opacity:0.3' : 'pointer');
+      nextBtn.style.cssText = 'padding:6px 16px;font-size:12px;font-weight:var(--weight-bold);border-radius:6px;background:rgba(255,255,255,0.05);color:#fff;border:none;cursor:' + (currentPage === totalPages - 1 ? 'not-allowed;opacity:0.3' : 'pointer');
 
       var pageInfo = document.createElement('div');
       pageInfo.style.cssText = 'font-size:12px;color:rgba(255,255,255,0.5);font-weight:600';
-      pageInfo.innerHTML = sTx('Page ', 'صفحة ') + (currentPage + 1) + sTx(' of ', ' من ') + totalPages;
+      pageInfo.innerHTML = sTx('Page ', 'ØµÙØ­Ø© ') + (currentPage + 1) + sTx(' of ', ' Ù…Ù† ') + totalPages;
 
       prevBtn.onclick = function() {
         if (currentPage > 0) {
@@ -270,8 +292,8 @@
         }
       };
 
-      pagContainer.appendChild(nextBtn); // Next on the right for RTL? Wait, in RTL "Next" (التالي) should probably be on the left logically, but let's just do Prev -> Info -> Next
-      // Actually in RTL: right to left. So "Previous" (السابق) is to the right of "Next" (التالي).
+      pagContainer.appendChild(nextBtn); // Next on the right for RTL? Wait, in RTL "Next" (Ø§Ù„ØªØ§Ù„ÙŠ) should probably be on the left logically, but let's just do Prev -> Info -> Next
+      // Actually in RTL: right to left. So "Previous" (Ø§Ù„Ø³Ø§Ø¨Ù‚) is to the right of "Next" (Ø§Ù„ØªØ§Ù„ÙŠ).
       pagContainer.appendChild(prevBtn);
       pagContainer.appendChild(pageInfo);
       pagContainer.appendChild(nextBtn);
@@ -319,37 +341,90 @@
   window.renderProductMatrix = function (mountEl, geoData, filterBus) {
     if (!mountEl) return;
 
+    // A Cities pane is cached when the user navigates away. Tear down any
+    // controller from a previous render so a hidden matrix cannot keep a
+    // FilterBus subscription alive and rebuild itself off-screen.
+    if (mountEl._productMatrixLifecycle && typeof mountEl._productMatrixLifecycle.destroy === 'function') {
+      mountEl._productMatrixLifecycle.destroy();
+    }
+
     var bus = filterBus || window.DashboardFilterBus;
     buildGrid(mountEl, geoData, bus);
 
-    if (bus) {
-      var _prevProvince = (bus.getState && bus.getState().selectedProvince) || null;
+    var active = true;
+    var subscribed = false;
+    var observer = null;
+    var previousProvince = bus && bus.getState
+      ? (bus.getState().selectedProvince || null)
+      : null;
 
-      var _onBusChange = function (state) {
-        var newProv = state.selectedProvince || null;
-        if (newProv !== _prevProvince) {
-          _prevProvince = newProv;
-          // Note: buildGrid resets currentPage to 0, which is good when changing filters.
-          buildGrid(mountEl, geoData, bus);
+    function onBusChange(state) {
+      if (!active || !mountEl.isConnected) return;
+      var newProvince = state.selectedProvince || null;
+      if (newProvince === previousProvince) return;
+      previousProvince = newProvince;
+      // buildGrid resets currentPage, which is correct when filters change.
+      buildGrid(mountEl, geoData, bus);
+    }
+
+    function subscribe() {
+      if (!bus || subscribed || !active) return;
+      bus.subscribe(onBusChange);
+      subscribed = true;
+    }
+
+    function unsubscribe() {
+      if (!bus || !subscribed) return;
+      bus.unsubscribe(onBusChange);
+      subscribed = false;
+    }
+
+    var lifecycle = {
+      activate: function () {
+        active = true;
+        if (bus && bus.getState) {
+          var currentProvince = bus.getState().selectedProvince || null;
+          if (currentProvince !== previousProvince && mountEl.isConnected) {
+            previousProvince = currentProvince;
+            buildGrid(mountEl, geoData, bus);
+          }
         }
-      };
+        subscribe();
+      },
+      deactivate: function () {
+        active = false;
+        unsubscribe();
+      },
+      destroy: function () {
+        active = false;
+        unsubscribe();
+        if (observer) observer.disconnect();
+        observer = null;
+        if (mountEl._productMatrixLifecycle === lifecycle) {
+          mountEl._productMatrixLifecycle = null;
+        }
+      }
+    };
 
-      bus.subscribe(_onBusChange);
+    mountEl._productMatrixLifecycle = lifecycle;
 
-      var _observer = new MutationObserver(function (mutations) {
+    if (bus) {
+      subscribe();
+      observer = new MutationObserver(function (mutations) {
         mutations.forEach(function (m) {
           m.removedNodes.forEach(function (node) {
             if (node === mountEl || node.contains && node.contains(mountEl)) {
-              bus.unsubscribe(_onBusChange);
-              _observer.disconnect();
+              lifecycle.destroy();
             }
           });
         });
       });
       if (mountEl.parentElement) {
-        _observer.observe(mountEl.parentElement, { childList: true });
+        observer.observe(mountEl.parentElement, { childList: true });
       }
     }
+
+    return lifecycle;
   };
 
 })();

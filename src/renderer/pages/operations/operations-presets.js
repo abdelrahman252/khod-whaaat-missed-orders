@@ -12,8 +12,10 @@ function renderOpsAccountPerf(container, allRuns) {
       const runs   = allRuns.filter(r => _opsAccountMatches(r, account.key));
       const orders = _opsFlattenRuns(runs);
       const total  = orders.length;
-      const rev    = orders.reduce((s, o) => s + (Number(o.subtotal) || 0), 0);
-      const failed = orders.filter(o => o.orderStatus === "Failed").length;
+      const rev    = orders.reduce((s, o) => s + _opsDashboardRevenueValue(o), 0);
+      // Taager dashboard/status/NDR migration: Operations performance cards use
+      // Taager Arabic delivered/failed buckets when the shared helper is loaded.
+      const failed = orders.filter(o => typeof _opsIsFailed === "function" && _opsIsFailed(o)).length;
       return { key: account.key, label: account.label, total, rev, failed, runsCount: runs.length };
     });
 
@@ -49,12 +51,12 @@ function renderOpsAccountPerf(container, allRuns) {
                     <div class="ops-perf-rank-num">${rank}</div>
                     <div class="ops-perf-info">
                       <div class="ops-perf-email">${s.label || s.key || "-"}</div>
-                      <div class="ops-perf-meta">${_opsAcctPerfState.sortBy === "orders" ? _opsFmtSAR(s.rev) : `${s.total.toLocaleString()} ${window.t_ops('accountPerf.ordersCount')}`}</div>
+                      <div class="ops-perf-meta">${_opsAcctPerfState.sortBy === "orders" ? _opsFmtSAR(s.rev) : `${s.total.toLocaleString("en-US")} ${window.t_ops('accountPerf.ordersCount')}`}</div>
                       <div class="ops-perf-bar-track">
                         <div class="ops-perf-bar ops-animated-bar" style="width:${barW}%"></div>
                       </div>
                     </div>
-                    <div class="ops-perf-rev">${_opsAcctPerfState.sortBy === "orders" ? `${s.total.toLocaleString()} <span style="font-size:10px;font-weight:500;color:var(--text3)">${window.t_ops('accountPerf.ordersCount')}</span>` : _opsFmtSAR(s.rev)}</div>
+                    <div class="ops-perf-rev">${_opsAcctPerfState.sortBy === "orders" ? `${s.total.toLocaleString("en-US")} <span style="font-size:var(--type-micro);font-weight:var(--weight-medium);color:var(--text3)">${window.t_ops('accountPerf.ordersCount')}</span>` : _opsFmtSAR(s.rev)}</div>
                   </div>`;
               }).join("")
           }
@@ -130,11 +132,11 @@ function renderOpsProductPerf(container, allRuns) {
         valA = a.total || 0;
         valB = b.total || 0;
       } else if (_opsProdPerfState.sortBy === "deliveredPct") {
-        valA = a.count ? a.items.filter(o => (o.orderStatus || "").toLowerCase() === "delivered").length / a.count : 0;
-        valB = b.count ? b.items.filter(o => (o.orderStatus || "").toLowerCase() === "delivered").length / b.count : 0;
+        valA = a.count ? a.items.filter(o => typeof _opsIsDelivered === "function" && _opsIsDelivered(o)).length / a.count : 0;
+        valB = b.count ? b.items.filter(o => typeof _opsIsDelivered === "function" && _opsIsDelivered(o)).length / b.count : 0;
       } else if (_opsProdPerfState.sortBy === "failedPct") {
-        valA = a.count ? a.items.filter(o => o.orderStatus === "Failed").length / a.count : 0;
-        valB = b.count ? b.items.filter(o => o.orderStatus === "Failed").length / b.count : 0;
+        valA = a.count ? a.items.filter(o => typeof _opsIsFailed === "function" && _opsIsFailed(o)).length / a.count : 0;
+        valB = b.count ? b.items.filter(o => typeof _opsIsFailed === "function" && _opsIsFailed(o)).length / b.count : 0;
       } else {
         valA = a.count || 0;
         valB = b.count || 0;
@@ -146,12 +148,12 @@ function renderOpsProductPerf(container, allRuns) {
     const start = (_opsProdPerfState.page - 1) * _opsProdPerfState.perPage;
     const pageGroups = grouped.slice(start, start + _opsProdPerfState.perPage);
     const allOrderCount = _opsFlattenRuns(allRuns || []).length;
-    const accountOptions = [{ value: "", label: `${window.t_ops('productPerf.allAccounts')}  ${allOrderCount.toLocaleString()} ${window.t_ops('accountPerf.ordersCount')}` }]
+    const accountOptions = [{ value: "", label: `${window.t_ops('productPerf.allAccounts')}  ${allOrderCount.toLocaleString("en-US")} ${window.t_ops('accountPerf.ordersCount')}` }]
       .concat(accounts.map(a => {
         const count = _opsFlattenRuns((allRuns || []).filter(r => _opsAccountMatches(r, a.key))).length;
         return {
           value: a.key,
-          label: `${a.label || a.email || a.key}  ${count.toLocaleString()} ${window.t_ops('accountPerf.ordersCount')}`,
+          label: `${a.label || a.email || a.key}  ${count.toLocaleString("en-US")} ${window.t_ops('accountPerf.ordersCount')}`,
           subLabel: a.email && a.email !== a.label ? a.email : "",
         };
       }));
@@ -159,7 +161,7 @@ function renderOpsProductPerf(container, allRuns) {
     container.innerHTML = `
       <div class="ops-product-card">
         <div class="ops-product-header">
-          <div class="ops-section-title">📦 ${window.t_ops('productPerf.title')} <span style="font-size:11px;font-weight:400;color:var(--text3)">(${window.t_ops('productPerf.detailed')})</span></div>
+          <div class="ops-section-title">📦 ${window.t_ops('productPerf.title')} <span style="font-size:var(--type-caption);font-weight:var(--weight-regular);color:var(--text3)">(${window.t_ops('productPerf.detailed')})</span></div>
           <div class="ops-product-header-right">
             <div class="ops-product-search-wrap">
               <span class="ops-product-search-icon">🔍</span>
@@ -171,7 +173,7 @@ function renderOpsProductPerf(container, allRuns) {
               ${escapeHtml(window.t_ops('productPerf.clearSort', { default: 'Clear Sort' }))}
             </button>
             ${accounts.length > 1 ? `<div class="ops-product-account-select" id="ops-product-account-select"></div>` : ""}
-            <span style="font-size:11px;color:var(--text3)">${grouped.length} ${window.t_ops('productPerf.products')}</span>
+            <span style="font-size:var(--type-caption);color:var(--text3)">${grouped.length} ${window.t_ops('productPerf.products')}</span>
           </div>
         </div>
         <div class="ops-product-table-wrap">
@@ -190,10 +192,10 @@ function renderOpsProductPerf(container, allRuns) {
             ${pageGroups.length === 0
               ? `<tr><td colspan="6" style="text-align:center;padding:24px;color:var(--text3)">${window.t_ops('productPerf.empty')}</td></tr>`
               : pageGroups.map(g => {
-                  const failed = g.items.filter(o => o.orderStatus === "Failed").length;
+                  const failed = g.items.filter(o => typeof _opsIsFailed === "function" && _opsIsFailed(o)).length;
                   const refPct = g.count ? Math.round((failed / g.count) * 100) : 0;
                   const barW   = Math.round((g.count / maxCount) * 100);
-                  const delivered = g.items.filter(o => (o.orderStatus || "").toLowerCase() === "delivered").length;
+                   const delivered = g.items.filter(o => typeof _opsIsDelivered === "function" && _opsIsDelivered(o)).length;
                   const convPct = g.count ? Math.round((delivered / g.count) * 100) : 0;
                   const barColor = refPct > 10 ? "var(--danger)" : "var(--success)";
                   return `
@@ -201,13 +203,13 @@ function renderOpsProductPerf(container, allRuns) {
                       <td class="ops-product-name-cell" title="${escapeHtml(g.key || "")}">${escapeHtml(g.key || window.t_ops('orderDetails.unknown'))}</td>
                       <td>
                         <div style="display:flex;align-items:center;gap:8px">
-                          <span style="font-weight:600">${g.count}</span>
+                          <span style="font-weight:var(--weight-semibold)">${g.count}</span>
                           <div style="flex:1;background:var(--bg3);border-radius:4px;height:5px;min-width:40px">
                             <div class="ops-animated-bar" style="width:${barW}%;height:100%;background:var(--accent);border-radius:4px"></div>
                           </div>
                         </div>
                       </td>
-                      <td style="font-weight:600">${g.total.toLocaleString("en-SA", {minimumFractionDigits:2,maximumFractionDigits:2})}</td>
+                      <td style="font-weight:var(--weight-semibold)">${g.total.toLocaleString("en-SA", {minimumFractionDigits:2,maximumFractionDigits:2})}</td>
                       <td>${convPct}%</td>
                       <td class="${refPct > 10 ? "ops-danger-text" : ""}">${refPct}%</td>
                       <td class="ops-product-bar-cell">
@@ -341,7 +343,7 @@ async function renderOpsPresets(container, allRuns, onApplyPreset) {
   container.innerHTML = `
     <div class="ops-presets-card">
       <div class="ops-presets-header">
-        <div class="ops-section-title">⚡ Advanced Filters <span style="font-size:11px;font-weight:400;color:var(--text3)">(Saved Presets)</span></div>
+        <div class="ops-section-title">⚡ Advanced Filters <span style="font-size:var(--type-caption);font-weight:var(--weight-regular);color:var(--text3)">(Saved Presets)</span></div>
         <button class="ops-link-btn" id="ops-presets-manage">Manage</button>
       </div>
 
@@ -350,7 +352,7 @@ async function renderOpsPresets(container, allRuns, onApplyPreset) {
         ${allPresets.map(p => `
           <div class="ops-preset-chip" data-preset-id="${p.id}" style="border-color:${p.color || "var(--border)"}44">
             <div class="ops-preset-chip-name" style="color:${p.color || "var(--text)"}">${p.name}</div>
-            <div class="ops-preset-chip-count">${(p.orderCount || 0).toLocaleString()} orders</div>
+            <div class="ops-preset-chip-count">${(p.orderCount || 0).toLocaleString("en-US")} orders</div>
             ${!p.builtin ? `<button class="ops-preset-chip-del" data-preset-id="${p.id}">✕</button>` : ""}
           </div>`).join("")}
       </div>

@@ -16,6 +16,13 @@
     return String(value == null ? "" : value).replace(/\s+/g, " ").trim().slice(0, max || 180);
   }
 
+  function responseLanguage(text) {
+    if (window.KhodAiShared && typeof window.KhodAiShared.responseLanguage === "function") {
+      return window.KhodAiShared.responseLanguage(text);
+    }
+    return /[\u0600-\u06ff]/.test(String(text || "")) ? "ar" : "en";
+  }
+
   function fmt(value) {
     return Math.round(num(value)).toLocaleString("en-US");
   }
@@ -73,10 +80,12 @@
   function normalizeRoiSettings(value) {
     value = value || {};
     var adSpend = Number(value.adSpend);
+    var egpRate = Number(value.egpRate);
     var currency = clean(value.currency || "SAR", 12).toUpperCase();
     return {
       adSpend: isFinite(adSpend) && adSpend >= 0 ? adSpend : 0,
-      currency: /^(SAR|USD)$/.test(currency) ? currency : "SAR"
+      currency: /^(SAR|USD|EGP|AED|IQD|OMR)$/.test(currency) ? currency : (window.dashboardActiveCurrency || "SAR"),
+      egpRate: isFinite(egpRate) && egpRate > 0 ? egpRate : 52
     };
   }
 
@@ -93,7 +102,11 @@
     var hasStoredSpend = false;
     try {
       if (window.localStorage) {
-        stored = JSON.parse(window.localStorage.getItem("khod_roi_settings_" + accountId) || "null");
+        stored = JSON.parse(
+          window.localStorage.getItem("taager_roi_settings_" + accountId) ||
+          window.localStorage.getItem("khod_roi_settings_" + accountId) ||
+          "null"
+        );
         hasStoredSpend = !!(stored && isFinite(Number(stored.adSpend)) && Number(stored.adSpend) > 0);
       }
     } catch (_) {}
@@ -101,7 +114,8 @@
       var syncedCurrency = (syncedSummary.currency || marketing.currency || (stored && stored.currency) || fallback.currency || "SAR");
       var synced = normalizeRoiSettings({
         adSpend: syncedSummary.adSpend,
-        currency: syncedCurrency
+        currency: syncedCurrency,
+        egpRate: stored && stored.egpRate || fallback.egpRate || 52
       });
       synced.hasExplicitSpend = true;
       synced.source = "syncedMarketing";
@@ -111,7 +125,8 @@
     }
     var settings = normalizeRoiSettings(stored || {
       adSpend: fallback.adSpend,
-      currency: fallback.currency || "SAR"
+      currency: fallback.currency || "SAR",
+      egpRate: fallback.egpRate || 52
     });
     settings.hasExplicitSpend = hasStoredSpend;
     settings.source = hasStoredSpend ? "savedCalculator" : "missing";
@@ -124,9 +139,9 @@
     if (!settings.adSpend || !settings.hasExplicitSpend) return null;
     var products = getProducts(data || {});
     var totalPlaced = products.reduce(function (sum, p) {
-      return sum + num(p.placedCount || p.orders);
+      return sum + num(p.netOrderCount != null ? p.netOrderCount : (p.orders != null ? p.orders : p.placedCount));
     }, 0);
-    var placed = num(product.placedCount || product.orders);
+    var placed = num(product.netOrderCount != null ? product.netOrderCount : (product.orders != null ? product.orders : product.placedCount));
     if (!totalPlaced || !placed) return null;
     return {
       amount: Math.round((settings.adSpend * placed / totalPlaced) * 100) / 100,
@@ -138,13 +153,16 @@
 
   function extractMoneyAnswer(text) {
     var raw = clean(text, 120);
-    var match = raw.match(/(?:spend|spent|budget|ad\s*spend)?\s*([0-9][0-9,]*(?:\.[0-9]+)?)\s*(sar|usd|ريال|دولار)?/i);
+    var match = raw.match(/(?:spend|spent|budget|ad\s*spend)?\s*([0-9][0-9,]*(?:\.[0-9]+)?)\s*(sar|usd|egp|aed|iqd|omr|ريال|دولار|جنيه|درهم|دينار)?/i);
     if (!match) return null;
     var amount = Number(String(match[1]).replace(/,/g, ""));
     if (!amount || amount <= 0) return null;
     var currency = (match[2] || "").toUpperCase();
     if (currency === "ريال") currency = "SAR";
     if (currency === "دولار") currency = "USD";
+    if (currency === "جنيه") currency = "EGP";
+    if (currency === "درهم") currency = "AED";
+    if (currency === "دينار") currency = "IQD";
     return { amount: amount, currency: currency || null };
   }
 
@@ -152,13 +170,26 @@
     var currency = clean(value, 20).toUpperCase();
     if (currency === "ريال") return "SAR";
     if (currency === "دولار") return "USD";
-    return currency || null;
+    if (currency === "جنيه") return "EGP";
+    if (currency === "درهم") return "AED";
+    if (currency === "دينار") return "IQD";
+    return /^(SAR|USD|EGP|AED|IQD|OMR)$/.test(currency) ? currency : null;
+  }
+
+  function roiEgpRate(data) {
+    var roi = data && data.roi ? data.roi : {};
+    var settings = readAccountRoiSettings(data || {});
+    return Number(settings.egpRate || roi.egpRate || 52) || 52;
   }
 
   function sarToCurrency(valueSar, currency, data) {
     var sar = num(valueSar);
     currency = normalizeCurrency(currency || "SAR") || "SAR";
+    if (window.TaagerCurrency && typeof window.TaagerCurrency.convert === "function") {
+      return window.TaagerCurrency.convert(sar, window.dashboardActiveCurrency || "SAR", currency);
+    }
     if (currency === "USD") return sar / 3.75;
+    if (currency === "EGP") return (sar / 3.75) * roiEgpRate(data || {});
     return sar;
   }
 
@@ -170,9 +201,17 @@
     var pending = memory && memory.pendingMissingInputs;
     if (!pending) return null;
     var cleaned = clean(text, 500);
+    var looksLikeArabicQuestion =
+      /(?:ما|ماذا|لماذا|ليه|كيف|أي|اي|أين|اين|اعرض|أظهر|اظهر|حلل|قارن).*(?:حساب|مدينة|مدن|منتج|منتجات|NDR|CPA|ربح|خسار|طلبات)/i.test(cleaned) ||
+      /(?:أفضل|افضل|أضعف|اضعف|أسوأ|اسوأ|أقل|اقل|أعلى|اعلى).*(?:مدن|منتجات|حملات)/i.test(cleaned);
+    var looksLikePlanRequest =
+      /\b(?:build|make|create|give me)\b.*\b(?:scale|scaling|growth)\s+plan\b|\bplan\b.*\b(?:scale|scaling|growth)\b/i.test(cleaned) ||
+      /(?:ابن|اعمل|ضع|جهز).*خطة.*(?:توسع|توسيع)|خطة.*(?:توسع|توسيع)/.test(cleaned);
     var looksLikeNewQuestion =
       /\b(what|which|why|how|show|top|worst|best|strongest|weakest|highest|lowest|analyze|compare)\b/i.test(cleaned) ||
-      (/\b(account|city|cities|product|products|app|apps|ndr|cpa|roi|profit|commission|orders)\b/i.test(cleaned) && /\?/.test(cleaned));
+      (/\b(account|city|cities|product|products|app|apps|ndr|cpa|roi|profit|commission|orders)\b/i.test(cleaned) && /\?/.test(cleaned)) ||
+      looksLikeArabicQuestion ||
+      looksLikePlanRequest;
     if (pending.scope === "product_lookup") {
       if (looksLikeNewQuestion) {
         if (window.KhodAiSessionMemory) window.KhodAiSessionMemory.clearPending();
@@ -185,8 +224,8 @@
       };
     }
     var money = extractMoneyAnswer(text);
-    var currencyOnly = clean(text, 20).match(/^(sar|usd|ريال|دولار)$/i);
-    if (!money && !currencyOnly && /\b(what|which|why|how|show|top|worst|best|strongest|weakest|highest|lowest|analyze|compare|city|cities|product|products|app|apps|ndr|cpa|roi|profit|commission)\b/i.test(cleaned)) {
+    var currencyOnly = clean(text, 20).match(/^(sar|usd|egp|aed|iqd|omr|ريال|دولار|جنيه|درهم|دينار)$/i);
+    if (!money && !currencyOnly && looksLikeNewQuestion) {
       if (window.KhodAiSessionMemory) window.KhodAiSessionMemory.clearPending();
       return null;
     }
@@ -196,7 +235,9 @@
     if (!money) {
       return {
         mode: "followup",
-        message: "I still need the spend amount and currency to finish the profitability analysis. Please send it like: 500 SAR or 120 USD."
+        message: responseLanguage(pending.originalQuestion || text) === "ar"
+          ? "ما زلت أحتاج مبلغ الإنفاق والعملة لإكمال تحليل الربحية. أرسله مثل: 500 SAR أو 120 USD أو 8000 EGP أو 250 AED."
+          : "I still need the spend amount and currency to finish the profitability analysis. Please send it like: 500 SAR, 120 USD, 8000 EGP, or 250 AED."
       };
     }
     var currency = normalizeCurrency(money.currency || pending.currency || memory.knownInputs && memory.knownInputs.currency);
@@ -206,7 +247,9 @@
       }
       return {
         mode: "followup",
-        message: "Got the spend amount. Which currency is it in: SAR or USD?"
+        message: responseLanguage(pending.originalQuestion || text) === "ar"
+          ? "تم استلام مبلغ الإنفاق. ما العملة: SAR أو USD أو EGP أو AED أو IQD أو OMR؟"
+          : "Got the spend amount. Which currency is it in: SAR, USD, EGP, AED, IQD, or OMR?"
       };
     }
     if (window.KhodAiSessionMemory) {
@@ -265,6 +308,11 @@
     return /\b(why|losing|loss|profit|profitable|margin|cpa|roi|roas|scale|budget|spend)\b/i.test(text);
   }
 
+  function hasDashboardAccountCpa(data) {
+    var roi = data && data.roi || {};
+    return roi.avgCPA != null || roi.actualCpa != null || roi.cpa != null;
+  }
+
   function getKnownProductSpend(productName, product, data) {
     var memory = getMemory();
     var saved = memory.knownInputs && memory.knownInputs.productSpend
@@ -300,6 +348,10 @@
     var spend = productName ? getKnownProductSpend(productName, product, data) : accountSpend;
     var currency = spend && spend.currency || getMemory().knownInputs && getMemory().knownInputs.currency;
 
+    if (!productName && parsedIntent.intent === "KPI_ANALYSIS" && /\bcpa\b/i.test(clean(parsedIntent.rawText, 500)) && hasDashboardAccountCpa(data)) {
+      return { ok: true, missing: [], spend: spend || null, currency: currency || accountSettings.currency || "SAR" };
+    }
+
     if (!spend || !spend.amount) missing.push("spend");
     if (!currency) missing.push("currency");
     if (!missing.length) return { ok: true, missing: [], spend: spend, currency: currency };
@@ -309,9 +361,13 @@
       missing: missing,
       product: productName || "",
       scope: productName ? "product" : "account",
-      message: productName
-        ? "I can analyze " + productName + ", but I still need the advertising spend for this product to calculate CPA and profitability accurately. How much did you spend, and in which currency (SAR/USD)?"
-        : "I can analyze the account, but I need the advertising spend and currency to calculate CPA and profitability accurately. How much did you spend, and in which currency (SAR/USD)?"
+      message: responseLanguage(parsedIntent.rawText) === "ar"
+        ? (productName
+          ? "يمكنني تحليل " + productName + "، لكن أحتاج إنفاقه الإعلاني والعملة لحساب CPA والربحية بدقة. كم أنفقت وبأي عملة (SAR/USD/EGP/AED/IQD/OMR)؟"
+          : "يمكنني تحليل الحساب، لكن أحتاج الإنفاق الإعلاني والعملة لحساب CPA والربحية بدقة. كم أنفقت وبأي عملة (SAR/USD/EGP/AED/IQD/OMR)؟")
+        : (productName
+          ? "I can analyze " + productName + ", but I still need the advertising spend for this product to calculate CPA and profitability accurately. How much did you spend, and in which currency (SAR/USD/EGP/AED/IQD/OMR)?"
+          : "I can analyze the account, but I need the advertising spend and currency to calculate CPA and profitability accurately. How much did you spend, and in which currency (SAR/USD/EGP/AED/IQD/OMR)?")
     };
   }
 
@@ -327,7 +383,9 @@
       ok: false,
       missing: missing,
       scope: "calculator",
-      message: "I can run the calculator locally, but I need the missing calculator input first: " + missing.join(" and ") + ". Send the amount and currency, for example 500 SAR."
+      message: responseLanguage(parsedIntent.rawText) === "ar"
+        ? "يمكنني تشغيل الحاسبة محليًا، لكن أحتاج أولًا إلى البيانات الناقصة: " + missing.join(" و") + ". أرسل المبلغ والعملة، مثل 500 SAR."
+        : "I can run the calculator locally, but I need the missing calculator input first: " + missing.join(" and ") + ". Send the amount and currency, for example 500 SAR."
     };
   }
 
@@ -341,7 +399,7 @@
     var ndr = pct(product.ndrPct || product.deliveryPct || (orders ? delivered / orders : 0));
     var cancel = pct(product.cancelPct || 0);
     var cpa = spend && spend.amount && orders ? spend.amount / orders : null;
-    var avgCommissionSar = window.KhodFinancialMetrics.averageCommission(commission, delivered);
+    var avgCommissionSar = delivered > 0 ? commission / Math.max(1, delivered) : 0;
     var breakEvenSar = breakEvenCpaSar(avgCommissionSar, ndr);
     var breakEvenCurrency = spend && spend.currency || data && data.roi && data.roi.currency || "SAR";
     var breakEven = sarToCurrency(breakEvenSar, breakEvenCurrency, data);
@@ -398,6 +456,12 @@
 
   function productClarificationMessage(parsedIntent) {
     var entities = parsedIntent && parsedIntent.entities || {};
+    if (responseLanguage(parsedIntent && parsedIntent.rawText) === "ar") {
+      var arabicCandidates = Array.isArray(entities.productCandidates) ? entities.productCandidates.filter(Boolean) : [];
+      if (arabicCandidates.length) return "وجدت أكثر من منتج محتمل: " + arabicCandidates.slice(0, 4).join("، ") + ". أي منتج تقصد؟";
+      if (entities.productQueryTooShort) return "اسم المنتج غير واضح بما يكفي. أرسل الاسم الكامل أو جزءًا أوضح منه.";
+      return "أي منتج تقصد؟ أرسل اسم المنتج أو SKU لأستخدم بياناته الدقيقة.";
+    }
     var candidates = Array.isArray(entities.productCandidates) ? entities.productCandidates.filter(Boolean) : [];
     if (candidates.length) {
       return "I found more than one possible product. Which one do you mean?\n\n" +
@@ -410,11 +474,17 @@
     return "Which product do you mean? Send the product name exactly as it appears in Product Analytics, or any clear unique part of it, and I will calculate CPA, NDR, commission, and P&L.";
   }
 
-  function productMetricResponse(product, data, dependency) {
+  function productMetricResponse(product, data, dependency, question) {
     var summary = productSummary(product, dependency && dependency.spend, data);
-    if (!summary) return "No matching product record was found in the current dashboard mode.";
+    var ar = responseLanguage(question) === "ar";
+    if (!summary) return ar ? "لم أجد سجلًا مطابقًا للمنتج في وضع لوحة التحكم الحالي." : "No matching product record was found in the current dashboard mode.";
     var currency = summary.spend && summary.spend.currency || dependency && dependency.currency || "";
     if (!summary.spend || !summary.spend.amount) {
+      if (ar) {
+        return "وجدت " + summary.name + "، لكن أحتاج الإنفاق الإعلاني والعملة لحساب CPA والربحية بدقة." +
+          "\n\nالبيانات الحالية: " + fmt(summary.orders) + " طلب، " + fmt(summary.delivered) + " طلب مسلم، NDR " + summary.ndr + "%، نسبة الإلغاء " + summary.cancelRate + "%، المبيعات المسلمة " + fmt(summary.deliveredSales) + " SAR، متوسط الطلب المسلم " + fmt(summary.deliveredAov) + " SAR، والعمولة " + fmt(summary.commission) + " SAR." +
+          "\n\nأرسل الإنفاق مثل 500 SAR أو 120 USD أو 8000 EGP وسأحسب CPA وP&L من بيانات لوحة التحكم الحالية.";
+      }
       return "I found " + summary.name + ", but I still need the advertising spend and currency to calculate CPA and profitability accurately." +
         "\n\nCurrent facts: " +
         fmt(summary.orders) + " orders, " +
@@ -424,7 +494,7 @@
         fmt(summary.deliveredSales) + " SAR delivered sales, " +
         fmt(summary.deliveredAov) + " SAR delivered AOV, " +
         fmt(summary.commission) + " SAR commission." +
-        "\n\nSend the spend like 500 SAR or 120 USD and I will calculate CPA and P&L from the current dashboard data.";
+        "\n\nSend the spend like 500 SAR, 120 USD, or 8000 EGP and I will calculate CPA and P&L from the current dashboard data.";
     }
     var spendLine = summary.spend
       ? ", allocated ad spend " + fmt(summary.spend.amount) + (currency ? " " + currency : "")
@@ -438,7 +508,18 @@
     var profitLine = summary.profit != null
       ? ", P&L " + summary.profit.toLocaleString("en-US") + (currency ? " " + currency : "")
       : "";
-    var mode = data && data.meta && data.meta.deliveredDateMode === "createdAt" ? "Created At" : "Last Updated";
+    var mode = data && data.meta && data.meta.deliveredDateMode === "expected" ? "Expected NDR" : "Actual Delivered";
+    if (ar) {
+      var arabicFinancial = summary.spend
+        ? "، الإنفاق الإعلاني المخصص " + fmt(summary.spend.amount) + (currency ? " " + currency : "")
+        : "";
+      if (summary.cpa != null) arabicFinancial += "، CPA " + summary.cpa.toLocaleString("en-US") + (currency ? " " + currency : "");
+      if (summary.breakEvenCpa) arabicFinancial += "، CPA التعادل " + summary.breakEvenCpa.toLocaleString("en-US") + " " + (summary.breakEvenCurrency || currency || "SAR");
+      if (summary.profit != null) arabicFinancial += "، P&L " + summary.profit.toLocaleString("en-US") + (currency ? " " + currency : "");
+      return "بالنسبة إلى " + summary.name + "، يبلغ CPA " + (summary.cpa != null ? summary.cpa.toLocaleString("en-US") + (currency ? " " + currency : "") : "غير متاح حاليًا") + "." +
+        "\n\nالقراءة الكاملة في وضع " + mode + ": " + fmt(summary.orders) + " طلب، " + fmt(summary.delivered) + " طلب مسلم، NDR " + summary.ndr + "%، نسبة الإلغاء " + summary.cancelRate + "%، المبيعات المسلمة " + fmt(summary.deliveredSales) + " SAR، متوسط الطلب المسلم " + fmt(summary.deliveredAov) + " SAR، والعمولة " + fmt(summary.commission) + " SAR" + arabicFinancial + "." +
+        "\n\nالمعنى: CPA التعادل هو الحد الأقصى لـCPA قبل أن يبدأ المنتج في الخسارة. إذا كان CPA الفعلي أعلى منه، فزيادة الإنفاق غالبًا ستزيد الخسائر.";
+    }
     return "For " + summary.name + ", the CPA is " + (summary.cpa != null ? summary.cpa.toLocaleString("en-US") + (currency ? " " + currency : "") : "not available yet") + "." +
       "\n\nHere is the full read in " + mode + " mode: " +
       fmt(summary.orders) + " orders, " +
@@ -450,7 +531,7 @@
       fmt(summary.commission) + " SAR commission" +
       spendLine + cpaLine + breakEvenLine + profitLine + "." +
       "\n\nWhat it means: break-even CPA is the maximum CPA before this product loses money. It equals average commission per delivered order multiplied by NDR. If actual CPA is above break-even CPA, scaling this product will likely increase losses. If it is lower, then the next thing to check is delivery quality, because low NDR can still kill profit even when CPA looks acceptable." +
-      "\n\nNext steps:\n- Compare this product against your best product by CPA, NDR, and P&L.\n- If P&L is negative, reduce spend or pause until delivery quality improves.\n- Switch the top mode between Created At and Last Updated when you want the delivered numbers recalculated by that mode.";
+      "\n\nNext steps:\n- Compare this product against your best product by CPA, NDR, and P&L.\n- If P&L is negative, reduce spend or pause until delivery quality improves.\n- Switch the top mode between Actual Delivered and Expected NDR to compare realized and projected performance.";
   }
 
   function citySummary(city) {
@@ -464,7 +545,12 @@
       delivered: delivered,
       ndr: Math.round(pct(orders ? delivered / orders : city.ndrPct || city.drPct || 0) * 10) / 10,
       deliveryRate: Math.round(pct(city.drBaseOrders ? delivered / city.drBaseOrders : city.drPct || 0) * 10) / 10,
-      commission: Math.round(num(city.earnedCommission) * 100) / 100,
+      earnedProfitAfterTax: Math.round(num(
+        city.earnedProfitAfterTax != null ? city.earnedProfitAfterTax : city.earnedCommission
+      ) * 100) / 100,
+      commission: Math.round(num(
+        city.earnedProfitAfterTax != null ? city.earnedProfitAfterTax : city.earnedCommission
+      ) * 100) / 100,
       deliveredSales: Math.round(deliveredSales * 100) / 100,
       deliveredAov: Math.round(num(city.deliveredAov || (delivered ? deliveredSales / Math.max(1, delivered) : 0)) * 100) / 100,
       codPct: Math.round(pct(orders ? num(city.codCount) / orders : city.codPct || 0) * 10) / 10,
@@ -509,8 +595,9 @@
     var delivered = num(product.delivered);
     var ndr = num(product.ndr);
     var cancelRate = num(product.cancelRate);
-    var evaluation = window.KhodCampaignDecision && typeof window.KhodCampaignDecision.evaluate === "function"
-      ? window.KhodCampaignDecision.evaluate({
+    var decisionEngine = window.KhodCampaignDecision || window.TaagerCampaignDecision;
+    var evaluation = decisionEngine && typeof decisionEngine.evaluate === "function"
+      ? decisionEngine.evaluate({
         orders: orders,
         delivered: delivered,
         ndrPct: ndr,
@@ -520,11 +607,7 @@
         netProfit: product.profit,
         cities: product.topCities
       })
-      : {
-        decision: "watch",
-        reasons: ["Campaign decision evaluator is unavailable."],
-        nextAction: "Collect more evidence before changing spend."
-      };
+      : { decision: "watch", reasons: ["Campaign decision evaluator is unavailable."], nextAction: "Collect more evidence before changing spend." };
     var decision = evaluation.decision;
     var reasons = evaluation.reasons && evaluation.reasons.length
       ? evaluation.reasons
@@ -571,10 +654,11 @@
   }
 
   function buildMediaBuyingContext(data, productName) {
-    if (!window.KhodCampaignIntelligence || typeof window.KhodCampaignIntelligence.build !== "function") {
+    var campaignIntelligence = window.TaagerCampaignIntelligence || window.KhodCampaignIntelligence;
+    if (!campaignIntelligence || typeof campaignIntelligence.build !== "function") {
       return null;
     }
-    var intel = window.KhodCampaignIntelligence.build({
+    var intel = campaignIntelligence.build({
       data: data || {},
       productName: productName || "",
       limit: 20
@@ -590,14 +674,14 @@
       creativeSummary: intel.creativeSummary,
       productFocus: intel.productFocus || null,
       caps: intel.caps,
-      playbook: window.KhodCampaignIntelligence.playbook ? window.KhodCampaignIntelligence.playbook() : null
+      playbook: campaignIntelligence.playbook ? campaignIntelligence.playbook() : null
     };
   }
 
   function detectWorkflowIntent(text) {
     var value = clean(text, 500).toLowerCase();
     return {
-      asksBadProducts: /\b(bad|worst|weak|losing|danger|risky|fix.*product|make.*better)\b/i.test(value),
+      asksBadProducts: /\b(bad|worst|weak|losing|danger|risky)\s+(product|products|app|apps)\b|\b(products|apps)\s+(losing|to\s+fix|are\s+bad|are\s+weak)\b|\bfix.*product\b|\bmake.*product.*better\b/i.test(value),
       asksScaleDecision: /\b(scale\s+or\s+no|should\s+i\s+scale|can\s+i\s+scale|best.*scale|what.*scale)\b/i.test(value),
       asksNextAction: isVagueActionFollowUp(value) || isStepByStepFollowUp(value)
     };
@@ -623,7 +707,8 @@
       ? Math.round((num(accountSpend.amount) / Math.max(1, num(data.overview.totalOrders.value || data.overview.totalOrders))) * 100) / 100
       : null;
     var roi = data && data.roi || {};
-    var accountBreakEvenSar = breakEvenCpaSar(roi.avgCommission || accountHealth.metrics.avgCommission || 0, roi.ndrPct || accountHealth.metrics.ndr || 0);
+    var accountAverageProfit = roi.averageProfit != null ? roi.averageProfit : roi.avgCommission;
+    var accountBreakEvenSar = breakEvenCpaSar(accountAverageProfit || accountHealth.metrics.avgCommission || 0, roi.ndrPct || accountHealth.metrics.ndr || 0);
     var accountBreakEvenCurrency = accountSpend && accountSpend.currency || roi.currency || "SAR";
     var accountBreakEvenCpa = accountBreakEvenSar ? sarToCurrency(accountBreakEvenSar, accountBreakEvenCurrency, data) : 0;
     var localAnswer = window.KhodAiAnalyticsEngine && window.KhodAiAnalyticsEngine.localResponse
@@ -652,6 +737,7 @@
         pendingLearningSuggestion: getMemory().pendingLearningSuggestion || null
       },
       workflowIntent: workflowIntent,
+      rankingContract: parsedIntent.entities && parsedIntent.entities.rankingContract || null,
       localAnswer: clean(localAnswer, 1400),
       localResultType: analyticsResult && analyticsResult.type || "",
       localResultRows: Array.isArray(exactRows) ? exactRows.slice(0, 6) : exactRows,
@@ -663,7 +749,7 @@
         timeframe: getMemory().currentTimeframe || null,
         account: meta.activeAccountName || meta.activeAccountLabel || meta.activeAccountId || null,
         accountScope: meta.activeAccountId && meta.activeAccountId !== "__all__" ? "single_account" : "all_accounts",
-        deliveredDateMode: meta.deliveredDateMode === "createdAt" ? "Created At" : "Last Updated"
+        deliveredDateMode: meta.deliveredDateMode === "expected" ? "Expected NDR" : "Actual Delivered"
       },
       accountHealth: {
         revenue: accountHealth.metrics.revenue,
@@ -707,7 +793,7 @@
         profitComputedLocally: !!(product && product.profit != null),
         cpaComputedLocally: !!(product && product.cpa != null)
       },
-      operatorInstruction: "Answer only from current dashboard state. Use delivered sales, delivered AOV, earned commission, lost commission, NDR, DR, CPA, and break-even CPA together before judging business health. Break-even CPA means max CPA before losing money, formula avgCommission * NDR. NDR means Net Delivery Rate / delivery from created orders, so higher NDR is better. For media buying, platform data is spend/campaign/creative signal only; final orders, NDR, CPA, break-even, product quality, city quality, and scale decisions must come from KHOD dashboard data."
+      operatorInstruction: "Answer only from current dashboard state. Use delivered sales, delivered AOV, earned commission, lost commission, NDR, DR, CPA, and break-even CPA together before judging business health. Break-even CPA means max CPA before losing money, formula avgCommission * NDR. NDR means Net Delivery Rate / delivery from created orders, so higher NDR is better. For media buying, platform data is spend/campaign/creative signal only; final orders, NDR, CPA, break-even, product quality, city quality, and scale decisions must come from Taager dashboard data."
     };
   }
 
@@ -732,43 +818,40 @@
       }
     }
     var actions = [];
-    if (parsedIntent.intent === "RANKING_QUERY") actions.push({ type: "OPEN_PAGE", label: "View Ranked Products", route: "/dashboard/products?sort=ranked", section: "products" });
-    if (parsedIntent.intent === "RANKING_QUERY" && parsedIntent.entities && parsedIntent.entities.rankingEntity === "cities") {
-      actions = [{ type: "OPEN_PAGE", label: "Open City Analytics", route: "/dashboard/cities?sort=commission", section: "cities" }];
+    var ar = responseLanguage(parsedIntent.rawText) === "ar";
+    var contract = parsedIntent.entities && parsedIntent.entities.rankingContract || {};
+    if (parsedIntent.intent === "RANKING_QUERY") {
+      actions.push({
+        type: "OPEN_PAGE",
+        label: ar ? "عرض ترتيب المنتجات" : "View Ranked Products",
+        route: "/dashboard/products?sort=" + encodeURIComponent(contract.metric || "commission") + "&direction=" + encodeURIComponent(contract.direction || "desc"),
+        section: "products",
+        sort: contract.metric || "commission",
+        query: contract.direction || "desc"
+      });
     }
-    if (parsedIntent.intent === "KPI_ANALYSIS") actions.push({ type: "OPEN_PAGE", label: "Open KPI Overview", route: "/dashboard/overview", section: "overview" });
-    if (parsedIntent.intent === "COMPARISON_QUERY") actions.push({ type: "OPEN_PAGE", label: "Compare Dashboard Signals", route: "/dashboard/products?view=compare", section: "products" });
-    if (parsedIntent.intent === "CALCULATOR_SIMULATION") actions.push({ type: "OPEN_PAGE", label: "Open Calculator", route: "/dashboard/calculator", section: "calculator" });
-    if (parsedIntent.intent === "SCALE_ANALYSIS") actions.push({ type: "OPEN_PAGE", label: "View Scale Candidates", route: "/dashboard/products?sort=scale", section: "products" });
+    if (parsedIntent.intent === "RANKING_QUERY" && parsedIntent.entities && parsedIntent.entities.rankingEntity === "cities") {
+      actions = [{
+        type: "OPEN_PAGE",
+        label: ar ? "فتح تحليل المدن" : "Open City Analytics",
+        route: "/dashboard/cities?sort=" + encodeURIComponent(contract.metric || "commission") + "&direction=" + encodeURIComponent(contract.direction || "desc"),
+        section: "cities",
+        sort: contract.metric || "commission",
+        query: contract.direction || "desc"
+      }];
+    }
+    if (parsedIntent.intent === "KPI_ANALYSIS") actions.push({ type: "OPEN_PAGE", label: ar ? "فتح نظرة المؤشرات" : "Open KPI Overview", route: "/dashboard/overview", section: "overview" });
+    if (parsedIntent.intent === "COMPARISON_QUERY") actions.push({ type: "OPEN_PAGE", label: ar ? "مقارنة بيانات لوحة التحكم" : "Compare Dashboard Signals", route: "/dashboard/products?view=compare", section: "products" });
+    if (parsedIntent.intent === "CALCULATOR_SIMULATION") actions.push({ type: "OPEN_PAGE", label: ar ? "فتح الحاسبة" : "Open Calculator", route: "/dashboard/calculator", section: "calculator" });
+    if (parsedIntent.intent === "SCALE_ANALYSIS") actions.push({ type: "OPEN_PAGE", label: ar ? "عرض مرشحي التوسع" : "View Scale Candidates", route: "/dashboard/products?sort=scale", section: "products" });
+    if (window.KhodAiShared && window.KhodAiShared.sanitizeActions) actions = window.KhodAiShared.sanitizeActions(actions);
     return { mode: "local", message: text, actions: actions, parsedIntent: parsedIntent, analyticsResult: analyticsResult };
   }
 
   function ensureTips(message, parsedIntent, actions) {
     var text = clean(message, 1800);
     if (!text) text = "Dashboard analysis is ready.";
-    if (/Tips:/i.test(text)) return text;
-    var tips = [];
-    var intent = parsedIntent && parsedIntent.intent || "";
-    if (intent === "RANKING_QUERY") {
-      tips.push("Open the ranked section and compare the first item against the account average.");
-      tips.push("Check NDR, delivered orders, and commission before increasing spend.");
-    } else if (intent === "CALCULATOR_SIMULATION") {
-      tips.push("Use the calculator with current spend, currency, and delivery assumptions.");
-      tips.push("Test one conservative scenario before scaling budget.");
-    } else if (intent === "KPI_ANALYSIS") {
-      tips.push("Compare this KPI with delivery rate, cancellation rate, and lost commission.");
-      tips.push("Prioritize the product or city creating the largest negative movement.");
-    } else if (intent === "COMPARISON_QUERY") {
-      tips.push("Compare both sides using the same date mode and account filter.");
-      tips.push("Act on the side with better delivery quality and lower risk first.");
-    } else {
-      tips.push("Start with the biggest loss signal before changing spend.");
-      tips.push("Use the linked dashboard action to inspect the underlying orders.");
-    }
-    if (actions && actions[0] && actions[0].label) {
-      tips.push("Next action: " + clean(actions[0].label, 80) + ".");
-    }
-    return text + "\n\nTips:\n- " + tips.slice(0, 3).join("\n- ");
+    return text;
   }
 
   function buildGuidedWorkflow(strategicContext, parsedIntent, actionFollowUp) {
@@ -791,7 +874,7 @@
     if (h.breakEvenCpa) proof.push("break-even CPA " + Math.round(num(h.breakEvenCpa) * 100) / 100 + " " + (h.breakEvenCurrency || "SAR"));
     var focus = product ? "Product focus: " + product + "." : (city ? "City focus: " + city + "." : "Account focus: current selected dashboard scope.");
     var steps = [
-      "Step 1: Confirm the current scope: selected account/date range and delivered counted by " + ((strategicContext.sessionFocus && strategicContext.sessionFocus.deliveredDateMode) || "Last Updated") + ".",
+      "Step 1: Confirm the current scope: selected account/date range and mode " + ((strategicContext.sessionFocus && strategicContext.sessionFocus.deliveredDateMode) || "Actual Delivered") + ".",
       "Step 2: Read commercial health together: " + (proof.length ? proof.join(", ") : "delivered sales, delivered AOV, earned commission, lost commission, NDR, DR, CPA, and break-even CPA") + ".",
       "Step 3: Open the worst products or weakest cities and find the segment with order volume plus low delivery quality.",
       "Step 4: Pause or reduce traffic only on the dangerous segment while you check confirmation, product promise, and delivery issues.",
@@ -801,7 +884,7 @@
       steps[3] = "Step 4: Do not scale anything unless it has enough orders, enough delivered orders, stable NDR, healthy delivered AOV, positive commission/P&L, and CPA below break-even CPA.";
     }
     return {
-      message: lead + "\n\n" + focus + "\n\n" + steps.join("\n") + "\n\nTips:\n- Make one change at a time so the next dashboard refresh proves whether it worked.\n- Do not increase ads while delivery quality is weak or CPA is above break-even CPA.\n- Use the action buttons to open the exact dashboard section for the next step.",
+      message: lead + "\n\n" + focus + "\n\n" + steps.join("\n") + "\n\nNext move: Make one change at a time, then use the next dashboard refresh to prove whether it worked.",
       actions: actions,
       insights: [],
       recommendations: steps.slice(2, 5).map(function (step, idx) {
@@ -854,7 +937,7 @@
     };
     var mediaBuyingLines = strategicContext.mediaBuying && strategicContext.mediaBuying.topProductGroups
       ? strategicContext.mediaBuying.topProductGroups.slice(0, 3).map(function (group, idx) {
-        return (idx + 1) + ". " + group.product + " - " + group.decision + ", spend " + fmt(group.spendSar) + " SAR, KHOD orders " + fmt(group.khodOrders) + ", est. CPA " + fmt(group.estimatedCpaSar) + " SAR.";
+        return (idx + 1) + ". " + group.product + " - " + group.decision + ", spend " + fmt(group.spend) + " " + (group.currency || window.dashboardActiveCurrency || "SAR") + ", Taager orders " + fmt(group.taagerOrders) + ", CPA " + fmt(group.taagerCpa) + " " + (group.currency || window.dashboardActiveCurrency || "SAR") + ".";
       })
       : [];
 
@@ -866,7 +949,7 @@
         : "Main insight: I would not scale yet. No product passed the current guardrails: 50+ orders, 10+ delivered orders, around 40%+ NDR, and CPA below break-even when available.";
       if (blockedLines.length) message += "\n\nProducts to fix before scaling:\n" + blockedLines.join("\n");
       if (mediaBuyingLines.length) message += "\n\nMedia buying layer:\n" + mediaBuyingLines.join("\n");
-      message += "\n\nNext step: Open scale candidates, compare them with the weak products, and increase budget only after the next dashboard refresh confirms NDR and CPA stayed stable.\n\nTips:\n- Never scale a product with weak NDR or CPA above break-even CPA.\n- Use small budget steps, not one big jump.\n- Stop scaling if delivered sales, delivered AOV, or NDR drop.";
+      message += "\n\nNext move: Open scale candidates, compare them with weak products, and increase budget only after the next dashboard refresh confirms NDR and CPA stayed stable.";
     } else {
       var pauseLines = productDecisionLines(cards.pause);
       var fixLines = productDecisionLines(cards.fixFirst);
@@ -875,7 +958,7 @@
       if (fixLines.length) message += "\n\nFix first:\n" + fixLines.join("\n");
       if (!pauseLines.length && !fixLines.length) message += "\n\nI do not see a severe bad-product cluster yet; use the worst-product view to inspect smaller risks.";
       if (mediaBuyingLines.length) message += "\n\nCampaign signals:\n" + mediaBuyingLines.join("\n");
-      message += "\n\nNext step: Start with the first pause/reduce product, inspect city mix and cancellation/failed reasons, then compare it against your best product.\n\nTips:\n- Improve confirmation and delivery quality before adding spend.\n- If NDR stays weak after fixes, stop trying to scale it.\n- Move budget toward products that pass scale guardrails.";
+      message += "\n\nNext move: Start with the first pause/reduce product, inspect city mix and cancellation/failed reasons, then compare it against your best product.";
     }
 
     recommendations = (cards.pause || []).slice(0, 2).map(function (p, idx) {
@@ -950,6 +1033,20 @@
 
   function orchestrate(text, data) {
     var memory = getMemory();
+    var standalone = clean(text, 300).toLowerCase().replace(/[?؟!.]+$/g, "").trim();
+    var hasConversationContext = !!(memory.lastStrategicQuestion || memory.currentProduct || memory.currentCity);
+    var standaloneFollowUp = /^(why|do it step by step|what about this product|show me the next one)$/i.test(standalone) ||
+      /^(ليه|ماذا عن هذا المنتج|اعرض التالي)$/i.test(standalone);
+    var outOfScope = /\b(weather|poem|song|joke|recipe)\b/i.test(standalone) || /طقس|قصيدة|أغنية|نكتة|وصفة/.test(standalone);
+    if ((!hasConversationContext && standaloneFollowUp) || outOfScope) {
+      return {
+        mode: "followup",
+        message: /[\u0600-\u06ff]/.test(text)
+          ? "أقدر أساعدك في بيانات الداشبورد. حدد المنتج أو المدينة أو المؤشر أو القرار الذي تريد تحليله."
+          : "I can help with the dashboard. Specify the product, city, metric, or decision you want to analyze.",
+        actions: []
+      };
+    }
     var followUp = resolveAssistantFollowUp(text, memory);
     if (!followUp.actionFollowUp && !followUp.stepByStep) {
       var pendingResolution = maybeResolvePending(text, memory);
@@ -975,8 +1072,16 @@
     // Do not force conversational followup - let Gemini answer based on available context
     
     var dependency = validateDependencies(parsedIntent, analyticsResult, data || {});
-    // Do not force conversational followup - let Gemini answer based on available context
     rememberMissingInputsForGemini(text, dependency, calculatorDependency);
+    if (calculatorDependency.ok === false) {
+      return {
+        mode: "followup",
+        message: calculatorDependency.message,
+        actions: [],
+        parsedIntent: parsedIntent,
+        analyticsResult: analyticsResult
+      };
+    }
 
     var strategicContext = buildStrategicContext(parsedIntent, analyticsResult, data || {}, dependency);
     var exactLocal = localOnlyResult(parsedIntent, analyticsResult);
@@ -994,11 +1099,12 @@
     if (isDirectProductMetricQuestion(parsedIntent)) {
       var directProductName = parsedIntent.entities.products[0] || getMemory().currentProduct;
       var directProduct = findProduct(data || {}, directProductName);
+      var directAr = responseLanguage(parsedIntent.rawText) === "ar";
       localStrategic = {
-        message: productMetricResponse(directProduct, data || {}, dependency),
+        message: productMetricResponse(directProduct, data || {}, dependency, parsedIntent.rawText),
         actions: [
-          { type: "OPEN_PRODUCT", label: "Open Product Analytics", route: "/dashboard/products?product=" + slug(directProductName), productId: directProductName },
-          { type: "OPEN_PAGE", label: "Open Product Calculator", route: "/calculator/product?product=" + slug(directProductName), section: "productForecast", productId: directProductName }
+          { type: "OPEN_PRODUCT", label: directAr ? "فتح تحليل المنتج" : "Open Product Analytics", route: "/dashboard/products?product=" + slug(directProductName), productId: directProductName },
+          { type: "OPEN_PAGE", label: directAr ? "فتح حاسبة المنتج" : "Open Product Calculator", route: "/calculator/product?product=" + slug(directProductName), section: "productForecast", productId: directProductName }
         ],
         insights: [],
         recommendations: [],
@@ -1039,6 +1145,42 @@
     };
     strategicContext.strategyPlan = localStrategic.strategyPlan || defaultStrategyPlan;
     strategicContext.assistantWorkflow = localStrategic.assistantWorkflow || null;
+
+    if (needsProductClarification) {
+      return {
+        mode: "followup",
+        message: localStrategic.message,
+        actions: [],
+        parsedIntent: parsedIntent,
+        analyticsResult: analyticsResult,
+        context: strategicContext,
+        localStrategic: localStrategic
+      };
+    }
+    if (isDirectProductMetricQuestion(parsedIntent)) {
+      return {
+        mode: dependency.ok === false ? "followup" : "local",
+        message: localStrategic.message,
+        actions: localStrategic.actions || [],
+        parsedIntent: parsedIntent,
+        analyticsResult: analyticsResult,
+        context: strategicContext,
+        localStrategic: localStrategic
+      };
+    }
+    if (parsedIntent.intent === "KPI_ANALYSIS" && dependency.ok === false) {
+      exactLocal.mode = "followup";
+      exactLocal.context = strategicContext;
+      exactLocal.localStrategic = localStrategic;
+      return exactLocal;
+    }
+
+    if (!followUp.stepByStep && !followUp.actionFollowUp &&
+        /^(RANKING_QUERY|KPI_ANALYSIS|COMPARISON_QUERY|CALCULATOR_SIMULATION|FILTER_QUERY|SORT_QUERY|CHART_QUERY|PAGINATION_QUERY|EXPORT_QUERY)$/.test(parsedIntent.intent)) {
+      exactLocal.context = strategicContext;
+      exactLocal.localStrategic = localStrategic;
+      return exactLocal;
+    }
 
     return {
       mode: "ai",

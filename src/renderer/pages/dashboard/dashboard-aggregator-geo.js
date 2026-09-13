@@ -1,19 +1,19 @@
-﻿/* â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•
+﻿/* ══════════════════════════════════════════════════════════════════════════════
    dashboard-aggregator-geo.js  (T-17)
-   Pass 2 aggregation â€” builds the GEO intelligence layer on top of the
+   Pass 2 aggregation — builds the GEO intelligence layer on top of the
    extended cityStats / productStats from Pass 1.
 
    Depends on:
-     window.getDashboardThresholds()    â€” from dashboard-aggregator.js (T-02)
-     window.computeRiskScore()          â€” from dashboard-aggregator-score.js (T-14)
-     window.computeScalingScore()       â€” from dashboard-aggregator-score.js (T-14)
-     window.computeProfitabilityScore() â€” from dashboard-aggregator-score.js (T-14)
-     window.computePipelineHealth()     â€” from dashboard-aggregator-score.js (T-14)
+     window.getDashboardThresholds()    — from dashboard-aggregator.js (T-02)
+     window.computeRiskScore()          — from dashboard-aggregator-score.js (T-14)
+     window.computeScalingScore()       — from dashboard-aggregator-score.js (T-14)
+     window.computeProfitabilityScore() — from dashboard-aggregator-score.js (T-14)
+     window.computePipelineHealth()     — from dashboard-aggregator-score.js (T-14)
 
    Exposed on window:
      buildGeoProductMap(cityStats, productStats, nationalAverages)
-       â†’ { geoProductMap, provinceMap, prepaidIntelligence }
-   â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â• */
+       → { geoProductMap, provinceMap, prepaidIntelligence }
+   ══════════════════════════════════════════════════════════════════════════════ */
 (function () {
   'use strict';
 
@@ -23,25 +23,53 @@
   // Force showing the city and the province name in Arabic everywhere.
   // =======================================================================
 
-  /* â”€â”€ Province metadata â€” single source of truth for name, color, coords â”€â”€â”€â”€ */
-  var PROVINCE_META = {
-    riyadh:   { name: 'Ù…Ù†Ø·Ù‚Ø© Ø§Ù„Ø±ÙŠØ§Ø¶',           color: '#a855f7', x: 230.6, y: 164.1, rx: 95, ry: 80 },
-    eastern:  { name: 'Ø§Ù„Ù…Ù†Ø·Ù‚Ø© Ø§Ù„Ø´Ø±Ù‚ÙŠØ©',         color: '#14b8a6', x: 298,   y: 140,   rx: 55, ry: 45 },
-    mecca:    { name: 'Ù…Ù†Ø·Ù‚Ø© Ù…ÙƒØ© Ø§Ù„Ù…ÙƒØ±Ù…Ø©',      color: '#3b82f6', x: 95,    y: 238,   rx: 50, ry: 38 },
-    jazan:    { name: 'Ù…Ù†Ø·Ù‚Ø© Ø¬Ø§Ø²Ø§Ù†',             color: '#ec4899', x: 158,   y: 304,   rx: 28, ry: 22 },
-    baha:     { name: 'Ù…Ù†Ø·Ù‚Ø© Ø§Ù„Ø¨Ø§Ø­Ø©',            color: '#f97316', x: 132,   y: 258,   rx: 24, ry: 18 },
-    madinah:  { name: 'Ù…Ù†Ø·Ù‚Ø© Ø§Ù„Ù…Ø¯ÙŠÙ†Ø© Ø§Ù„Ù…Ù†ÙˆØ±Ø©',  color: '#f59e0b', x: 92,    y: 175,   rx: 38, ry: 30 },
-    aseer:    { name: 'Ù…Ù†Ø·Ù‚Ø© Ø¹Ø³ÙŠØ±',              color: '#ef4444', x: 152,   y: 272,   rx: 35, ry: 24 },
-    qassim:   { name: 'Ù…Ù†Ø·Ù‚Ø© Ø§Ù„Ù‚ØµÙŠÙ…',            color: '#8b5cf6', x: 194,   y: 132,   rx: 38, ry: 30 },
-    tabuk:    { name: 'Ù…Ù†Ø·Ù‚Ø© ØªØ¨ÙˆÙƒ',              color: '#0ea5e9', x: 80,    y: 110,   rx: 42, ry: 32 },
-    hail:     { name: 'Ù…Ù†Ø·Ù‚Ø© Ø­Ø§Ø¦Ù„',              color: '#84cc16', x: 160,   y: 125,   rx: 32, ry: 24 },
-    najran:   { name: 'Ù…Ù†Ø·Ù‚Ø© Ù†Ø¬Ø±Ø§Ù†',             color: '#06b6d4', x: 198,   y: 304,   rx: 28, ry: 20 },
-    jawf:     { name: 'Ù…Ù†Ø·Ù‚Ø© Ø§Ù„Ø¬ÙˆÙ',             color: '#a3e635', x: 140,   y: 80,    rx: 30, ry: 22 },
-    northern: { name: 'Ù…Ù†Ø·Ù‚Ø© Ø§Ù„Ø­Ø¯ÙˆØ¯ Ø§Ù„Ø´Ù…Ø§Ù„ÙŠØ©',  color: '#fb923c', x: 100,   y: 70,    rx: 28, ry: 20 },
-    other:    { name: 'Ù…Ù†Ø§Ø·Ù‚ Ø£Ø®Ø±Ù‰',             color: '#64748b', x: 205,   y: 190,   rx: 30, ry: 22 }
-  };
+  function defaultProvinceMeta() {
+    if (window.TaagerGeo && typeof window.TaagerGeo.provinceMap === 'function') {
+      return window.TaagerGeo.provinceMap('sa');
+    }
+    return {
+      riyadh: { name: 'منطقة الرياض', color: '#a855f7', x: 230.6, y: 164.1, rx: 95, ry: 80 },
+      other: { name: 'مناطق أخرى', color: '#64748b', x: 205, y: 190, rx: 30, ry: 22 }
+    };
+  }
 
-  /* â”€â”€ Helpers â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€ */
+  function provinceMetaForContext(context) {
+    context = context || {};
+    if (!window.TaagerGeo || typeof window.TaagerGeo.provinceMap !== 'function') return defaultProvinceMeta();
+    var countries = Array.isArray(context.countries) && context.countries.length
+      ? context.countries
+      : [context.activeCountry || 'sa'];
+    countries = countries.filter(function (country) { return country && country !== 'mixed'; });
+    if (!countries.length) countries = ['sa'];
+    if (countries.length === 1) return window.TaagerGeo.provinceMap(countries[0]);
+
+    var combined = {};
+    var offsets = [
+      { x: -85, y: -62 }, { x: 85, y: -62 }, { x: -85, y: 62 },
+      { x: 85, y: 62 }, { x: 0, y: 0 }
+    ];
+    countries.forEach(function (country, index) {
+      var offset = offsets[index % offsets.length];
+      var src = window.TaagerGeo.provinceMap(country);
+      Object.keys(src).forEach(function (pid) {
+        if (pid === 'other') return;
+        var meta = src[pid];
+        combined[country + '-' + pid] = Object.assign({}, meta, {
+          id: country + '-' + pid,
+          country: country,
+          name: (window.TaagerCountry && window.TaagerCountry.get ? window.TaagerCountry.get(country).code + ' · ' : '') + meta.name,
+          x: Math.max(28, Math.min(372, Number(meta.x || 205) + offset.x)),
+          y: Math.max(28, Math.min(312, Number(meta.y || 190) + offset.y)),
+          rx: Math.max(18, Number(meta.rx || 35) * 0.72),
+          ry: Math.max(14, Number(meta.ry || 26) * 0.72)
+        });
+      });
+    });
+    combined.other = { id: 'other', name: 'مناطق أخرى', color: '#64748b', x: 205, y: 190, rx: 30, ry: 22 };
+    return combined;
+  }
+
+  /* ── Helpers ─────────────────────────────────────────────────────────────── */
   function safeNdr(delivered, total) {
     total = Number(total || 0);
     return total > 0 ? Math.min(1, Math.max(0, Number(delivered || 0) / total)) : 0;
@@ -61,35 +89,33 @@
     }
   }
 
-  /* â”€â”€ buildGeoProductMap(cityStats, productStats, nationalAverages) â”€â”€â”€â”€â”€â”€â”€â”€â”€ */
-  window.buildGeoProductMap = function (cityStats, productStats, nationalAverages) {
+  /* ── buildGeoProductMap(cityStats, productStats, nationalAverages) ───────── */
+  window.buildGeoProductMap = function (cityStats, productStats, nationalAverages, context) {
     cityStats      = cityStats      || {};
     productStats   = productStats   || {};
     nationalAverages = nationalAverages || {};
+    var PROVINCE_META = provinceMetaForContext(context || {});
 
     var T = typeof window.getDashboardThresholds === 'function'
       ? window.getDashboardThresholds()
       : { NDR_DANGER: 0.20, NDR_SAFE: 0.40, PREPAID_ADVANTAGE_THRESHOLD: 0.15, SCALING_MIN_ORDERS: 30 };
 
-    /* â”€â”€ 1. Build geoProductMap (city Ã— product cells) â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€ */
+    /* ── 1. Build geoProductMap (city × product cells) ──────────────────────── */
     var geoProductMap = {};
 
-    Object.keys(cityStats).forEach(function (cityName) {
-      var cs = cityStats[cityName];
+    Object.keys(cityStats).forEach(function (cityKey) {
+      var cs = cityStats[cityKey];
+      var cityName = cs.name || cityKey;
       var productMap = cs.productMap || {};
-      geoProductMap[cityName] = {};
+      geoProductMap[cityKey] = {};
 
       Object.keys(productMap).forEach(function (productKey) {
         var cp = productMap[productKey];
 
         var ndr = safeNdr(cp.delivered || 0, cp.ndrBaseOrders || cp.orders || 0);
         var dr = safeNdr(cp.delivered || 0, cp.activeOrders || 0);
-        var confirmationRate = safeNdr(
-          (cp.confirmed || 0) + (cp.shipping || 0) + (cp.processing || 0) + (cp.delivered || 0) + (cp.realFailed || 0),
-          cp.orders || 0
-        );
 
-        // COD vs prepaid NDR (approximate â€” derive from per-cell data if available)
+        // COD vs prepaid NDR (approximate — derive from per-cell data if available)
         var hasPaymentOutcomeSplit =
           cp.prepaidDelivered !== undefined || cp.prepaidCanceled !== undefined ||
           cp.codDelivered !== undefined || cp.codCanceled !== undefined;
@@ -116,6 +142,15 @@
 
         // Active orders = placed - delivered - canceled
         var active = Math.max(0, (cp.orders || 0) - (cp.delivered || 0) - (cp.canceled || 0));
+        var statusTotal = cp.statusTotalCount || cp.orders || 0;
+        var confirmationStatusCount = cp.confirmationStatusCount != null
+          ? cp.confirmationStatusCount
+          : (cp.confirmed || cp.activeOrders || 0);
+        var cancelStatusCount = cp.cancelStatusCount || 0;
+        var pendingStatusCount = cp.pendingStatusCount || 0;
+        var confirmationRate = statusTotal > 0 ? confirmationStatusCount / statusTotal : 0;
+        var cancelRate = statusTotal > 0 ? cancelStatusCount / statusTotal : 0;
+        var pendingRate = statusTotal > 0 ? Math.max(0, 1 - confirmationRate - cancelRate) : 0;
 
         // Scoring stats object shaped for scoring functions
         var scoringStats = {
@@ -128,7 +163,8 @@
           codPct:            codPct,
           codNdr:            codNdr,
           prepaidPct:        prepaidPct,
-          earnedCommission:  cp.commission || 0,
+          earnedProfitAfterTax: cp.earnedProfitAfterTax != null ? cp.earnedProfitAfterTax : cp.commission || 0,
+          earnedCommission: cp.earnedProfitAfterTax != null ? cp.earnedProfitAfterTax : cp.commission || 0,
           totalRevenue:      cp.revenue    || 0,
           due:               cp.revenue    || 0,
           gap:               0
@@ -139,13 +175,27 @@
         var pipelineHealth      = callScoring('computePipelineHealth',      scoringStats, undefined);
         var scalingScore        = callScoring('computeScalingScore',        scoringStats, nationalAverages);
 
+        var prepaidBaseForDecision = prepaidNdrBase || cp.prepaidCount || 0;
+        var codBaseForDecision = codNdrBase || cp.codCount || 0;
         var shouldForcePrepaid =
-          (cp.codCount || 0) >= 10 &&
+          prepaidBaseForDecision >= 10 &&
+          codBaseForDecision >= 10 &&
+          (prepaidDelivered || 0) >= 3 &&
+          prepaidNdr >= T.NDR_SAFE &&
           (prepaidNdr - codNdr) > T.PREPAID_ADVANTAGE_THRESHOLD;
 
-        geoProductMap[cityName][productKey] = {
+        geoProductMap[cityKey][productKey] = {
+          cityKey: cityKey,
+          cityName: cityName,
+          country: cs.country || '',
           // Volume
-          orders:    cp.orders    || 0,
+          orders:    statusTotal,
+          netOrderCount: cp.orders || 0,
+          confirmed: confirmationStatusCount,
+          confirmationStatusCount: confirmationStatusCount,
+          cancelStatusCount: cancelStatusCount,
+          pendingStatusCount: pendingStatusCount,
+          statusTotalCount: statusTotal,
           delivered: cp.delivered || 0,
           canceled:  cp.canceled  || 0,
           active:    active,
@@ -154,17 +204,15 @@
           ndr:             parseFloat(ndr.toFixed(4)),
           dr:              parseFloat(dr.toFixed(4)),
           confirmationRate: parseFloat(confirmationRate.toFixed(4)),
-          confirmed: cp.confirmed || 0,
-          shipping: cp.shipping || 0,
-          processing: cp.processing || 0,
+          confirmationPct: parseFloat((confirmationRate * 100).toFixed(1)),
+          cancelPct: parseFloat((cancelRate * 100).toFixed(1)),
+          pendingPct: parseFloat((pendingRate * 100).toFixed(1)),
 
           // Financial
           commission:            cp.commission || 0,
           revenue:               cp.revenue    || 0,
           avgOrderValue:         (cp.orders || 0) > 0 ? parseFloat(((cp.revenue || 0) / cp.orders).toFixed(2)) : 0,
-          avgCommissionPerOrder: parseFloat(
-            window.KhodFinancialMetrics.averageCommission(cp.commission || 0, cp.delivered || 0).toFixed(2)
-          ),
+          avgCommissionPerOrder: (cp.orders || 0) > 0 ? parseFloat(((cp.commission || 0) / cp.orders).toFixed(2)) : 0,
 
           // Payment
           prepaidCount:  cp.prepaidCount || 0,
@@ -195,7 +243,7 @@
       });
     });
 
-    /* â”€â”€ Mark isBestInCity per city â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€ */
+    /* ── Mark isBestInCity per city ──────────────────────────────────────────── */
     Object.keys(geoProductMap).forEach(function (city) {
       var cells = geoProductMap[city];
       var bestKey = null, bestComm = -1;
@@ -208,7 +256,7 @@
       if (bestKey) cells[bestKey].isBestInCity = true;
     });
 
-    /* â”€â”€ 2. Build provinceMap (province-level roll-up from cityStats) â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€ */
+    /* ── 2. Build provinceMap (province-level roll-up from cityStats) ────────── */
     var provinceMap = {};
 
     // Init all provinces
@@ -224,17 +272,20 @@
         codDrBaseOrders: 0, codDrDeliveredOrders: 0,
         canceledCount:  0,
         cities:         [],
+        cityKeys:       [],
         productMap:     {}
       };
     });
 
     // Roll-up cities into their province
-    Object.keys(cityStats).forEach(function (cityName) {
-      var cs   = cityStats[cityName];
+    Object.keys(cityStats).forEach(function (cityKey) {
+      var cs   = cityStats[cityKey];
+      var cityName = cs.name || cityKey;
       var pid  = cs.provinceId || 'other';
       var prov = provinceMap[pid] || provinceMap['other'];
 
       prov.cities.push(cityName);
+      prov.cityKeys.push(cityKey);
       prov.totalOrders      += cs.count        || 0;
       prov.totalDelivered   += cs.deliveredOrders || 0;
       prov.totalCanceled    += cs.canceledCount   || 0;
@@ -302,27 +353,28 @@
       var bestScaling  = -1, worstRisk = -1;
       p.bestCity  = null;
       p.worstCity = null;
-      p.cities.forEach(function (cName) {
-        var cs = cityStats[cName];
+      (p.cityKeys || p.cities).forEach(function (cName, idx) {
+        var cs = cityStats[cName] || cityStats[p.cityKeys && p.cityKeys[idx]] || null;
         if (!cs) return;
         var csStats = {
           ndrPct: cs.ndrPct || 0, drPct: cs.drPct || 0,
           count: cs.count, deliveredOrders: cs.deliveredOrders,
           canceledCount: cs.canceledCount, failedCount: cs.canceledCount,
           codPct: cs.codPct || 0, prepaidPct: cs.prepaidPct || 0,
-          earnedCommission: cs.earnedCommission || 0, totalRevenue: cs.totalRevenue || 0,
+          earnedProfitAfterTax: cs.earnedProfitAfterTax != null ? cs.earnedProfitAfterTax : cs.earnedCommission || 0,
+          earnedCommission: cs.earnedProfitAfterTax != null ? cs.earnedProfitAfterTax : cs.earnedCommission || 0, totalRevenue: cs.totalRevenue || 0,
           due: cs.due || 0, gap: cs.gap || 0
         };
         var sc = callScoring('computeScalingScore', csStats, nationalAverages);
         var rs = callScoring('computeRiskScore',    csStats, undefined);
         cs.scalingScore = sc;
         cs.riskScore = rs;
-        if (sc > bestScaling) { bestScaling = sc; p.bestCity = cName; }
-        if (rs > worstRisk)   { worstRisk   = rs; p.worstCity = cName; }
+        if (sc > bestScaling) { bestScaling = sc; p.bestCity = cs.name || cName; }
+        if (rs > worstRisk)   { worstRisk   = rs; p.worstCity = cs.name || cName; }
       });
     });
 
-    /* â”€â”€ 3. Build prepaidIntelligence â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€ */
+    /* ── 3. Build prepaidIntelligence ────────────────────────────────────────── */
     var prepaidIntelligence = _buildPrepaidIntelligence(cityStats, geoProductMap, nationalAverages, T);
 
     return {
@@ -332,12 +384,12 @@
     };
   };
 
-  /* â”€â”€ buildPrepaidIntelligence (internal) â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€ */
+  /* ── buildPrepaidIntelligence (internal) ─────────────────────────────────── */
   function _buildPrepaidIntelligence(cityStats, geoProductMap, nationalAverages, T) {
     var totalOrders = 0, totalPrepaid = 0, totalCod = 0;
     var totalPrepaidNdrBase = 0, totalCodNdrBase = 0;
-    var prepaidDelivered = 0, prepaidCanceled = 0;
-    var codDelivered = 0, codCanceled = 0;
+    var prepaidDelivered = 0, prepaidCanceled = 0, prepaidFailed = 0;
+    var codDelivered = 0, codCanceled = 0, codFailed = 0;
     var prepaidDrBase = 0, prepaidDrDelivered = 0;
     var codDrBase = 0, codDrDelivered = 0;
 
@@ -353,6 +405,8 @@
       totalCodNdrBase += cs.codNdrBaseOrders || cs.codCount || 0;
       prepaidDelivered += cs.prepaidDeliveredCount || 0;
       codDelivered     += cs.codDeliveredCount     || 0;
+      prepaidFailed    += cs.prepaidFailedCount    || 0;
+      codFailed        += cs.codFailedCount        || 0;
       prepaidDrBase += cs.prepaidDrBaseOrders || 0;
       prepaidDrDelivered += cs.prepaidDrDeliveredOrders || 0;
       codDrBase += cs.codDrBaseOrders || 0;
@@ -407,12 +461,14 @@
           });
         }
         if (cell.codNdr < T.NDR_DANGER && (cell.codCount || 0) >= 10) {
+          var prepaidBaseForCombo = cell.prepaidNdrBaseOrders || cell.prepaidCount || 0;
+          var prepaidReadyForCombo = prepaidBaseForCombo >= 10 && (cell.prepaidDelivered || 0) >= 3 && cell.prepaidNdr >= T.NDR_SAFE;
           codDangerousCombos.push({
             city: city, product: product,
             codNdr: cell.codNdr, prepaidNdr: cell.prepaidNdr,
-            recommendation: cell.prepaidNdr >= T.NDR_SAFE
-              ? 'ØªØ·Ø¨ÙŠÙ‚ Ø§Ù„Ø¯ÙØ¹ Ø§Ù„Ù…Ø³Ø¨Ù‚ ÙÙˆØ±Ø§Ù‹'
-              : 'Ù…Ø±Ø§Ø¬Ø¹Ø© Ø§Ù„Ø­Ù…Ù„Ø© ÙÙŠ Ù‡Ø°Ù‡ Ø§Ù„Ù…Ø¯ÙŠÙ†Ø©'
+            recommendation: prepaidReadyForCombo
+              ? 'تطبيق الدفع المسبق فوراً'
+              : 'مراجعة الحملة في هذه المدينة'
           });
         }
       });
@@ -423,10 +479,19 @@
     var sortedAsc  = cityPrepaidList.slice().sort(function (a, b) { return a.prepaidPct - b.prepaidPct; });
 
     return {
+      totalOrders:          totalOrders,
+      totalPrepaid:         totalPrepaid,
+      totalCod:             totalCod,
       globalPrepaidPct:   safePct(totalPrepaid, totalOrders),
       globalCodPct:       safePct(totalCod, totalOrders),
       prepaidNdr:         globalPrepaidNdr,
       codNdr:             globalCodNdr,
+      prepaidDeliveredCount: prepaidDelivered,
+      codDeliveredCount: codDelivered,
+      prepaidCanceledCount: prepaidCanceled,
+      codCanceledCount: codCanceled,
+      prepaidFailedCount: prepaidFailed,
+      codFailedCount: codFailed,
       prepaidNdrBaseOrders: totalPrepaidNdrBase,
       codNdrBaseOrders: totalCodNdrBase,
       globalPrepaidDr:    globalPrepaidDr,

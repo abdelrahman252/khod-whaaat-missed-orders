@@ -9,6 +9,7 @@ build/
 .env
 .env.*
 !.env.example
+data.txt
 
 # ── Electron build artifacts ───────────────────────────────
 *.dmg

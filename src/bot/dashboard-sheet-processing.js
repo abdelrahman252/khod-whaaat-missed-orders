@@ -53,12 +53,12 @@ function validateKhodWorkbook(buffer) {
   try {
     workbook = XLSX.read(asBuffer(buffer), { type: "buffer", cellDates: false });
   } catch (error) {
-    throw new Error(`Khod workbook could not be read: ${error.message}`);
+    throw new Error(`KHOD WHAAT workbook could not be read: ${error.message}`);
   }
   const sheetName = workbook.SheetNames && workbook.SheetNames[0];
-  if (!sheetName || !workbook.Sheets[sheetName]) throw new Error("Khod workbook has no worksheets.");
+  if (!sheetName || !workbook.Sheets[sheetName]) throw new Error("KHOD WHAAT workbook has no worksheets.");
   const rows = XLSX.utils.sheet_to_json(workbook.Sheets[sheetName], { header: 1, defval: "", raw: true });
-  if (!rows.length) throw new Error("Khod workbook is empty.");
+  if (!rows.length) throw new Error("KHOD WHAAT workbook is empty.");
   const headerMap = {};
   const missing = [];
   Object.entries(KHOD_REQUIRED_HEADERS).forEach(([name, candidates]) => {
@@ -66,7 +66,7 @@ function validateKhodWorkbook(buffer) {
     if (headerMap[name] < 0) missing.push(name);
   });
   if (missing.length) {
-    throw new Error(`This does not look like a Khod affiliate orders export. Missing required columns: ${missing.join(", ")}.`);
+    throw new Error(`This does not look like a KHOD WHAAT affiliate orders export. Missing required columns: ${missing.join(", ")}.`);
   }
   return { sourceRows: Math.max(0, rows.length - 1), headerMap };
 }
@@ -76,23 +76,31 @@ function processDashboardSheet(options = {}) {
   const dateFrom = parseDateKey(options.dateFrom) || new Date(now.getFullYear(), now.getMonth(), 1);
   const dateTo = parseDateKey(options.dateTo) || new Date(now.getFullYear(), now.getMonth(), now.getDate());
   if (dateFrom > dateTo) throw new Error("A valid dashboard date range is required.");
-  const khodValidation = validateKhodWorkbook(options.khodBuffer);
+
+  const khodBuffer = options.khodBuffer || options.taagerBuffer;
+  const khodValidation = validateKhodWorkbook(khodBuffer);
   const rangeFrom = dateKey(dateFrom);
   const rangeTo = dateKey(dateTo);
-  const parsedRows = parseFullMonthSnapshot(asBuffer(options.khodBuffer), {
+  const parsedRows = parseFullMonthSnapshot(asBuffer(khodBuffer), {
     dateFrom: rangeFrom,
     dateTo: rangeTo,
   });
-  if (!Array.isArray(parsedRows)) throw new Error("Khod workbook could not be parsed.");
-  // Khod's dashboard export range is based on order creation date. Static
-  // uploads may contain a broader export, so enforce the selected period here.
+  if (!Array.isArray(parsedRows)) throw new Error("KHOD WHAAT workbook could not be parsed.");
+
   const rows = parsedRows.filter((row) => {
     const createdAt = String(row && row.createdAt || "").slice(0, 10);
     return createdAt && createdAt >= rangeFrom && createdAt <= rangeTo;
-  });
+  }).map((row) => ({
+    ...row,
+    country: row.country || row.khodCountry || row.taagerCountry || "sa",
+    khodCountry: row.khodCountry || row.taagerCountry || row.country || "sa",
+    taagerCountry: row.taagerCountry || row.khodCountry || row.country || "sa",
+  }));
   const rowsOutsidePeriod = parsedRows.length - rows.length;
   return {
     rows,
+    learnedSkuNameMap: {},
+    enrichmentDiagnostics: { provider: "khod-sheet", status: "source" },
     warnings: rowsOutsidePeriod > 0 ? [{
       code: "ROWS_OUTSIDE_PERIOD",
       count: rowsOutsidePeriod,
@@ -102,13 +110,25 @@ function processDashboardSheet(options = {}) {
     dateTo: rangeTo,
     snapshotMonth: rangeTo.slice(0, 7),
     parseDiagnostics: {
+      source: "khod-sheet",
       sourceRows: khodValidation.sourceRows,
       parserRows: parsedRows.length,
       parsedRows: rows.length,
       rowsOutsidePeriod,
       khodValidation,
+      enrichment: { provider: "khod-sheet", status: "source" },
+      country: "sa",
     },
   };
 }
 
-module.exports = { asBuffer, validateKhodWorkbook, processDashboardSheet };
+function processDashboardSheets(options = {}) {
+  return processDashboardSheet(options);
+}
+
+module.exports = {
+  asBuffer,
+  validateKhodWorkbook,
+  processDashboardSheet,
+  processDashboardSheets,
+};

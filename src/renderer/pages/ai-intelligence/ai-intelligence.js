@@ -35,7 +35,12 @@
       products: result.products || null,
       commissionTrend: result.commissionTrend || null,
       roi: result.roi || null,
-      geo: result.geo || null
+      geo: result.geo || null,
+      marketing: result.marketing || null,
+      prepaid: result.prepaid || result.prepaidIntelligence || null,
+      prepaidIntelligence: result.prepaidIntelligence || null,
+      campaignIntelligence: result.campaignIntelligence || null,
+      mediaBuying: result.mediaBuying || null
     };
   }
 
@@ -57,7 +62,12 @@
       products: null,
       commissionTrend: null,
       roi: null,
-      geo: null
+      geo: null,
+      marketing: null,
+      prepaid: null,
+      prepaidIntelligence: null,
+      campaignIntelligence: null,
+      mediaBuying: null
     };
   }
 
@@ -72,7 +82,12 @@
 
     if (typeof wireSharedSidebar === "function") wireSharedSidebar(page);
     if (window.dashboardI18n) window.dashboardI18n.apply(page);
-    if (window.KhodUI) window.KhodUI.enhance(page);
+    if (window.TaagerUI && typeof window.TaagerUI.enhance === "function") window.TaagerUI.enhance(page);
+    else if (window.KhodUI) window.KhodUI.enhance(page);
+    if (window.TaagerPerf && typeof window.TaagerPerf.mark === "function") {
+      window.TaagerPerf.mark("ai:route:shell-visible", { pageId: "page-ai-intelligence" });
+      window.TaagerPerf.measure("ai:route:click-to-shell-visible", "route:page-ai-intelligence:click", "ai:route:shell-visible", { pageId: "page-ai-intelligence" });
+    }
   }
 
   function renderLoading(mount) {
@@ -80,7 +95,7 @@
       '<div class="ai-intelligence-loader" role="status" aria-live="polite">' +
         '<span class="dash-preloader-spinner" aria-hidden="true"></span>' +
         '<div>' +
-          '<strong>' + esc(tr("aii.loadingTitle", "Loading KHOD AI intelligence...")) + '</strong>' +
+          '<strong>' + esc(tr("aii.loadingTitle", "Loading Taager AI intelligence...")) + '</strong>' +
           '<span>' + esc(tr("aii.loadingBody", "Reading the saved dashboard range, accounts, products, cities, and order signals.")) + '</span>' +
         '</div>' +
       '</div>';
@@ -98,15 +113,15 @@
 
   function renderKhodAi(mount, data) {
     window.dashboardGeoData = data || emptyAiData();
-    if (typeof window.renderSectionKhodAi !== "function") {
+    if (typeof window.renderSectionTaagerAi !== "function") {
       renderUnavailable(
         mount,
-        tr("aii.unavailableTitle", "KHOD AI is not available"),
+        tr("aii.unavailableTitle", "Taager AI is not available"),
         tr("aii.unavailableBody", "The AI workspace module did not load yet.")
       );
       return;
     }
-    window.renderSectionKhodAi(mount, window.dashboardGeoData, {
+    window.renderSectionTaagerAi(mount, window.dashboardGeoData, {
       page: "ai-intelligence",
       onNavigate: function (section) {
         window._dashboardInitialSection = section || "master";
@@ -115,17 +130,59 @@
     });
   }
 
+  function activeAccountId() {
+    return window.getActiveAccountId ? String(window.getActiveAccountId() || "__all__") : "__all__";
+  }
+
+  function dashboardDataIsReusable(data) {
+    if (!data || !data._loaded || data._loading) return false;
+    if (data._version == null) return false;
+    var meta = data.meta || {};
+    var dataAccountId = meta.activeAccountId != null ? String(meta.activeAccountId) : "__all__";
+    var currentAccountId = activeAccountId();
+    if (dataAccountId !== currentAccountId) return false;
+    return true;
+  }
+
   function loadDashboardData(done) {
+    if (dashboardDataIsReusable(window.dashboardGeoData)) {
+      if (window.TaagerPerf && typeof window.TaagerPerf.mark === "function") {
+        window.TaagerPerf.mark("ai:data:dashboard-reused", {
+          source: window.dashboardGeoData._source || "dashboardGeoData",
+          version: window.dashboardGeoData._version,
+          accountId: window.dashboardGeoData.meta && window.dashboardGeoData.meta.activeAccountId || "__all__"
+        });
+      }
+      done(window.dashboardGeoData);
+      return;
+    }
     if (typeof window.runDashboardAggregator !== "function") {
+      if (window.TaagerPerf && typeof window.TaagerPerf.mark === "function") {
+        window.TaagerPerf.mark("ai:data:dashboard-aggregation-skipped", { reason: "aggregator-missing" });
+      }
       done(null);
       return;
     }
+    var perfTimer = window.TaagerPerf && typeof window.TaagerPerf.start === "function"
+      ? window.TaagerPerf.start("ai:data:dashboard-aggregation", { source: "fresh" })
+      : null;
     try {
       window.runDashboardAggregator(function (result) {
-        done(result ? mapAggregatorToAiData(result) : null);
+        var mapped = result ? mapAggregatorToAiData(result) : null;
+        if (window.TaagerPerf && typeof window.TaagerPerf.end === "function" && perfTimer) {
+          window.TaagerPerf.end(perfTimer, {
+            source: "fresh",
+            ok: true,
+            orders: mapped && Array.isArray(mapped.orders) ? mapped.orders.length : 0
+          });
+        }
+        done(mapped);
       });
     } catch (err) {
-      console.warn("[KHOD AI] Failed to load dashboard data:", err && err.message ? err.message : err);
+      console.warn("[Taager AI] Failed to load dashboard data:", err && err.message ? err.message : err);
+      if (window.TaagerPerf && typeof window.TaagerPerf.end === "function" && perfTimer) {
+        window.TaagerPerf.end(perfTimer, { source: "fresh", ok: false, error: err && err.message ? err.message : String(err || "") });
+      }
       done(null);
     }
   }
@@ -144,7 +201,7 @@
     loadDashboardData(function (data) {
       if (version !== renderVersion) return;
       if (!data) data = emptyAiData();
-      data._version = version;
+      if (data._version == null) data._version = version;
       renderKhodAi(mount, data);
     });
   };

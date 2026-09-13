@@ -9,6 +9,19 @@ const { addBreadcrumb, captureException, captureMessage, normalizeError, setUser
 let initialized = false;
 let ipcPatched = false;
 let rendererBridgeRegistered = false;
+let adminErrorAlertReporter = null;
+
+function setAdminErrorAlertReporter(reporter) {
+  adminErrorAlertReporter = typeof reporter === "function" ? reporter : null;
+}
+
+function notifyAdminErrorAlert(error, context, level) {
+  if (!adminErrorAlertReporter) return;
+  try {
+    const maybePromise = adminErrorAlertReporter(error, context || {}, level || "error");
+    if (maybePromise && typeof maybePromise.catch === "function") maybePromise.catch(() => {});
+  } catch (_) {}
+}
 
 function initMainMonitoring() {
   if (initialized) return Sentry;
@@ -24,7 +37,7 @@ function initMainMonitoring() {
     initialScope: {
       tags: {
         process: "main",
-        app: "khod-whaat-orders",
+        app: "khod-orders",
       },
       contexts: {
         runtime: getRuntimeContext(appVersion),
@@ -120,10 +133,15 @@ function registerRendererMonitoringBridge() {
     const error = normalizeError(errorPayload);
     if (errorPayload && errorPayload.stack) error.stack = errorPayload.stack;
     captureException(Sentry, error, payload && payload.context);
+    notifyAdminErrorAlert(error, payload && payload.context, "error");
   });
 
   ipcMain.on("khod-monitoring:capture-message", (_event, payload) => {
     captureMessage(Sentry, payload && payload.message, payload && payload.level, payload && payload.context);
+    const level = payload && payload.level || "info";
+    if (level === "error" || level === "fatal") {
+      notifyAdminErrorAlert(new Error(String(payload && payload.message || "Application message")), payload && payload.context, level);
+    }
   });
 
   ipcMain.on("khod-monitoring:add-breadcrumb", (_event, breadcrumb) => {
@@ -187,12 +205,21 @@ function flushMainMonitoring(timeoutMs) {
 module.exports = {
   Sentry,
   addBreadcrumb: (breadcrumb) => addBreadcrumb(Sentry, breadcrumb),
-  captureException: (error, context) => captureException(Sentry, error, context),
-  captureMessage: (message, level, context) => captureMessage(Sentry, message, level, context),
+  captureException: (error, context) => {
+    const result = captureException(Sentry, error, context);
+    notifyAdminErrorAlert(error, context, "error");
+    return result;
+  },
+  captureMessage: (message, level, context) => {
+    const result = captureMessage(Sentry, message, level, context);
+    if (level === "error" || level === "fatal") notifyAdminErrorAlert(new Error(String(message || "Application message")), context, level);
+    return result;
+  },
   flushMainMonitoring,
   initMainMonitoring,
   monitorWindow,
   patchIpcMonitoring,
   registerRendererMonitoringBridge,
+  setAdminErrorAlertReporter,
   setUserContext: (user) => setUserContext(Sentry, user),
 };

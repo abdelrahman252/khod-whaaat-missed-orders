@@ -8,7 +8,7 @@ window._opsLive = window._opsLive || {
 };
 
 function _opsEmitLiveUpdate() {
-  window.dispatchEvent(new CustomEvent("khod-ops-live-updated"));
+  window.dispatchEvent(new CustomEvent("taager-ops-live-updated"));
 }
 
 function _opsStartLiveRun() {
@@ -148,6 +148,11 @@ function _opsFmtElapsed(ms) {
   const s = Math.floor(ms / 1000);
   return [Math.floor(s / 3600), Math.floor((s % 3600) / 60), s % 60].map(v => String(v).padStart(2, "0")).join(":");
 }
+function _opsDashboardRevenueValue(order) {
+  return typeof analyticsDashboardRevenueValue === "function"
+    ? analyticsDashboardRevenueValue(order)
+    : 0;
+}
 function _opsShortEmail(e) {
   if (!e || e === "__single__") return "—";
   return e.length > 26 ? e.slice(0, 24) + "…" : e;
@@ -181,9 +186,35 @@ function _opsGroupBy(arr, key) {
   for (const item of arr) {
     const k = item[key] || "";
     if (!map[k]) map[k] = { key: k, items: [], count: 0, total: 0 };
-    map[k].items.push(item); map[k].count++; map[k].total += Number(item.subtotal || 0);
+    map[k].items.push(item); map[k].count++; map[k].total += _opsDashboardRevenueValue(item);
   }
   return Object.values(map).sort((a, b) => b.count - a.count);
+}
+
+// Taager dashboard/status/NDR migration: Operations uses the same Taager
+// Arabic status map as Analytics and Dashboard for delivered/failed rates.
+function _opsStatusBucket(orderOrStatus) {
+  if (typeof analyticsStatusBucketFromOrder === "function") return analyticsStatusBucketFromOrder(orderOrStatus);
+  const status = orderOrStatus && typeof orderOrStatus === "object"
+    ? (orderOrStatus.orderStatus || orderOrStatus.status)
+    : orderOrStatus;
+  if (window.TaagerStatus) return window.TaagerStatus.normalize(status).bucket;
+  return String(status || "").toLowerCase();
+}
+function _opsIsDelivered(orderOrStatus) {
+  return _opsStatusBucket(orderOrStatus) === "delivered";
+}
+function _opsIsFailed(orderOrStatus) {
+  if (typeof analyticsIsFailedOrder === "function") return analyticsIsFailedOrder(orderOrStatus);
+  const bucket = _opsStatusBucket(orderOrStatus);
+  return bucket === "failed" ||
+    bucket === "return_verified" ||
+    bucket === "customer_refused_confirmation" ||
+    bucket === "out_of_stock" ||
+    bucket === "after_sales_done";
+}
+function _opsIsNdrEligible(orderOrStatus) {
+  return _opsStatusBucket(orderOrStatus) !== "canceled_by_you";
 }
 function _opsUniqueAccounts(runs) {
     const seen = new Set(), out = [];
@@ -191,7 +222,7 @@ function _opsUniqueAccounts(runs) {
       const k = _opsAccountKey(r);
       if (!k || seen.has(k)) continue;
       seen.add(k);
-      out.push({ key: k, label: _opsAccountDisplay(r), email: _opsAccountEmail(r) });
+      out.push({ key: k, label: _opsAccountDisplay(r), email: _opsAccountEmail(r), country: accountCountry(r) });
     }
     return out;
   }
@@ -208,6 +239,9 @@ function _opsApplyPresetFilter(orders, preset) {
   });
 }
 function _opsStatusColor(status) {
+  // Taager dashboard/status/NDR migration:
+  // Operations status badges use the same Taager Arabic status mapping as analytics/dashboard.
+  if (typeof getStatusColor === "function") return getStatusColor(status);
   const M = {
     "Pending":          { bg: "#2a2820", text: "#c9a84c" },
     "Confirmed":        { bg: "#0f2218", text: "#34c97a" },

@@ -6,6 +6,36 @@ const DEFAULT_ENVIRONMENT = process.env.NODE_ENV || (process.defaultApp ? "devel
 const DEFAULT_SAMPLE_RATE = DEFAULT_ENVIRONMENT === "production" ? 0.15 : 1.0;
 const DEFAULT_ERROR_SAMPLE_RATE = 1.0;
 const IPC_NAMESPACE = "khod-sentry";
+const SENSITIVE_EXTRA_KEYS = new Set([
+  "password",
+  "easypassword",
+  "taagerpassword",
+  "khodpassword",
+  "token",
+  "licensekey",
+  "supabase_publishable_key",
+  "gemini_api_key",
+]);
+
+function shouldFilterExtraKey(key) {
+  const normalized = String(key || "").toLowerCase();
+  return SENSITIVE_EXTRA_KEYS.has(normalized)
+    || /^pwd_khod/.test(normalized)
+    || /^pwd_taager/.test(normalized)
+    || /khod.*password/.test(normalized);
+}
+
+function redactSensitiveFields(value, seen = new WeakSet()) {
+  if (!value || typeof value !== "object") return value;
+  if (seen.has(value)) return "[Circular]";
+  seen.add(value);
+  if (Array.isArray(value)) return value.map((item) => redactSensitiveFields(item, seen));
+  const copy = {};
+  Object.keys(value).forEach((key) => {
+    copy[key] = shouldFilterExtraKey(key) ? "[Filtered]" : redactSensitiveFields(value[key], seen);
+  });
+  return copy;
+}
 
 function boolEnv(name, fallback) {
   const value = process.env[name];
@@ -21,7 +51,7 @@ function numberEnv(name, fallback) {
 }
 
 function getRelease(appVersion) {
-  return process.env.SENTRY_RELEASE || `khod-whaat-orders@${appVersion || "0.0.0"}`;
+  return process.env.SENTRY_RELEASE || `khod-orders@${appVersion || "0.0.0"}`;
 }
 
 function getEnvironment() {
@@ -64,10 +94,7 @@ function scrubEvent(event) {
   }
   if (request.cookies) delete request.cookies;
 
-  const extra = event.extra || {};
-  ["password", "easyPassword", "khodPassword", "token", "licenseKey", "SUPABASE_PUBLISHABLE_KEY", "GEMINI_API_KEY"].forEach((key) => {
-    if (Object.prototype.hasOwnProperty.call(extra, key)) extra[key] = "[Filtered]";
-  });
+  event.extra = redactSensitiveFields(event.extra || {});
 
   return event;
 }

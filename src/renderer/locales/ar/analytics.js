@@ -19,6 +19,9 @@
       to: "إلى",
       apply: "تطبيق"
     },
+    actions: {
+      updateUploadedOrders: "\u062a\u062d\u062f\u064a\u062b \u0627\u0644\u0637\u0644\u0628\u0627\u062a \u0627\u0644\u0645\u0631\u0641\u0648\u0639\u0629"
+    },
     runBanner: {
       singleRun: "عرض تشغيل واحد من",
       showAll: "✕ عرض الكل"
@@ -118,7 +121,7 @@
       colOrder: "الطلب",
       colValue: "القيمة",
       colStatus: "الحالة",
-      colTime: "الوقت",
+      colTime: "\u062a\u0645 \u0625\u0646\u0634\u0627\u0624\u0647 \u0641\u064a EasyOrders",
       colProduct: "\u0627\u0644\u0645\u0646\u062a\u062c",
       colQty: "\u0627\u0644\u0643\u0645\u064a\u0629",
       colSource: "\u0627\u0644\u0645\u0635\u062f\u0631",

@@ -1,7 +1,12 @@
 {
   "name": "khod-whaat-orders",
-  "version": "1.0.10",
-  "description": "Khod Whaat Orders Automation Bot",
+  "version": "1.0.59",
+  "description": "KHOD WHAAT Orders Automation Bot",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/abdelrahman252/khod-whaaat-missed-orders.git"
+  },
+  "homepage": "https://github.com/abdelrahman252/khod-whaaat-missed-orders#readme",
   "author": "Abdelrahman Ahmed",
   "main": "src/main/main.js",
   "scripts": {
@@ -9,34 +14,71 @@
     "dev": "electron . --dev",
     "admin": "node admin-panel/server.js",
     "check:syntax": "node scripts/check-js-syntax.js",
+    "audit:dashboard-text": "node scripts/audit-dashboard-text.js",
     "qa:static": "node scripts/qa-i18n-theme-static.js && node scripts/validate-dashboard.js",
-    "verify:dashboard": "node scripts/verify-dashboard-april.js",
-    "verify:dashboard-query": "node scripts/verify-dashboard-query.js",
-    "verify:dashboard-rollout": "node scripts/verify-dashboard-rollout.js",
-    "verify:performance": "node scripts/verify-performance-foundation.js",
-    "verify:marketing-optimization": "node scripts/verify-marketing-optimization.js",
-    "verify:dashboard-refresh": "node scripts/verify-dashboard-explicit-refresh.js",
-    "verify:dashboard-range": "node scripts/verify-dashboard-current-year.js && node scripts/verify-khod-date-range.js",
+    "qa:ai": "node scripts/qa-ai-scenarios.js --full",
+    "qa:ai:smoke": "node scripts/qa-ai-scenarios.js --smoke",
+    "qa:ai:full": "node scripts/qa-ai-scenarios.js --full",
+    "qa:ai:live": "node scripts/qa-ai-live-smoke.js",
+    "qa:ai:perf": "node scripts/qa-ai-perf.js",
+    "verify:dashboard": "node scripts/verify-dashboard-may-profit.js",
+    "verify:best-ndr-cycle": "node scripts/verify-best-ndr-cycle.js",
+    "verify:khod-order-count": "node scripts/verify-khod-order-count.js",
+    "verify:gmv-target": "node scripts/verify-gmv-target-planner.js",
+    "verify:admin-presence": "node scripts/verify-admin-presence-heartbeat.js",
+    "verify:admin-error-alerts": "node scripts/verify-admin-error-alerts.js",
+    "verify:preload-version": "node scripts/verify-preload-app-version.js",
+    "verify:arabic-locale": "node scripts/verify-arabic-locale-cleanup.js",
+    "verify:dashboard-speed": "node scripts/verify-dashboard-speed-followup.js",
+    "verify:dashboard:countries": "node scripts/verify-dashboard-countries.js",
+    "verify:country-flow": "node scripts/verify-city-fallback.js",
+    "verify:phone-suffix": "node scripts/verify-phone-country-code-suffix.js",
+    "verify:city-fallback": "node scripts/verify-city-fallback.js",
+    "verify:stage2-recovery": "node scripts/verify-stage2-zoom-sync-recovery.js",
+    "verify:stage3-recovery": "node scripts/verify-stage3-support-recovery.js",
+    "verify:admin-cache-reset": "node scripts/verify-admin-cache-reset.js",
+    "verify:app-zoom": "node scripts/verify-app-zoom.js",
+    "verify:dashboard-year": "node scripts/verify-dashboard-current-year.js",
+    "verify:license-warning": "node scripts/verify-license-expiry-warning.js && node tests/license-expiry-policy.test.js",
+    "verify:admin-notifications": "node scripts/verify-admin-notifications.js",
+    "verify:static-update": "node scripts/verify-static-dashboard-update.js",
+    "verify:explicit-dashboard-refresh": "node scripts/verify-explicit-dashboard-refresh.js",
+    "verify:dashboard-fetch-khod": "node scripts/verify-dashboard-fetch-khod-identity.js",
+    "verify:recovery": "node scripts/verify-recovery-bulk-orders.js",
+    "report:missed-quality": "node scripts/report-missed-order-quality.js",
     "verify:campaign-decisions": "node scripts/verify-campaign-decisions.js",
-    "verify:campaign-ui": "node scripts/verify-campaign-ui.js",
-    "verify:product-attribution": "node scripts/verify-product-attribution.js",
-    "verify:average-commission": "node scripts/verify-average-commission.js",
-    "verify:license-warning": "node scripts/verify-license-expiry-warning.js",
+    "verify:dashboard:easyorders": "node scripts/verify-dashboard-easyorders-enrichment.js",
+    "verify:performance": "node scripts/verify-performance-architecture.js",
+    "verify:marketing-optimization": "node scripts/verify-marketing-optimization.js",
+    "verify:actual-financials": "node scripts/verify-actual-mode-financials.js",
+    "verify:dashboard-query": "node scripts/verify-dashboard-query-service.js",
+    "verify:dashboard-query:khod-flags": "node scripts/verify-dashboard-query-khod-flags.js",
+    "verify:dashboard:confirmation": "node scripts/verify-dashboard-confirmation-logic.js",
+    "verify:dashboard-rollout": "node scripts/verify-dashboard-rollout.js",
     "qa:dashboard": "node scripts/qa-dashboard-responsive.js",
     "qa:dashboard:only": "node scripts/qa-dashboard-only.js",
+    "qa:dashboard:perf": "node scripts/qa-dashboard-performance.js",
+    "perf:fixture": "node scripts/perf/build-perf-fixture.js",
+    "perf:dashboard-load": "node scripts/perf/qa-dashboard-perf-load.js",
+    "qa:dashboard:laptop": "node scripts/qa-dashboard-small-laptop.js",
+    "qa:pages:laptop": "node scripts/qa-pages-small-laptop.js",
     "portal:lint": "npm --prefix web-portal run lint -- src",
-    "dist:mac": "electron-builder --mac --x64 && electron-builder --mac --arm64",
-    "dist:win": "electron-builder --win",
-    "dist:all": "electron-builder --mac --win",
-    "build": "electron-builder",
+    "icons:transparent": "powershell -ExecutionPolicy Bypass -File scripts/regenerate-transparent-icons.ps1",
+    "build:preflight": "node scripts/build-preflight.js",
+    "prepare:runtime-env": "node scripts/prepare-runtime-env.js",
+    "dist:mac": "node scripts/prepare-runtime-env.js && electron-builder --mac --x64 --arm64",
+    "dist:win": "node scripts/prepare-runtime-env.js && electron-builder --win",
+    "dist:all": "node scripts/prepare-runtime-env.js && electron-builder --mac --win",
+    "build": "node scripts/prepare-runtime-env.js && electron-builder",
     "sentry:sourcemaps": "node scripts/sentry-upload-sourcemaps.js",
-    "release:win": "electron-builder --win --publish always",
-    "release:mac": "electron-builder --mac --publish always",
-    "release:all": "electron-builder --mac --win --publish always"
+    "release:win": "node scripts/prepare-runtime-env.js && electron-builder --win --publish always",
+    "release:mac": "node scripts/prepare-runtime-env.js && electron-builder --mac --publish always",
+    "release:all": "node scripts/prepare-runtime-env.js && electron-builder --mac --win --publish always"
   },
   "dependencies": {
     "@google/genai": "^2.6.0",
     "@sentry/electron": "^7.13.0",
+    "country-flag-icons": "^1.6.17",
     "dotenv": "^16.4.5",
     "electron-log": "^5.2.0",
     "electron-store": "^7.0.2",
@@ -51,8 +93,8 @@
   },
   "build": {
     "appId": "com.khodbot.app",
-    "productName": "Khod Whaat Orders",
-    "copyright": "Copyright © 2025",
+    "productName": "KHOD WHAAT Orders",
+    "copyright": "Copyright Â© 2025",
     "icon": "assets/icon",
     "asar": true,
     "files": [
@@ -60,7 +102,11 @@
       "assets/**/*",
       "package.json",
       "!**/*.md",
-      "!.env"
+      "!.env",
+      "!src/**/*.bak",
+      "!src/**/*_patched",
+      "!src/**/*.orig",
+      "!src/**/*.tmp"
     ],
     "mac": {
       "category": "public.app-category.productivity",
@@ -97,7 +143,7 @@
         }
       ],
       "requestedExecutionLevel": "asInvoker",
-      "artifactName": "Khod.Whaaat.Orders.Setup.${version}.${ext}"
+      "artifactName": "Khod.Whaat.Orders.Setup.${version}.${ext}"
     },
     "nsis": {
       "oneClick": false,
@@ -106,13 +152,14 @@
       "installerIcon": "assets/icon.ico",
       "uninstallerIcon": "assets/icon.ico",
       "installerHeaderIcon": "assets/icon.ico",
-      "createDesktopShortcut": true,
+      "createDesktopShortcut": "always",
       "createStartMenuShortcut": true,
-      "shortcutName": "Khod Whaat Orders"
+      "shortcutName": "KHOD WHAAT Orders",
+      "include": "assets/installer.nsh"
     },
     "dmg": {
-      "title": "Khod Whaat Orders",
-      "background": null,
+      "title": "KHOD WHAAT Orders",
+      "backgroundColor": "#0f1117",
       "window": {
         "width": 540,
         "height": 380
@@ -137,12 +184,8 @@
         "to": "assets"
       },
       {
-        "from": ".env",
+        "from": ".runtime-build/build-runtime.env",
         "to": ".env"
-      },
-      {
-        "from": ".env.local",
-        "to": ".env.local"
       }
     ],
     "publish": {
@@ -159,3 +202,4 @@
     }
   }
 }
+

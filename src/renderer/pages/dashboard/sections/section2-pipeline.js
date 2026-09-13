@@ -6,7 +6,11 @@ window.renderSection2 = function (mountEl, data, ctx) {
   'use strict';
 
   var isAr = window.dashboardI18n ? window.dashboardI18n.currentLocale === 'ar' : true;
-  function s2Txt(en, ar) { return isAr ? ar : en; }
+  function s2Txt(en, ar) {
+    return window.dashboardI18n && window.dashboardI18n.pick
+      ? window.dashboardI18n.pick(en, ar)
+      : (isAr ? ar : en);
+  }
 
   /* ── Build an SVG icon with an explicit stroke color ─────────────────────── */
   function svgIcon(pathData, color, size, isFill) {
@@ -20,13 +24,15 @@ window.renderSection2 = function (mountEl, data, ctx) {
   /* ── Per-stage icon path data ────────────────────────────────────────────── */
   var PATHS = {
     intake:     '<path d="M6 2L3 6v14a2 2 0 002 2h14a2 2 0 002-2V6l-3-4z"/><line x1="3" y1="6" x2="21" y2="6"/><path d="M16 10a4 4 0 01-8 0"/>',
-    awaiting:   '<circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/>',
+    pending:    '<circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/>',
     confirmed:  '<path d="M22 11.08V12a10 10 0 11-5.93-9.14"/><polyline points="22 4 12 14.01 9 11.01"/>',
     processing: '<circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 00.33 1.82l.06.06a2 2 0 010 2.83 2 2 0 01-2.83 0l-.06-.06a1.65 1.65 0 00-1.82-.33 1.65 1.65 0 00-1 1.51V21a2 2 0 01-4 0v-.09A1.65 1.65 0 009 19.4a1.65 1.65 0 00-1.82.33l-.06.06a2 2 0 01-2.83-2.83l.06-.06A1.65 1.65 0 004.68 15a1.65 1.65 0 00-1.51-1H3a2 2 0 010-4h.09A1.65 1.65 0 004.6 9a1.65 1.65 0 00-.33-1.82l-.06-.06a2 2 0 012.83-2.83l.06.06A1.65 1.65 0 009 4.68a1.65 1.65 0 001-1.51V3a2 2 0 014 0v.09a1.65 1.65 0 001 1.51 1.65 1.65 0 001.82-.33l.06-.06a2 2 0 012.83 2.83l-.06.06A1.65 1.65 0 0019.4 9a1.65 1.65 0 001.51 1H21a2 2 0 010 4h-.09a1.65 1.65 0 00-1.51 1z"/>',
     waiting:    '<circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/>',
     shipping:   '<rect x="1" y="3" width="15" height="13" rx="1"/><path d="M16 8h4l3 5v4h-7V8z"/><circle cx="5.5" cy="18.5" r="2.5"/><circle cx="18.5" cy="18.5" r="2.5"/>',
     delivered:  '<path d="M21 16V8a2 2 0 00-1-1.73l-7-4a2 2 0 00-2 0l-7 4A2 2 0 003 8v8a2 2 0 001 1.73l7 4a2 2 0 002 0l7-4A2 2 0 0021 16z"/><polyline points="3.27 6.96 12 12.01 20.73 6.96"/><line x1="12" y1="22.08" x2="12" y2="12"/>',
     failed:     '<circle cx="12" cy="12" r="10"/><line x1="15" y1="9" x2="9" y2="15"/><line x1="9" y1="9" x2="15" y2="15"/>',
+    canceled:   '<circle cx="12" cy="12" r="10"/><path d="M8 12h8"/>',
+    on_hold:         '<circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/>',
     /* metric / insight icons — slightly larger */
     bag:        '<path d="M6 2L3 6v14a2 2 0 002 2h14a2 2 0 002-2V6l-3-4z"/><line x1="3" y1="6" x2="21" y2="6"/><path d="M16 10a4 4 0 01-8 0"/>',
     trendUp:    '<polyline points="23 6 13.5 15.5 8.5 10.5 1 18"/><polyline points="17 6 23 6 23 12"/>',
@@ -42,26 +48,27 @@ window.renderSection2 = function (mountEl, data, ctx) {
 
   /* ── Fallback / default data ─────────────────────────────────────────────── */
   var STAGES_DEFAULT = [
-    { id: 'intake',     label: s2Txt('Order Intake', 'استلام الطلب'),    count: 187, pct: 100,  color: '#4f7df6', convLabel: s2Txt('% of Total', 'نسبة من الإجمالي'), conv: null, convFrom: s2Txt('of total orders', 'من إجمالي الطلبات'), active: false },
-    { id: 'awaiting',   label: s2Txt('Awaiting Conf', 'بانتظار التأكيد'),  count: 8,   pct: 4.3,  color: '#a855f7', convLabel: s2Txt('% of Total', 'نسبة من الإجمالي'), conv: 4.3,  convFrom: s2Txt('of total orders', 'من إجمالي الطلبات') },
-    { id: 'confirmed',  label: s2Txt('Confirmed', 'مؤكد'),             count: 18,  pct: 9.6,  color: '#4f55e0', convLabel: s2Txt('% of Total', 'نسبة من الإجمالي'), conv: 9.6,  convFrom: s2Txt('of total orders', 'من إجمالي الطلبات') },
-    { id: 'processing', label: s2Txt('Processing', 'قيد المعالجة'),     count: 12,  pct: 6.4,  color: '#14b8a6', convLabel: s2Txt('% of Total', 'نسبة من الإجمالي'), conv: 6.4,  convFrom: s2Txt('of total orders', 'من إجمالي الطلبات') },
-    { id: 'shipping',   label: s2Txt('Shipping', 'في الشحن'),         count: 31,  pct: 16.6, color: '#f59e0b', convLabel: s2Txt('% of Total', 'نسبة من الإجمالي'), conv: 16.6, convFrom: s2Txt('of total orders', 'من إجمالي الطلبات'), active: true },
-    { id: 'delivered',  label: s2Txt('Delivered', 'تم التسليم'),        count: 94,  pct: 50.3, color: '#00e676', convLabel: s2Txt('% of Total', 'نسبة من الإجمالي'), conv: 50.3, convFrom: s2Txt('of total orders', 'من إجمالي الطلبات') },
-    { id: 'failed',     label: s2Txt('Failed/Canceled', 'فشل / ملغي'),       count: 26,  pct: 13.9, color: '#ef4444', convLabel: s2Txt('Failure Rate', 'نسبة الفشل'),       conv: 13.9, convFrom: s2Txt('of total orders', 'من إجمالي الطلبات') },
+    { id: 'pending', label: s2Txt('Pending', 'قيد الانتظار'), count: 0, pct: 0, color: '#f59e0b' },
+    { id: 'confirmed', label: s2Txt('Confirmed', 'مؤكد'), count: 0, pct: 0, color: '#22c55e' },
+    { id: 'processing', label: s2Txt('Under processing', 'قيد المعالجة'), count: 0, pct: 0, color: '#3b82f6' },
+    { id: 'waiting', label: s2Txt('Waiting', 'انتظار'), count: 0, pct: 0, color: '#06b6d4' },
+    { id: 'shipping', label: s2Txt('In shipping', 'قيد الشحن'), count: 0, pct: 0, color: '#f97316' },
+    { id: 'delivered', label: s2Txt('Delivered', 'تم التسليم'), count: 0, pct: 0, color: '#10b981' },
+    { id: 'failed', label: s2Txt('Failed', 'فشل'), count: 0, pct: 0, color: '#ef4444' },
+    { id: 'canceled', label: s2Txt('Canceled', 'ملغي'), count: 0, pct: 0, color: '#94a3b8' }
   ];
 
   var INSIGHTS_DEFAULT = [
     { color: '#14b8a6', title: s2Txt('Best Stage Performance', 'أفضل مرحلة أداء'),         body: s2Txt('High conversion rate in\nprocessing stage', 'معدل تحويل مرتفع في مرحلة\nقيد المعالجة'),          highlight: null },
     { color: '#ef4444', title: s2Txt('Biggest Drop-off', 'أكبر نقطة تسرب'),          body: s2Txt('From shipping to delivery', 'من الشحن إلى التسليم'),                             highlight: s2Txt('Lost 16.9% of orders', 'فقدان 16.9% من الطلبات') },
     { color: '#f59e0b', title: s2Txt('Shipping Rate', 'نسبة الطلبات قيد الشحن'), body: s2Txt('16.6% of total orders\n31 orders in shipping', '16.6% من إجمالي الطلبات\n31 طلب في الشحن'),         highlight: null },
-    { color: '#a855f7', title: s2Txt('Optimization Opp', 'فرصة تحسين'),               body: s2Txt('Improve confirmation speed\nto reduce awaiting orders', 'تحسين سرعة التأكيد لتقليل\nالطلبات في الانتظار'),   highlight: null },
+    { color: '#a855f7', title: s2Txt('Optimization Opp', 'فرصة تحسين'),               body: s2Txt('Improve confirmation speed\nto reduce early-stage orders', 'تحسين سرعة التأكيد لتقليل\nطلبات المرحلة الأولى'),   highlight: null },
   ];
 
   /* Use passed data or fall back */
   var stages   = (data && data.stages)   ? data.stages   : STAGES_DEFAULT;
   var insights = data ? (Array.isArray(data.insights) ? data.insights : []) : INSIGHTS_DEFAULT;
-  var metrics  = (data && data.metrics)  ? data.metrics  : { overallConversion: 13.9, deliveryRate: 50.3, totalDelivery: 187 };
+  var metrics  = (data && data.metrics)  ? data.metrics  : { overallConversion: 0, deliveryRate: 0, failureRate: 0, canceledRate: 0, totalDelivery: 0 };
   var rawOrders = data && Array.isArray(data.orders) ? data.orders : [];
   var state = mountEl._s2State || { period: '30' };
   mountEl._s2State = state;
@@ -91,23 +98,58 @@ window.renderSection2 = function (mountEl, data, ctx) {
   }
 
   stages = stages.map(normalizeStage);
-  metrics.totalOrders = metrics.totalOrders || metrics.totalDelivery || stages.reduce(function (sum, s) { return sum + Number(s.count || 0); }, 0);
+
+  function khodVisibleStages(inputStages) {
+    var source = Array.isArray(inputStages) ? inputStages : [];
+    var byId = {};
+    source.forEach(function (stage) {
+      if (!stage) return;
+      byId[stage.id] = stage;
+      if (stage.exactBucket) byId[stage.exactBucket] = stage;
+      if (stage.bucket) byId[stage.bucket] = stage;
+    });
+    var lifecycleTotal = Number(metrics.lifecycleStatusCount || metrics.statusTotalCount || 0) || source.reduce(function (sum, row) {
+      return STAGES_DEFAULT.some(function (stage) { return stage.id === (row && (row.id || row.bucket)); }) ? sum + Number(row.count || 0) : sum;
+    }, 0);
+    return STAGES_DEFAULT.map(function (fallback) {
+      var incoming = byId[fallback.id] || {};
+      var count = Number(incoming.count || 0);
+      var share = pctNum(count, lifecycleTotal);
+      return normalizeStage(Object.assign({}, incoming, fallback, {
+        count: count,
+        share: share,
+        pct: pctLabel(share),
+        commissionValue: Number(incoming.commissionValue || 0),
+        salesValue: Number(incoming.salesValue || 0),
+        codValue: Number(incoming.codValue || 0)
+      }));
+    });
+  }
+
+  stages = khodVisibleStages(stages);
+  var lifecycleTotal = Number(metrics.lifecycleStatusCount || metrics.statusTotalCount || 0) || stages.reduce(function (sum, stage) { return sum + Number(stage.count || 0); }, 0);
+  metrics.netOrderCount = lifecycleTotal;
+  metrics.totalOrderCount = lifecycleTotal;
+  metrics.totalOrders = lifecycleTotal;
+  metrics.totalDelivery = lifecycleTotal;
   metrics.deliveredCount = metrics.deliveredCount != null ? metrics.deliveredCount : ((stages.find(function (s) { return s.id === 'delivered'; }) || {}).count || 0);
   metrics.failedCount = metrics.failedCount != null ? metrics.failedCount : ((stages.find(function (s) { return s.id === 'failed'; }) || {}).count || 0);
+  metrics.canceledCount = metrics.canceledCount != null ? metrics.canceledCount : ((stages.find(function (s) { return s.id === 'canceled'; }) || {}).count || 0);
   metrics.deliveryRate = metrics.deliveryRate != null ? metrics.deliveryRate : pctNum(metrics.deliveredCount, metrics.totalOrders);
   metrics.failureRate = metrics.failureRate != null ? metrics.failureRate : pctNum(metrics.failedCount, metrics.totalOrders);
+  metrics.canceledRate = pctNum(metrics.canceledCount, metrics.totalOrders);
   metrics.overallConversion = metrics.deliveryRate;
 
   function statusBucket(status) {
+    if (window.KhodDashboardLogic) {
+      return window.KhodDashboardLogic.normalize(status).bucket;
+    }
     var s = (status || '').toString().trim().toLowerCase();
-    if (s === 'delivered' || s === 'مسلمة') return 'delivered';
-    if (s === 'in shipping' || s === 'shipping' || s === 'في الشحن' || s === 'تم الشحن') return 'shipping';
-    if (s === 'failed' || s === 'canceled' || s === 'cancelled' || s === 'ملغى' || s === 'مرتجع' || s === 'فشلت') return 'failed';
-    if (s === 'awaiting confirmation' || s === 'pending' || s === 'بانتظار التأكيد') return 'awaiting';
-    if (s === 'confirmed' || s === 'مؤكد') return 'confirmed';
-    if (s === 'under processing' || s === 'قيد المعالجة') return 'processing';
-    if (s === 'waiting' || s === 'قيد الانتظار' || s === 'بانتظار الشحن') return 'waiting';
-    return 'processing';
+    if (s === 'pending' || s === 'confirmed' || s === 'processing' || s === 'waiting' || s === 'shipping' || s === 'delivered' || s === 'failed' || s === 'canceled') return s;
+    if (s === 'under processing') return 'processing';
+    if (s === 'in shipping') return 'shipping';
+    if (s === 'cancelled') return 'canceled';
+    return 'other';
   }
 
   function rowDate(row) {
@@ -127,12 +169,13 @@ window.renderSection2 = function (mountEl, data, ctx) {
     var rows = start ? rawOrders.filter(function (row) {
       var d = rowDate(row); return !d || d >= start;
     }) : rawOrders.slice();
-    var counts = { awaiting: 0, confirmed: 0, processing: 0, waiting: 0, shipping: 0, delivered: 0, failed: 0 };
+    var counts = {};
+    STAGES_DEFAULT.forEach(function (stage) { counts[stage.id] = 0; });
     rows.forEach(function (row) {
       var bucket = statusBucket(row.orderStatus || row.status);
       counts[bucket] = (counts[bucket] || 0) + 1;
     });
-    var total = rows.length;
+    var total = Object.keys(counts).reduce(function (sum, key) { return key === 'other' ? sum : sum + Number(counts[key] || 0); }, 0);
     stages = stages.map(function (stage) {
       var count = counts[stage.id] || 0;
       return normalizeStage(Object.assign({}, stage, {
@@ -140,9 +183,10 @@ window.renderSection2 = function (mountEl, data, ctx) {
       }));
     });
     metrics.totalOrders = total; metrics.totalDelivery = total;
-    metrics.deliveredCount = counts.delivered; metrics.failedCount = counts.failed;
+    metrics.deliveredCount = counts.delivered; metrics.failedCount = counts.failed; metrics.canceledCount = counts.canceled;
     metrics.deliveryRate = pctNum(counts.delivered, total);
     metrics.failureRate = pctNum(counts.failed, total);
+    metrics.canceledRate = pctNum(counts.canceled, total);
     metrics.overallConversion = metrics.deliveryRate;
   }
 
@@ -152,18 +196,19 @@ window.renderSection2 = function (mountEl, data, ctx) {
 
   function buildDynamicInsights() {
     if (insights && insights.length) return insights;
-    var activeStages = stages.filter(function (s) { return ['awaiting','confirmed','processing','waiting','shipping'].indexOf(s.id) !== -1; });
+    var activeStages = stages.filter(function (s) {
+      return ['pending','confirmed','processing','waiting','shipping'].indexOf(s.id) !== -1;
+    });
     var biggest = activeStages.slice().sort(function (a, b) { return (b.count || 0) - (a.count || 0); })[0];
     var deliveryColor = window.dashboardRateColor ? window.dashboardRateColor(metrics.deliveryRate || 0) : ((metrics.deliveryRate || 0) >= 40 ? '#22d3ee' : (metrics.deliveryRate || 0) >= 30 ? '#00e676' : (metrics.deliveryRate || 0) >= 20 ? '#f59e0b' : '#ef4444');
     return [
-      { color: deliveryColor, title: s2Txt('Delivery Rate', 'معدل التسليم'),       body: Number(metrics.deliveredCount || 0).toLocaleString('en-US') + s2Txt(' out of ', ' طلب من أصل ') + Number(metrics.totalOrders || 0).toLocaleString('en-US') + s2Txt(' orders', ''), highlight: pctLabel(metrics.deliveryRate) },
-      { color: '#ef4444', title: s2Txt('Failure Rate', 'معدل الفشل'),          body: Number(metrics.failedCount || 0).toLocaleString('en-US') + s2Txt(' failed or canceled orders', ' طلب فاشل أو ملغى'),                                                          highlight: pctLabel(metrics.failureRate) },
-      { color: biggest ? biggest.color : '#f59e0b', title: s2Txt('Largest Active Stage', 'أكبر مرحلة نشطة'), body: biggest ? biggest.label + s2Txt(' has ', ' فيها ') + Number(biggest.count || 0).toLocaleString('en-US') + s2Txt(' orders', ' طلب') : s2Txt('No active stages', 'لا توجد مراحل نشطة'), highlight: biggest ? biggest.pct : null },
-      { color: '#a855f7', title: s2Txt('Account Filter', 'نوع الحساب المعروض'), body: s2Txt('Metrics calculated for the account selected in top bar', 'الأرقام محسوبة من الحساب المحدد في الشريط العلوي'), highlight: null }
+      { color: deliveryColor, title: s2Txt('Delivery Success Rate', 'معدل نجاح التوصيل'), body: Number(metrics.deliveredCount || 0).toLocaleString('en-US') + s2Txt(' successfully delivered out of ', ' شحنة تم تسليمها بنجاح من أصل ') + Number(metrics.totalOrders || 0).toLocaleString('en-US') + s2Txt(' total orders', ' طلب إجمالي'), highlight: pctLabel(metrics.deliveryRate) },
+      { color: '#ef4444', title: s2Txt('Failed Rate', 'معدل الفشل'), body: Number(metrics.failedCount || 0).toLocaleString('en-US') + s2Txt(' failed orders', ' طلب فاشل'), highlight: pctLabel(metrics.failureRate) },
+      { color: '#94a3b8', title: s2Txt('Canceled Rate', 'معدل الإلغاء'), body: Number(metrics.canceledCount || 0).toLocaleString('en-US') + s2Txt(' canceled orders', ' طلب ملغي'), highlight: pctLabel(metrics.canceledRate) },
+      { color: biggest ? biggest.color : '#f59e0b', title: s2Txt('Most Active Stage', 'أكثر المراحل نشاطاً'), body: biggest ? s2Txt('Stage "', 'مرحلة "') + biggest.label + s2Txt('" has the most orders with ', '" تحتوي على أكبر عدد من الطلبات بواقع ') + Number(biggest.count || 0).toLocaleString('en-US') + s2Txt(' orders', ' طلب') : s2Txt('No active orders at the moment', 'لا توجد طلبات نشطة حالياً'), highlight: biggest ? biggest.pct : null },
     ];
   }
 
-  /* ── Stage card HTML ─────────────────────────────────────────────────────── */
   function stageCardHtml(s, i) {
     var pctText   = s.pct || pctLabel(s.share);
     var primary   = Number(s.count || 0).toLocaleString('en-US');
@@ -200,7 +245,7 @@ window.renderSection2 = function (mountEl, data, ctx) {
     var iconHtml = svgIcon(PATHS[iconKey], s.color, 22);
 
     return '<div class="s2-stage-wrapper fade-up" style="display:flex;flex-direction:column;align-items:center;flex:1;min-width:0;animation-delay:' + (i * 80) + 'ms;">' +
-      '<div class="s2-stage-label" style="font-size:13px;font-weight:700;margin-bottom:12px;white-space:nowrap;color:' + s.color + ';text-shadow:' + (isLight ? 'none' : '0 0 10px ' + s.color + '77') + ';">' + s.label + '</div>' +
+      '<div class="s2-stage-label" style="font-size:13px;font-weight:700;margin-bottom:12px;white-space:nowrap;color:' + s.color + ';text-shadow:' + (isLight ? 'none' : '0 0 10px ' + s.color + '77') + ';">' + s.label + window.supposedBadgeHtml(s.label) + '</div>' +
       '<div class="s2-stage-card" style="position:relative;width:92%;height:220px;border-radius:16px;transform:skewX(-6deg);background:' + bg + ';border:1.5px solid ' + s.color + ';box-shadow:' + glowBase + ';">' +
         '<div class="s2-card-inner" style="width:100%;height:100%;display:flex;flex-direction:column;align-items:center;justify-content:space-between;padding:24px 8px;box-sizing:border-box;transform:skewX(6deg);">' +
           '<div class="s2-card-top" style="text-align:center;margin-top:8px;">' +
@@ -266,7 +311,7 @@ window.renderSection2 = function (mountEl, data, ctx) {
     var iconHtml  = svgIcon(PATHS[iconKey] || PATHS.bag, color, 30);
     return '<div class="s2-metric-card fade-up" style="flex:1;min-width:0;background:#0b1120;border:1px solid rgba(255,255,255,0.10);border-radius:16px;padding:32px;display:flex;align-items:center;gap:24px;flex-direction:' + rowDir + ';animation-delay:' + delay + 'ms;box-shadow:inset 0 0 30px ' + color + '08;">' +
       '<div class="s2-metric-text" style="flex:1;text-align:' + textAlign + ';">' +
-        '<div class="s2-metric-label" style="font-size:14px;color:rgba(255,255,255,0.6);font-weight:600;margin-bottom:8px;">' + label + '</div>' +
+        '<div class="s2-metric-label" style="font-size:14px;color:rgba(255,255,255,0.6);font-weight:600;margin-bottom:8px;">' + label + window.supposedBadgeHtml(label) + '</div>' +
         '<div class="s2-metric s2-metric-value" data-to="' + value + '" data-decimals="' + (isPercent ? '1' : '0') + '" data-suffix="' + (isPercent ? '%' : '') + '" id="' + animId + '" style="font-size:40px;font-weight:900;line-height:1;letter-spacing:-2px;color:' + color + ';text-shadow:0 0 20px ' + color + '55;">0</div>' +
         '<div class="s2-metric-sub" style="font-size:12px;color:rgba(255,255,255,0.4);margin-top:8px;">' + sub + '</div>' +
       '</div>' +
@@ -276,50 +321,74 @@ window.renderSection2 = function (mountEl, data, ctx) {
     '</div>';
   }
 
-  function analyticsCardHtml(color, label, value, sub, progress, delay) {
-    var isRtl = window.dashboardI18n ? window.dashboardI18n.isRtl() : true;
+  function stageCount(ids) {
+    ids = Array.isArray(ids) ? ids : [ids];
+    return stages.reduce(function (sum, stage) {
+      return ids.indexOf(stage.id) !== -1 ? sum + Number(stage.count || 0) : sum;
+    }, 0);
+  }
+
+  function analyticsCardHtml(iconKey, color, label, value, sub, suffix, animId, delay) {
+    var isRtl     = window.dashboardI18n ? window.dashboardI18n.isRtl() : true;
     var textAlign = isRtl ? 'right' : 'left';
-    var safeProgress = Math.max(0, Math.min(100, Number(progress || 0)));
-    return '<div class="s2-analytics-card fade-up" style="min-width:0;background:#0b1120;border:1px solid rgba(255,255,255,0.10);border-radius:12px;padding:16px 18px;text-align:' + textAlign + ';animation-delay:' + delay + 'ms;box-shadow:inset 0 0 22px ' + color + '07;">' +
-      '<div style="display:flex;align-items:center;justify-content:space-between;gap:12px;flex-direction:' + (isRtl ? 'row-reverse' : 'row') + ';margin-bottom:10px;">' +
-        '<span style="font-size:12px;color:rgba(255,255,255,0.58);font-weight:700;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">' + label + '</span>' +
-        '<span style="width:8px;height:8px;border-radius:50%;background:' + color + ';box-shadow:0 0 10px ' + color + 'aa;"></span>' +
+    var rowDir    = isRtl ? 'row-reverse' : 'row';
+    return '<div class="s2-analytics-card fade-up" style="min-width:0;background:#0b1120;border:1px solid ' + color + '38;border-radius:14px;padding:16px 18px;display:flex;align-items:center;gap:14px;flex-direction:' + rowDir + ';animation-delay:' + delay + 'ms;box-shadow:inset 0 0 24px ' + color + '08;">' +
+      '<div style="width:42px;height:42px;border-radius:12px;display:flex;align-items:center;justify-content:center;flex-shrink:0;background:' + color + '18;border:1px solid ' + color + '55;color:' + color + ';">' +
+        svgIcon(PATHS[iconKey] || PATHS.barChart, color, 20) +
       '</div>' +
-      '<div style="font-size:24px;font-weight:900;line-height:1;color:' + color + ';font-variant-numeric:tabular-nums;text-shadow:0 0 14px ' + color + '44;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">' + value + '</div>' +
-      '<div style="height:5px;border-radius:999px;background:rgba(255,255,255,0.07);overflow:hidden;margin:12px 0 8px;">' +
-        '<div style="height:100%;width:' + safeProgress + '%;border-radius:inherit;background:linear-gradient(90deg,' + color + '55,' + color + ');box-shadow:0 0 10px ' + color + '77;"></div>' +
+      '<div style="min-width:0;flex:1;text-align:' + textAlign + ';">' +
+        '<div style="font-size:11px;font-weight:700;color:rgba(255,255,255,0.48);margin-bottom:7px;">' + label + window.supposedBadgeHtml(label) + '</div>' +
+        '<div class="s2-metric s2-analytics-value" data-to="' + value + '" data-decimals="' + (suffix === '%' ? '1' : '0') + '" data-suffix="' + (suffix || '') + '" id="' + animId + '" style="font-size:26px;font-weight:900;line-height:1;color:#fff;font-variant-numeric:tabular-nums;">0</div>' +
+        '<div style="font-size:11px;color:rgba(255,255,255,0.42);margin-top:7px;line-height:1.35;">' + sub + '</div>' +
       '</div>' +
-      '<div style="font-size:11px;color:rgba(255,255,255,0.42);line-height:1.45;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">' + sub + '</div>' +
     '</div>';
   }
 
-  function buildPipelineAnalyticsHtml() {
-    var byId = {};
-    stages.forEach(function (stage) { byId[stage.id] = stage; });
-    var total = Number(metrics.totalOrders || metrics.totalDelivery || 0);
-    if (!total) {
-      total = stages.reduce(function (sum, stage) { return sum + Number(stage.count || 0); }, 0);
-    }
-    function count(id) { return Number((byId[id] && byId[id].count) || 0); }
-    var activeIds = ['awaiting', 'confirmed', 'processing', 'waiting', 'shipping'];
-    var activeCount = activeIds.reduce(function (sum, id) { return sum + count(id); }, 0);
-    var activeRate = pctNum(activeCount, total);
-    var delivered = Number(metrics.deliveredCount || count('delivered') || 0);
-    var failed = Number(metrics.failedCount || count('failed') || 0);
-    var deliveryToFailure = failed > 0
-      ? (delivered / failed).toFixed(delivered / failed >= 10 ? 0 : 1) + 'x'
-      : (delivered > 0 ? s2Txt('No failures', 'لا يوجد فشل') : '0x');
-    var bottleneck = activeIds.map(function (id) { return byId[id]; }).filter(Boolean).sort(function (a, b) {
-      return Number(b.count || 0) - Number(a.count || 0);
-    })[0];
-    var attentionCount = count('awaiting') + failed;
-    var attentionRate = pctNum(attentionCount, total);
+  function buildAnalyticsCards() {
+    var total = Number(metrics.netOrderCount || 0);
+    var activeCount = stageCount(['pending', 'confirmed', 'processing', 'waiting', 'shipping']);
+    var preShipCount = stageCount(['pending', 'confirmed', 'processing', 'waiting']);
+    var shippingCount = stageCount('shipping');
+    var deliveredCount = Number(metrics.deliveredCount || stageCount('delivered') || 0);
+    var failedCount = Number(metrics.failedCount || stageCount('failed') || 0);
+    var resolvedCount = deliveredCount + failedCount;
+    var activePct = pctNum(activeCount, total);
+    var shippingPct = pctNum(shippingCount, total);
+    var outcomeQuality = resolvedCount > 0 ? pctNum(deliveredCount, resolvedCount) : 0;
     return [
-      analyticsCardHtml('#14b8a6', s2Txt('Active Pipeline', 'المسار النشط'), Number(activeCount || 0).toLocaleString('en-US'), pctLabel(activeRate) + s2Txt(' still moving', ' ما زالت قيد الحركة'), activeRate, 420),
-      analyticsCardHtml('#00e676', s2Txt('Delivery to Failure', 'التسليم مقابل الفشل'), deliveryToFailure, Number(delivered || 0).toLocaleString('en-US') + s2Txt(' delivered vs ', ' تم تسليمها مقابل ') + Number(failed || 0).toLocaleString('en-US') + s2Txt(' failed', ' فشل'), failed > 0 ? Math.min(100, (delivered / Math.max(failed, 1)) * 10) : 100, 480),
-      analyticsCardHtml(bottleneck ? bottleneck.color : '#f59e0b', s2Txt('Main Bottleneck', 'عنق الزجاجة الرئيسي'), bottleneck ? bottleneck.label : s2Txt('Clear', 'واضح'), bottleneck ? Number(bottleneck.count || 0).toLocaleString('en-US') + s2Txt(' orders waiting here', ' طلب متوقف هنا') : s2Txt('No active queue', 'لا يوجد تكدس نشط'), bottleneck ? Number(bottleneck.share || 0) : 0, 540),
-      analyticsCardHtml('#ef4444', s2Txt('Attention Queue', 'قائمة تحتاج متابعة'), Number(attentionCount || 0).toLocaleString('en-US'), pctLabel(attentionRate) + s2Txt(' awaiting or failed', ' بانتظار التأكيد أو فشل'), attentionRate, 600)
-    ].join('');
+      {
+        icon: 'barChart',
+        color: '#22d3ee',
+        label: s2Txt('Active Orders', 'طلبات نشطة'),
+        value: activeCount,
+        suffix: '',
+        sub: pctLabel(activePct) + s2Txt(' in progress across KHOD active statuses', ' قيد المتابعة ضمن حالات KHOD النشطة')
+      },
+      {
+        icon: 'pending',
+        color: '#a855f7',
+        label: s2Txt('Before Shipping', 'قبل الشحن'),
+        value: preShipCount,
+        suffix: '',
+        sub: s2Txt('Pending, Confirmed, Under processing, and Waiting', 'قيد الانتظار ومؤكدة وقيد المعالجة وانتظار')
+      },
+      {
+        icon: 'shipping',
+        color: '#f59e0b',
+        label: s2Txt('Out for Delivery Rate', 'نسبة الشحنات الجارية'),
+        value: shippingPct,
+        suffix: '%',
+        sub: Number(shippingCount || 0).toLocaleString('en-US') + s2Txt(' orders currently with courier', ' طلبات مع شركة الشحن حالياً')
+      },
+      {
+        icon: 'confirmed',
+        color: window.dashboardRateColor ? window.dashboardRateColor(outcomeQuality) : '#00e676',
+        label: s2Txt('Net Success Rate', 'معدل النجاح الصافي'),
+        value: outcomeQuality,
+        suffix: '%',
+        sub: s2Txt('Delivery success of completed orders', 'نسبة نجاح التوصيل للطلبات المغلقة')
+      }
+    ];
   }
 
   /* ── Insight item HTML ───────────────────────────────────────────────────── */
@@ -375,7 +444,7 @@ window.renderSection2 = function (mountEl, data, ctx) {
         '<div style="text-align:' + (isRtl ? 'right' : 'left') + ';flex:1;">' +
           '<h1 id="s2-h1" style="font-size:36px;font-weight:900;color:var(--dash-text,#fff);margin:0;line-height:1.15;opacity:0;transform:translateY(-8px);transition:opacity 0.4s ease,transform 0.4s ease;">' + s2Txt('Order Pipeline', 'خط سير الطلبات') + '</h1>' +
           '<div id="s2-sub" style="display:flex;align-items:center;gap:8px;font-size:13px;color:var(--dash-text-faint,rgba(255,255,255,0.5));margin-top:8px;justify-content:flex-' + (isRtl ? 'end' : 'start') + ';flex-direction:' + (isRtl ? 'row-reverse' : 'row') + ';opacity:0;transition:opacity 0.4s ease 0.12s;">' +
-            s2Txt('From order intake to delivery or failure', 'من استلام الطلب حتى التسليم أو الفشل') +
+            s2Txt('Track order status and performance from creation to final delivery', 'تتبع حالة وأداء الطلبات من لحظة استلامها وحتى وصولها النهائي للعميل') +
             svgIcon(PATHS.info, '#3b82f6', 14) +
           '</div>' +
         '</div>' +
@@ -395,14 +464,23 @@ window.renderSection2 = function (mountEl, data, ctx) {
         '</div>' +
 
         '<div class="s2-lower" style="padding:0 40px;display:flex;flex-direction:column;gap:24px;">' +
-          '<div class="s2-metrics-grid" style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:16px;">' +
+          '<div class="s2-metrics-grid" style="display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:16px;">' +
             metricCardHtml('bag',      '#3b82f6', s2Txt('Total Orders', 'إجمالي الطلبات'),       metrics.totalOrders,  s2Txt('across all stages', 'في جميع المراحل'),    false, 's2-m0', 300) +
             metricCardHtml('trendUp',  (window.dashboardRateColor ? window.dashboardRateColor(metrics.deliveryRate || 0) : ((metrics.deliveryRate || 0) >= 40 ? '#22d3ee' : (metrics.deliveryRate || 0) >= 30 ? '#00e676' : (metrics.deliveryRate || 0) >= 20 ? '#f59e0b' : '#ef4444')), s2Txt('Final Delivery Rate', 'معدل التسليم النهائي'),  metrics.deliveryRate, Number(metrics.deliveredCount || 0).toLocaleString('en-US') + s2Txt(' delivered orders', ' طلب تم تسليمها'), true, 's2-m1', 300) +
-            metricCardHtml('xCircle',  '#ef4444', s2Txt('Overall Failure Rate', 'معدل الفشل الإجمالي'),  metrics.failureRate,  Number(metrics.failedCount    || 0).toLocaleString('en-US') + s2Txt(' orders', ' طلب'),            true, 's2-m2', 300) +
+            metricCardHtml('xCircle',  '#ef4444', s2Txt('Failed Rate', 'معدل الفشل'),  metrics.failureRate,  Number(metrics.failedCount || 0).toLocaleString('en-US') + s2Txt(' failed orders', ' طلب فاشل'), true, 's2-m2', 300) +
+            metricCardHtml('xCircle',  '#94a3b8', s2Txt('Canceled Rate', 'معدل الإلغاء'),  metrics.canceledRate,  Number(metrics.canceledCount || 0).toLocaleString('en-US') + s2Txt(' canceled orders', ' طلب ملغي'), true, 's2-m3', 300) +
           '</div>' +
 
-          '<div class="s2-analytics-grid" style="display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:14px;">' +
-            buildPipelineAnalyticsHtml() +
+          '<div class="s2-analytics-box fade-up" style="background:#0b1120;border:1px solid rgba(255,255,255,0.10);border-radius:16px;padding:22px;animation-delay:500ms;">' +
+            '<div style="display:flex;align-items:center;gap:10px;justify-content:flex-' + (isRtl ? 'end' : 'start') + ';margin-bottom:14px;flex-direction:' + (isRtl ? 'row-reverse' : 'row') + ';">' +
+              svgIcon(PATHS.barChart, '#22d3ee', 18) +
+              '<span style="font-size:18px;font-weight:800;color:#fff;">' + s2Txt('Order Analytics & Funnel', 'تحليلات وحالة الطلبات') + '</span>' +
+            '</div>' +
+            '<div class="s2-analytics-grid" style="display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:12px;">' +
+              buildAnalyticsCards().map(function (card, i) {
+                return analyticsCardHtml(card.icon, card.color, card.label, card.value, card.sub, card.suffix, 's2-a' + i, 520 + i * 70);
+              }).join('') +
+            '</div>' +
           '</div>' +
 
           '<div class="s2-insights-box fade-up" style="background:#0b1120;border:1px solid rgba(255,255,255,0.10);border-radius:16px;padding:28px;animation-delay:600ms;">' +
@@ -452,7 +530,7 @@ window.renderSection2 = function (mountEl, data, ctx) {
   }
 
   /* ── Post-injection animations ───────────────────────────────────────────── */
-  requestAnimationFrame(function () {
+  if (false) requestAnimationFrame(function () {
     requestAnimationFrame(function () {
       var h1  = document.getElementById('s2-h1');
       var sub = document.getElementById('s2-sub');
@@ -502,6 +580,17 @@ window.renderSection2 = function (mountEl, data, ctx) {
   });
 
   /* ── Theme-change observer: re-render when data-theme toggles ────────────────── */
+  var h1 = mountEl.querySelector('#s2-h1');
+  var sub = mountEl.querySelector('#s2-sub');
+  if (h1) { h1.style.opacity = '1'; h1.style.transform = 'none'; }
+  if (sub) sub.style.opacity = '1';
+  mountEl.querySelectorAll('.s2-count[data-to], .s2-metric[data-to]').forEach(function (el) {
+    var directValue = parseFloat(el.getAttribute('data-to'));
+    var directDecimals = parseInt(el.getAttribute('data-decimals') || '0', 10);
+    var directSuffix = el.getAttribute('data-suffix') || '';
+    el.textContent = (isFinite(directValue) ? directValue : 0).toFixed(directDecimals).replace(/\.0$/, '') + directSuffix;
+  });
+
   if (mountEl._s2ThemeObserver) {
     mountEl._s2ThemeObserver.disconnect();
     mountEl._s2ThemeObserver = null;
@@ -509,6 +598,8 @@ window.renderSection2 = function (mountEl, data, ctx) {
   var _s2ThemeObserver = new MutationObserver(function (mutations) {
     for (var i = 0; i < mutations.length; i++) {
       if (mutations[i].attributeName === 'data-theme') {
+        var shellEl = mountEl.closest && mountEl.closest('.dash-shell');
+        if (!shellEl || shellEl._dashboardActiveSection !== 'pipeline') return;
         window.renderSection2(mountEl, data, ctx);
         return;
       }
@@ -516,4 +607,26 @@ window.renderSection2 = function (mountEl, data, ctx) {
   });
   _s2ThemeObserver.observe(document.documentElement, { attributes: true, attributeFilter: ['data-theme'] });
   mountEl._s2ThemeObserver = _s2ThemeObserver;
+  var pipelineLifecycleActive = true;
+  mountEl._dashboardSectionDeactivate = function () {
+    if (!pipelineLifecycleActive) return;
+    pipelineLifecycleActive = false;
+    if (mountEl._s2ThemeObserver) mountEl._s2ThemeObserver.disconnect();
+  };
+  mountEl._dashboardSectionActivate = function () {
+    if (pipelineLifecycleActive) return;
+    pipelineLifecycleActive = true;
+    if (mountEl._s2ThemeObserver) {
+      mountEl._s2ThemeObserver.observe(document.documentElement, { attributes: true, attributeFilter: ['data-theme'] });
+    }
+  };
+  mountEl._dashboardSectionCleanup = function () {
+    mountEl._dashboardSectionDeactivate();
+    if (mountEl._s2ThemeObserver) {
+      mountEl._s2ThemeObserver.disconnect();
+      mountEl._s2ThemeObserver = null;
+    }
+    mountEl._dashboardSectionActivate = null;
+    mountEl._dashboardSectionDeactivate = null;
+  };
 };

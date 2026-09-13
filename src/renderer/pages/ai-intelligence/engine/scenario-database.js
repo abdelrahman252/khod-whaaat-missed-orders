@@ -4,7 +4,7 @@
   var PRODUCTS = ["Product X", "Thermal Bottle", "Hair Serum", "Posture Belt", "Kitchen Cutter", "Smart Watch", "Skin Cream", "Mini Printer"];
   var CITIES = ["Riyadh", "Jeddah", "Alexandria", "Cairo", "Dammam", "Mecca", "Mansoura", "Medina"];
   var KPIS = ["NDR", "CPA", "approval rate", "refund rate", "delivery rate", "margin", "ROAS", "commission"];
-  var CURRENCIES = ["SAR", "USD"];
+  var CURRENCIES = ["SAR", "USD", "EGP"];
   var FAILURE_MODES = ["Gemini timeout", "Gemini outage", "rate limit", "budget exceeded", "circuit breaker active"];
 
   var CATEGORY_DEFS = [
@@ -146,7 +146,7 @@
     {
       category: "calculators",
       intent: "CALCULATOR_SIMULATION",
-      mode: "gemini",
+      mode: "local",
       messages: [
         "What CPA do I need to break even?",
         "What happens if delivery improves?",
@@ -160,7 +160,7 @@
     {
       category: "local-only",
       intent: "RANKING_QUERY",
-      mode: "gemini",
+      mode: "local",
       messages: [
         "Top cities",
         "Highest CPA products",

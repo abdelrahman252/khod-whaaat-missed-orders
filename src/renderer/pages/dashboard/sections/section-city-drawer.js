@@ -18,10 +18,21 @@
   function getIsAr() {
     return window.dashboardI18n ? window.dashboardI18n.currentLocale === 'ar' : true;
   }
-  function s6Txt(en, ar) { return getIsAr() ? ar : en; }
-  function sTx(en, ar) { return getIsAr() ? ar : en; }
-  function tx(en, ar) { return getIsAr() ? ar : en; }
-  function dashText(en, ar) { return getIsAr() ? ar : en; }
+  function pick(en, ar) {
+    var value = window.dashboardI18n && window.dashboardI18n.pick
+      ? window.dashboardI18n.pick(en, ar)
+      : (getIsAr() ? ar : en);
+    return String(value == null ? '' : value)
+      .replace(/\bTaager Profit(?: After Tax)?\b/g, 'Marketer Commission')
+      .replace(/\bTaager profit(?: after tax)?\b/g, 'marketer commission')
+      .replace(/\bTiger Profit(?: After Tax)?\b/g, 'Marketer Commission')
+      .replace(/\bTiger profit(?: after tax)?\b/g, 'marketer commission')
+      .replace(/ربح تاجر(?: بعد الضريبة)?/g, 'عمولة المسوق');
+  }
+  function s6Txt(en, ar) { return pick(en, ar); }
+  function sTx(en, ar) { return pick(en, ar); }
+  function tx(en, ar) { return pick(en, ar); }
+  function dashText(en, ar) { return pick(en, ar); }
   function esc(value) {
     return String(value == null ? '' : value)
       .replace(/&/g, '&amp;')
@@ -47,9 +58,11 @@
 
   /* ── Helpers ─────────────────────────────────────────────────────────────── */
   function sar(n) {
-    if (window.formatSAR) return window.formatSAR(n || 0, 0) + ' SAR';
+    var currency = window.dashboardActiveCurrency || 'SAR';
+    if (window.formatDashboardMoney) return window.formatDashboardMoney(n || 0, currency, 0);
+    if (window.formatSAR) return window.formatSAR(n || 0, 0, currency);
     var v = Math.round(n || 0);
-    return v.toLocaleString('en-US') + ' SAR';
+    return v.toLocaleString('en-US') + ' ' + currency;
   }
 
   function pct(n, dec) {
@@ -103,7 +116,7 @@
     return '<div style="background:'+(_il()?'linear-gradient(145deg,rgba(0,0,0,0.03),rgba(0,0,0,0.01))':'linear-gradient(145deg,rgba(255,255,255,0.05),rgba(255,255,255,0.01))')+';border:1px solid '+(_il()?'rgba(0,0,0,0.09)':'rgba(255,255,255,0.06)')+';' +
       'border-radius:12px;padding:10px 12px;display:flex;flex-direction:column;gap:4px;box-shadow:0 4px 12px rgba(0,0,0,0.1);transition:transform 0.2s">' +
       '<div style="display:flex;align-items:center;gap:6px;font-size:10px;color:'+(_il()?'rgba(30,10,60,0.5)':'rgba(255,255,255,0.45)')+';font-weight:700">' + iconHtml + label + '</div>' +
-      '<div style="font-size:16px;font-weight:900;color:' + accent + ';line-height:1">' + valueHTML + '</div>' +
+      '<div style="font-size:16px;font-weight:900;color:' + accent + ';line-height:1">' + valueHTML + window.supposedBadgeHtml(label) + '</div>' +
     '</div>';
   }
 
@@ -149,7 +162,9 @@
   function renderKpiGrid(cityData) {
     if (!cityData) return '<div style="padding:16px;color:'+(_il()?'rgba(30,10,60,0.4)':'rgba(255,255,255,0.3)')+';font-size:13px">' + tx('No data', 'لا توجد بيانات') + '</div>';
 
-    var orders      = cityData.count          || 0;
+    var orders      = window.DashboardOrderMetrics
+      ? window.DashboardOrderMetrics.netOrders(cityData)
+      : (cityData.netOrderCount != null ? cityData.netOrderCount : cityData.count || 0);
     var revenue     = cityData.totalRevenue   || cityData.due || 0;
     // drPct and ndrPct may not be pre-computed on the raw cityStats object.
     // Compute them on the fly from the raw counters when needed.
@@ -163,6 +178,7 @@
       : (orders > 0
           ? parseFloat(((cityData.deliveredOrders / orders) * 100).toFixed(1))
           : 0);
+    if (Number(cityData.deliveredOrders || 0) <= 0) ndrPct = 0;
     var commission  = cityData.earnedCommission || 0;
     var prepaidPct  = cityData.prepaidPct     || 0;
     var codRisk     = cityData.gap            || 0;
@@ -179,7 +195,7 @@
         '<div class="cool-tooltip" data-tooltip="' + sTx('Delivery rate of total orders (NDR)', 'نسبة التسليم من إجمالي الطلبات (NDR)') + '">' + kpiCell(sTx('NDR (Total)', 'NDR (إجمالي)'), '<span style="color:' + ndrColor(ndrPct) + '">' + pct(ndrPct) + '</span>', ndrColor(ndrPct), '📉') + '</div>' +
       '</div>' +
       '<div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;">' +
-        '<div class="cool-tooltip" data-tooltip="' + sTx('Earned commission from delivered orders', 'العمولة المحققة من الطلبات المسلمة') + '">' + kpiCell(sTx('Earned Commission', 'العمولة المحققة'), sar(commission), '#a855f7', '💎') + '</div>' +
+        '<div class="cool-tooltip" data-tooltip="' + sTx('Earned marketer commission from delivered orders', 'العمولة المحققة من الطلبات المسلمة') + '">' + kpiCell(sTx('Earned marketer commission', 'العمولة المحققة'), sar(commission), '#a855f7', '💎') + '</div>' +
         '<div class="cool-tooltip" data-tooltip="' + sTx('Percentage of prepaid orders', 'نسبة الطلبات المدفوعة مسبقاً') + '">' + kpiCell(sTx('Prepaid', 'الدفع المسبق'), pct(prepaidPct), '#3b82f6', '💳') + '</div>' +
         '<div class="cool-tooltip" data-tooltip="' + sTx('Total orders in delivery and processing', 'إجمالي الطلبات قيد التوصيل والمعالجة') + '">' + kpiCell(sTx('Active orders', 'أوامر نشطة'), '<span style="color:#3b82f6">' + num(pipeline) + '</span>', '#3b82f6', '🔄') + '</div>' +
         '<div class="cool-tooltip" data-tooltip="' + sTx('Pending amounts expected to be collected (COD Risk)', 'المبالغ المعلقة المتوقع تحصيلها (خطر COD)') + '">' + kpiCell(sTx('COD Risk', 'مخاطر COD'), sar(codRisk), codRisk > 5000 ? '#ef4444' : '#f59e0b', '⚠️') + '</div>' +
@@ -199,7 +215,7 @@
       '</div>';
     }
 
-    /* Sort by commission desc, cap at 10 */
+    /* Sort by marketer commission desc, cap at 10. The commission key is a compatibility field. */
     var entries = Object.keys(productMap).map(function (key) {
       var d = productMap[key];
       return {
@@ -239,7 +255,7 @@
           'margin-top:1px;direction:ltr;text-align:' + align + ';" title="' + esc(e.sku) + '">' + esc(shortSku) + '</div>'
         : '';
 
-      /* Commission: strip " SAR" suffix → show just the number + tiny label to save space */
+      /* Profit: show the formatted number plus the active dashboard currency label. */
       var commVal = Math.round(e.commission || 0);
       var commStr = commVal >= 1000
         ? (commVal / 1000).toFixed(1).replace(/\.0$/, '') + 'K'
@@ -264,9 +280,9 @@
             pct(e.drPct) + '<span style="font-size:7.5px;opacity:0.55;margin-left:1px">DR</span>' +
           '</div>' +
         '</div>' +
-        /* col 4 — commission */
+        /* col 4 — marketer commission */
         '<div style="font-size:10.5px;font-weight:700;color:#00e676;text-align:center;white-space:nowrap;" title="' + esc(sar(e.commission)) + '">' +
-          commStr + '<span style="font-size:7.5px;opacity:0.55;margin-left:1px">SAR</span>' +
+          commStr + '<span style="font-size:7.5px;opacity:0.55;margin-left:1px">' + (window.dashboardActiveCurrency || 'SAR') + '</span>' + window.supposedBadgeHtml('profit') +
         '</div>' +
         /* col 5 — risk badge */
         '<div style="display:flex;justify-content:center;align-items:center;overflow:hidden;min-width:0;">' +
@@ -293,7 +309,8 @@
         '<div style="font-size:9.5px;font-weight:700;color:'+(_il()?'rgba(30,10,60,0.4)':'rgba(255,255,255,0.28)')+';text-align:' + align + ';letter-spacing:0.04em">' + sTx('PRODUCT', 'المنتج') + '</div>' +
         '<div style="font-size:9.5px;font-weight:700;color:'+(_il()?'rgba(30,10,60,0.4)':'rgba(255,255,255,0.28)')+';text-align:center;letter-spacing:0.04em">' + sTx('ORDERS', 'طلبات') + '</div>' +
         '<div style="font-size:9.5px;font-weight:700;color:'+(_il()?'rgba(30,10,60,0.4)':'rgba(255,255,255,0.28)')+';text-align:center;letter-spacing:0.04em">' + sTx('NDR/DR', 'التسليم') + '</div>' +
-        '<div style="font-size:9.5px;font-weight:700;color:'+(_il()?'rgba(30,10,60,0.4)':'rgba(255,255,255,0.28)')+';text-align:center;letter-spacing:0.04em">' + sTx('COMM', 'عمولة') + '</div>' +
+        // The COMM column displays KHOD marketer commission.
+        '<div style="font-size:9.5px;font-weight:700;color:'+(_il()?'rgba(30,10,60,0.4)':'rgba(255,255,255,0.28)')+';text-align:center;letter-spacing:0.04em">' + sTx('COMMISSION', 'عمولة المسوق') + '</div>' +
         '<div style="font-size:9.5px;font-weight:700;color:'+(_il()?'rgba(30,10,60,0.4)':'rgba(255,255,255,0.28)')+';text-align:center;letter-spacing:0.04em">' + sTx('RISK', 'خطر') + '</div>' +
       '</div>' +
       '<div class="dash-scroll" style="max-height:160px;overflow-y:auto;overflow-x:hidden;">' +
@@ -317,7 +334,7 @@
         sectionHead(sTx('Payment Intelligence', 'ذكاء الدفع')) +
         '<div style="background:'+(_il()?'rgba(0,0,0,0.03)':'rgba(255,255,255,0.02)')+';border:1px solid '+(_il()?'rgba(0,0,0,0.08)':'rgba(255,255,255,0.06)')+';' +
           'border-radius:10px;padding:14px;color:'+(_il()?'rgba(30,10,60,0.45)':'rgba(255,255,255,0.3)')+';font-size:12px;text-align:center">' +
-          sTx('Prepaid data is not available', 'بيانات الدفع المسبق غير متوفرة') +
+          sTx('Prepaid payment-method data is not available. Enable EasyOrders enrichment to compare prepaid and COD for this city.', 'بيانات طريقة الدفع المسبق غير متوفرة. فعّل إثراء EasyOrders لمقارنة الدفع المسبق و COD لهذه المدينة.') +
         '</div>' +
       '</div>';
     }
@@ -335,6 +352,10 @@
       : (prepaidNdrBase > 0 ? (prepaidDel / prepaidNdrBase * 100) : 0);
     var codNdr     = typeof cityData.codNdr === 'number' ? cityData.codNdr
       : (codNdrBase > 0 ? (codDel / codNdrBase * 100) : (cityData.ndrPct || 0));
+    if (Number(cityData.deliveredOrders || 0) <= 0) {
+      prepaidNdr = 0;
+      codNdr = 0;
+    }
 
     var delta      = prepaidNdr - codNdr;
     var prepaidPct = prepaidCount / total * 100;
@@ -478,12 +499,24 @@
       var border = pc + '33';
       var align = sTx('left', 'right');
       var cardDir = sTx('ltr', 'rtl');
+      var helper = window.TaagerSmartInsights;
+      var trust = helper && helper.trustLabel ? helper.trustLabel(ins.trust || 'measured') : ((ins.trust === 'estimated') ? 'Estimated' : 'Measured');
+      var confidence = ins.confidence || (ins.metric && ins.metric.orders >= 30 ? 'strong' : (ins.metric && ins.metric.orders >= 15 ? 'developing' : 'limited'));
+      var evidence = Array.isArray(ins.evidence) ? ins.evidence.filter(Boolean) : [];
+      var evidenceHtml = evidence.length
+        ? '<div style="font-size:10px;font-weight:700;color:'+(_il()?'rgba(15,5,30,0.45)':'rgba(255,255,255,0.38)')+';line-height:1.5;margin-bottom:6px;text-align:' + align + ';">' + evidence.slice(0, 2).join(' · ') + '</div>'
+        : '';
       return '<div style="display:flex;gap:12px;padding:14px;border-radius:12px;margin-bottom:10px;' +
         'background:' + bg + ';border:1px solid ' + border + ';box-shadow:0 4px 12px rgba(0,0,0,0.1)">' +
         '<div style="font-size:18px;flex-shrink:0">' + insightIcon(ins.type) + '</div>' +
         '<div style="flex:1;min-width:0">' +
           '<div style="font-size:13px;font-weight:800;color:' + pc + ';margin-bottom:4px;text-align:' + align + ';">' + (ins.title || '') + '</div>' +
+          '<div style="display:flex;gap:6px;justify-content:' + (align === 'right' ? 'flex-end' : 'flex-start') + ';margin-bottom:6px;flex-wrap:wrap">' +
+            '<span style="font-size:9px;font-weight:800;text-transform:uppercase;color:' + pc + ';background:' + pc + '18;border:1px solid ' + pc + '33;border-radius:999px;padding:2px 7px;">' + trust + '</span>' +
+            '<span style="font-size:9px;font-weight:700;text-transform:uppercase;color:'+(_il()?'rgba(15,5,30,0.45)':'rgba(255,255,255,0.42)')+';background:'+(_il()?'rgba(15,5,30,0.04)':'rgba(255,255,255,0.035)')+';border:1px solid '+(_il()?'rgba(15,5,30,0.08)':'rgba(255,255,255,0.06)')+';border-radius:999px;padding:2px 7px;">' + confidence + '</span>' +
+          '</div>' +
           '<div style="font-size:11px;font-weight:600;color:'+(_il()?'rgba(15,5,30,0.7)':'rgba(255,255,255,0.7)')+';line-height:1.6;margin-bottom:6px;text-align:' + align + ';">' + (ins.body || '') + '</div>' +
+          evidenceHtml +
           (ins.recommendation ? '<div style="font-size:10px;font-weight:700;color:'+(_il()?'rgba(15,5,30,0.5)':'rgba(255,255,255,0.4)')+';display:flex;align-items:flex-start;gap:4px;justify-content:flex-start;direction:' + cardDir + ';"><span style="color:' + pc + '">↳</span>' + ins.recommendation + '</div>' : '') +
         '</div>' +
       '</div>';
@@ -529,7 +562,7 @@
     /* Always called on open() so theme switches are reflected immediately */
     el.style.background  = _il() ? 'rgba(255,255,255,0.97)' : 'rgba(13,21,37,0.85)';
     el.style.borderLeft  = '1px solid ' + (_il() ? 'rgba(0,0,0,0.10)' : 'rgba(255,255,255,0.08)');
-    el.style.boxShadow   = _il() ? '-8px 0 40px rgba(0,0,0,0.12)' : '-8px 0 40px rgba(0,0,0,0.6)';
+    el.style.boxShadow   = _il() ? '-6px 0 20px rgba(0,0,0,0.08)' : '-6px 0 22px rgba(0,0,0,0.36)';
   }
 
   function getOrCreateDrawer() {
@@ -542,12 +575,14 @@
         'position:fixed', 'top:0', 'right:0',
         'width:720px', 'max-width:100vw',
         'height:100vh', 'height:100dvh',
-        'backdrop-filter:blur(16px)',
-        '-webkit-backdrop-filter:blur(16px)',
+        'backdrop-filter:none',
+        '-webkit-backdrop-filter:none',
         'z-index:1000',
         'display:flex', 'flex-direction:column',
-        'transform:translateX(100%)',
-        'transition:transform 0.3s cubic-bezier(0.4,0,0.2,1)',
+        'transform:translate3d(100%,0,0)',
+        'transition:transform 0.24s cubic-bezier(0.4,0,0.2,1)',
+        'will-change:transform',
+        'contain:layout paint',
         'font-family:inherit',
         'direction:inherit'
       ].join(';');
@@ -659,7 +694,7 @@
       requestAnimationFrame(function () {
         requestAnimationFrame(function () {
           backdrop.style.opacity = '1';
-          drawer.style.transform = 'translateX(0)';
+          drawer.style.transform = 'translate3d(0,0,0)';
         });
       });
 
@@ -677,7 +712,7 @@
       var drawer   = document.getElementById(DRAWER_ID);
       var backdrop = document.getElementById(BACKDROP_ID);
 
-      if (drawer)   drawer.style.transform  = 'translateX(100%)';
+      if (drawer)   drawer.style.transform  = 'translate3d(100%,0,0)';
       if (backdrop) backdrop.style.opacity  = '0';
 
       document.removeEventListener('keydown', _escHandler);
@@ -696,3 +731,4 @@
   window.CityIntelligenceDrawer = CityIntelligenceDrawer;
 
 })();
+

@@ -12,7 +12,7 @@ let _tableState = {
   statusFilter: "",
   accountFilter:"",
   sourceFilter: "",
-  sortField:    "date",
+  sortField:    "easyCreatedAt",
   sortDir:      "desc",
 };
 
@@ -33,7 +33,25 @@ function renderOrdersExplorer(container, runs, allRuns) {
   _tableState.accountFilter = "";
   _tableState.sourceFilter  = "";
 
-  const statuses  = [...new Set(orders.map(o => o.orderStatus).filter(Boolean))].sort();
+  const statuses = [];
+  const statusLabelsSeen = new Set();
+  orders.forEach(o => {
+    const raw = o.orderStatus;
+    if (!raw) return;
+    const bucket = window.TaagerStatus ? window.TaagerStatus.normalize(raw).bucket : raw;
+    if (!statusLabelsSeen.has(bucket)) {
+      statusLabelsSeen.add(bucket);
+      statuses.push(raw);
+    }
+  });
+  statuses.sort((a, b) => {
+    if (window.TaagerStatus) {
+      const orderA = window.TaagerStatus.statusInfo(a).order || 999;
+      const orderB = window.TaagerStatus.statusInfo(b).order || 999;
+      return orderA - orderB;
+    }
+    return a.localeCompare(b);
+  });
   const accountMap = new Map();
   orders.forEach(o => {
     const key = accountKey(o);
@@ -55,7 +73,7 @@ function renderOrdersExplorer(container, runs, allRuns) {
       <div class="orders-explorer-header">
         <div class="orders-explorer-title">
           📋 ${window.t_anl('table.title')}
-          <span style="font-size:11px;font-weight:400;color:var(--text3)" id="explorer-count-badge"></span>
+          <span style="font-size:var(--type-caption);font-weight:var(--weight-regular);color:var(--text3)" id="explorer-count-badge"></span>
         </div>
         <div class="orders-explorer-controls">
           <div class="explorer-search-wrap">
@@ -67,10 +85,10 @@ function renderOrdersExplorer(container, runs, allRuns) {
           ${accounts.length > 1 ? `<div id="explorer-account-filter-wrap"></div>` : ""}
           <div id="explorer-source-filter-wrap"></div>
           <div id="explorer-per-page-wrap"></div>
-          <button class="btn btn-ghost" style="font-size:12px;padding:7px 12px" id="explorer-clear-sort-btn">
+          <button class="btn btn-ghost" style="font-size:var(--type-label);padding:7px 12px" id="explorer-clear-sort-btn">
             ${window.t_anl('table.clearSort')}
           </button>
-          <button class="btn btn-ghost" style="font-size:12px;padding:7px 14px" id="explorer-export-btn">
+          <button class="btn btn-ghost" style="font-size:var(--type-label);padding:7px 14px" id="explorer-export-btn">
             ⬆ ${window.t_anl('table.export')}
           </button>
         </div>
@@ -79,8 +97,8 @@ function renderOrdersExplorer(container, runs, allRuns) {
         <table class="explorer-table">
           <thead>
             <tr>
-              <th data-sort="khodOrderNumber">${window.t_anl('table.colOrder')}</th>
-              <th data-sort="date">${window.t_anl('table.colTime')}</th>
+              <th data-sort="taagerOrderNumber">${window.t_anl('table.colOrder')}</th>
+              <th data-sort="easyCreatedAt">${window.t_anl('table.colTime')}</th>
               <th data-sort="accountEmail">${window.t_anl('account.label')}</th>
               <th data-sort="name">${window.t_anl('table.colCustomer')}</th>
               <th>${window.t_anl('table.colContact')}</th>
@@ -104,7 +122,10 @@ function renderOrdersExplorer(container, runs, allRuns) {
   function renderStatusSelect() {
     const wrap = container.querySelector("#explorer-status-filter-wrap");
     if (!wrap) return;
-    const statusOptions = [{ value: "", label: window.t_anl('table.statusAll') }].concat(statuses.map(s => ({ value: s, label: analyticsStatusLabel(s) })));
+    const statusOptions = [{ value: "", label: window.t_anl('table.statusAll') }].concat(statuses.map(s => {
+      const bucket = window.TaagerStatus ? window.TaagerStatus.normalize(s).bucket : s;
+      return { value: bucket, label: analyticsStatusLabel(s) };
+    }));
     renderCustomSelect(wrap, statusOptions, _tableState.statusFilter, function(val) {
       _tableState.statusFilter = val;
       _tableState.page = 1;
@@ -183,19 +204,27 @@ function _applyFiltersAndRender(container) {
       const rawPhoneVal = o.phone || o.rawPhone || o.normPhone || "";
       const phoneClean = rawPhoneVal.toString().replace(/[\s\-\+]/g, "");
       const queryClean = q.replace(/[\s\-\+]/g, "");
+      const dialCode = _countryDialCode(o.taagerCountry);
       const phoneMatch = phoneClean.includes(queryClean) || 
-                         phoneClean.replace(/^966/, "0").includes(queryClean) ||
-                         phoneClean.replace(/^966/, "").includes(queryClean);
+                         (dialCode && phoneClean.replace(new RegExp("^" + dialCode), "0").includes(queryClean)) ||
+                         (dialCode && phoneClean.replace(new RegExp("^" + dialCode), "").includes(queryClean));
       
       const productMatch = (o.productName || "").toLowerCase().includes(q);
       const cityMatch = (o.city || "").toLowerCase().includes(q);
-      const orderNumMatch = (o.khodOrderNumber || "").toLowerCase().includes(q);
+      const orderNumMatch = (o.taagerOrderNumber || "").toLowerCase().includes(q);
       
       return nameMatch || skuMatch || phoneMatch || productMatch || cityMatch || orderNumMatch;
     });
   }
 
-  if (s.statusFilter)  results = results.filter(o => o.orderStatus  === s.statusFilter);
+  if (s.statusFilter) {
+    results = results.filter(o => {
+      const bucket = typeof analyticsStatusBucketFromOrder === "function"
+        ? analyticsStatusBucketFromOrder(o)
+        : (window.TaagerStatus ? window.TaagerStatus.normalize(o.orderStatus).bucket : o.orderStatus);
+      return bucket === s.statusFilter;
+    });
+  }
   if (s.accountFilter) results = results.filter(o => accountMatches(o, s.accountFilter));
   if (s.sourceFilter)  results = results.filter(o => o.source       === s.sourceFilter);
 
@@ -203,6 +232,10 @@ function _applyFiltersAndRender(container) {
     results = [...results].sort((a, b) => {
       let valA = a[s.sortField] ?? "";
       let valB = b[s.sortField] ?? "";
+      if (s.sortField === "easyCreatedAt") {
+        valA = a.easyCreatedAt || a.createdAt || a.date || "";
+        valB = b.easyCreatedAt || b.createdAt || b.date || "";
+      }
       if (typeof valA === "string") valA = valA.toLowerCase();
       if (typeof valB === "string") valB = valB.toLowerCase();
       if (valA < valB) return s.sortDir === "asc" ? -1 : 1;
@@ -226,7 +259,7 @@ function _applyFiltersAndRender(container) {
   _renderPagination(container, results.length, totalPages);
 
   const badge = container.querySelector("#explorer-count-badge");
-  if (badge) badge.textContent = `(${results.length.toLocaleString()} ${window.t_anl('account.orders')})`;
+  if (badge) badge.textContent = `(${results.length.toLocaleString("en-US")} ${window.t_anl('account.orders')})`;
 
   container.querySelectorAll(".explorer-table th[data-sort]").forEach(th => {
     th.classList.remove("sort-asc", "sort-desc");
@@ -253,29 +286,32 @@ function _renderTableBody(container, rows) {
   }
 
   tbody.innerHTML = rows.map((o, idx) => {
-    const statusColor = getStatusColor(o.orderStatus || "");
-    const date = o.date ? formatAnalyticsDate(o.date) : "—";
+    const statusBucket = typeof analyticsStatusBucketFromOrder === "function"
+      ? analyticsStatusBucketFromOrder(o)
+      : (o.orderStatus || "");
+    const statusColor = getStatusColor(statusBucket);
+    const date = formatAnalyticsDateTime(o.easyCreatedAt || o.createdAt || o.date);
     const sku   = o.sku || "—";
     const rawPhoneVal = o.phone || o.rawPhone || o.normPhone || "";
-    const phone = rawPhoneVal ? rawPhoneVal.toString().replace(/^966/, "0") : "—";
+    const phone = rawPhoneVal ? _displayDomesticPhone(rawPhoneVal, o.taagerCountry) : "—";
     const codStr = (o.amountDue > 0) ? formatSAR(o.amountDue) : "—";
 
     return `
       <tr style="animation-delay: ${idx * 12}ms">
-        <td style="font-variant-numeric:tabular-nums;color:var(--text3);font-size:11px">${o.khodOrderNumber || "—"}</td>
+        <td style="font-variant-numeric:tabular-nums;color:var(--text3);font-size:var(--type-caption)">${o.taagerOrderNumber || "—"}</td>
         <td style="white-space:nowrap">${date}</td>
-        <td style="max-width:140px;overflow:hidden;text-overflow:ellipsis;font-size:11px;color:var(--text2)"
+        <td style="max-width:140px;overflow:hidden;text-overflow:ellipsis;font-size:var(--type-caption);color:var(--text2)"
             title="${accountDisplay(o)}">${_shortAccount(accountDisplay(o))}</td>
         <td style="max-width:140px;overflow:hidden;text-overflow:ellipsis" title="${o.name || ""}">${o.name || "—"}</td>
         <td style="font-variant-numeric:tabular-nums;color:var(--text2)">${phone}</td>
         <td style="max-width:180px;overflow:hidden;text-overflow:ellipsis" title="${o.productName || ""}">${_shortText(o.productName, 28)}</td>
-        <td style="font-size:10px;color:var(--text3);max-width:100px;overflow:hidden;text-overflow:ellipsis" title="${sku}">${_shortText(sku, 14)}</td>
+        <td style="font-size:var(--type-micro);color:var(--text3);max-width:100px;overflow:hidden;text-overflow:ellipsis" title="${sku}">${_shortText(sku, 14)}</td>
         <td style="text-align:center">${o.qty || 1}</td>
         <td style="font-variant-numeric:tabular-nums">${o.subtotal > 0 ? formatSAR(o.subtotal) : "—"}</td>
-        <td style="font-variant-numeric:tabular-nums;font-weight:600;color:var(--success)">${codStr}</td>
+        <td style="font-variant-numeric:tabular-nums;font-weight:var(--weight-semibold);color:var(--success)">${codStr}</td>
         <td>
-          <span class="status-badge" data-status="${o.orderStatus || ""}"
-            style="background:${statusColor.bg};color:${statusColor.text}">${analyticsStatusLabel(o.orderStatus)}</span>
+          <span class="status-badge" data-status="${statusBucket}"
+            style="background:${statusColor.bg};color:${statusColor.text}">${analyticsStatusLabel(statusBucket)}</span>
         </td>
         <td>${o.city || "—"}</td>
         <td>
@@ -307,7 +343,7 @@ function _renderPagination(container, total, totalPages) {
 
   pag.innerHTML = `
     <div class="explorer-pagination-info">
-      ${window.t_anl('table.paginationInfo', { start: start.toLocaleString(), end: end.toLocaleString(), total: total.toLocaleString() })}
+      ${window.t_anl('table.paginationInfo', { start: start.toLocaleString("en-US"), end: end.toLocaleString("en-US"), total: total.toLocaleString("en-US") })}
     </div>
     <div class="explorer-pagination-controls">
       <button class="pagination-btn pagination-arrow-btn" id="pag-prev" ${s.page <= 1 ? "disabled" : ""} aria-label="${window.t_anl('table.prev')}">←</button>
@@ -381,9 +417,12 @@ function _exportToExcel(orders) {
     const XLSX = window.XLSX || (typeof require !== "undefined" ? require("xlsx") : null);
     if (!XLSX) { alert("XLSX library not available."); return; }
 
+    // Taager dashboard/status/NDR migration:
+    // Export the Taager profit alias first: order profit minus tax profit.
     const rows = orders.map(o => ({
-      "Order #":             o.khodOrderNumber || "",
+      "Order #":             o.taagerOrderNumber || "",
       "Date":                o.date            || "",
+      "EasyOrders Created At": o.easyCreatedAt || o.createdAt || o.date || "",
       "Account":             accountDisplay(o),
       "Customer":            o.name            || "",
       "Phone":               (o.phone || o.rawPhone || o.normPhone || ""),
@@ -392,7 +431,7 @@ function _exportToExcel(orders) {
       "Qty":                 o.qty             || 1,
       "Amount (SAR)":        o.subtotal        || 0,
       "COD (SAR)":           o.amountDue       || 0,
-      "Commission (SAR)":    o.marketerCommission || 0,
+      "Taager Profit (SAR)": o.taagerProfit || o.profitAfterTax || o.profitAfterFees || o.marketerCommission || 0,
       "Status":              o.orderStatus     || "",
       "City":                o.city            || "",
       "Source":              o.source          || "",
@@ -420,4 +459,17 @@ function _shortText(text, maxLen) {
 function _shortAccount(email) {
   if (!email || email === "__single__") return "—";
   return email;
+}
+
+function _countryDialCode(country) {
+  const map = { sa: "966", eg: "20", ae: "971", iq: "964", om: "968" };
+  return map[String(country || "sa").toLowerCase()] || map.sa;
+}
+
+function _displayDomesticPhone(value, country) {
+  const text = String(value || "");
+  const digits = text.replace(/\D/g, "");
+  const dialCode = _countryDialCode(country);
+  if (dialCode && digits.startsWith(dialCode)) return "0" + digits.slice(dialCode.length);
+  return text;
 }

@@ -57,7 +57,7 @@ function renderAllCharts(chartsRoot, orders, dateRange) {
           '<div class="chart-card-header">',
             '<div style="display:flex; flex-direction:column; gap:2px;">',
               '<div class="chart-card-title">' + window.t_anl('charts.ordersTitle') + '</div>',
-              '<div class="chart-card-subtitle" id="orders-per-day-subtitle" style="font-size:10px; color:var(--text2); font-weight:400; line-height:1.2;"></div>',
+              '<div class="chart-card-subtitle" id="orders-per-day-subtitle" style="font-size:var(--type-micro); color:var(--text2); font-weight:var(--weight-regular); line-height:1.2;"></div>',
             '</div>',
           '</div>',
           '<div class="chart-canvas-wrap chart-orders-wrap" style="padding:0 4px 4px"><canvas id="canvas-orders-per-day"></canvas></div>',
@@ -113,7 +113,7 @@ function renderAllCharts(chartsRoot, orders, dateRange) {
   } catch (e) {
     console.error("[Analytics] Error rendering Orders Per Day chart:", e);
     var el = document.getElementById("chart-orders-per-day");
-    if (el) el.innerHTML = '<div class="analytics-chart-error" style="height:100%; display:flex; align-items:center; justify-content:center; font-size:11px; color:#ef4444; padding:20px; text-align:center;">Failed to load Orders Per Day</div>';
+    if (el) el.innerHTML = '<div class="analytics-chart-error" style="height:100%; display:flex; align-items:center; justify-content:center; font-size:var(--type-caption); color:#ef4444; padding:20px; text-align:center;">Failed to load Orders Per Day</div>';
   }
 
   try {
@@ -121,7 +121,7 @@ function renderAllCharts(chartsRoot, orders, dateRange) {
   } catch (e) {
     console.error("[Analytics] Error rendering Real vs Missed chart:", e);
     var el = document.getElementById("chart-real-vs-missed");
-    if (el) el.innerHTML = '<div class="analytics-chart-error" style="height:100%; display:flex; align-items:center; justify-content:center; font-size:11px; color:#ef4444; padding:20px; text-align:center;">Failed to load Real vs Missed</div>';
+    if (el) el.innerHTML = '<div class="analytics-chart-error" style="height:100%; display:flex; align-items:center; justify-content:center; font-size:var(--type-caption); color:#ef4444; padding:20px; text-align:center;">Failed to load Real vs Missed</div>';
   }
 
   try {
@@ -129,7 +129,7 @@ function renderAllCharts(chartsRoot, orders, dateRange) {
   } catch (e) {
     console.error("[Analytics] Error rendering Top Cities chart:", e);
     var el = document.getElementById("chart-top-cities");
-    if (el) el.innerHTML = '<div class="analytics-chart-error" style="height:100%; display:flex; align-items:center; justify-content:center; font-size:11px; color:#ef4444; padding:20px; text-align:center;">Failed to load Top Cities</div>';
+    if (el) el.innerHTML = '<div class="analytics-chart-error" style="height:100%; display:flex; align-items:center; justify-content:center; font-size:var(--type-caption); color:#ef4444; padding:20px; text-align:center;">Failed to load Top Cities</div>';
   }
 
   try {
@@ -137,7 +137,7 @@ function renderAllCharts(chartsRoot, orders, dateRange) {
   } catch (e) {
     console.error("[Analytics] Error rendering Delivery Funnel chart:", e);
     var el = document.getElementById("chart-delivery-funnel");
-    if (el) el.innerHTML = '<div class="analytics-chart-error" style="height:100%; display:flex; align-items:center; justify-content:center; font-size:11px; color:#ef4444; padding:20px; text-align:center;">Failed to load Delivery Funnel</div>';
+    if (el) el.innerHTML = '<div class="analytics-chart-error" style="height:100%; display:flex; align-items:center; justify-content:center; font-size:var(--type-caption); color:#ef4444; padding:20px; text-align:center;">Failed to load Delivery Funnel</div>';
   }
 
   try {
@@ -145,7 +145,7 @@ function renderAllCharts(chartsRoot, orders, dateRange) {
   } catch (e) {
     console.error("[Analytics] Error rendering Heatmap chart:", e);
     var el = document.getElementById("chart-heatmap");
-    if (el) el.innerHTML = '<div class="analytics-chart-error" style="height:100%; display:flex; align-items:center; justify-content:center; font-size:11px; color:#ef4444; padding:20px; text-align:center;">Failed to load Heatmap</div>';
+    if (el) el.innerHTML = '<div class="analytics-chart-error" style="height:100%; display:flex; align-items:center; justify-content:center; font-size:var(--type-caption); color:#ef4444; padding:20px; text-align:center;">Failed to load Heatmap</div>';
   }
 
   try {
@@ -153,7 +153,7 @@ function renderAllCharts(chartsRoot, orders, dateRange) {
   } catch (e) {
     console.error("[Analytics] Error rendering Orders by Hour chart:", e);
     var el = document.getElementById("chart-orders-by-hour");
-    if (el) el.innerHTML = '<div class="analytics-chart-error" style="height:100%; display:flex; align-items:center; justify-content:center; font-size:11px; color:#ef4444; padding:20px; text-align:center;">Failed to load Orders by Hour</div>';
+    if (el) el.innerHTML = '<div class="analytics-chart-error" style="height:100%; display:flex; align-items:center; justify-content:center; font-size:var(--type-caption); color:#ef4444; padding:20px; text-align:center;">Failed to load Orders by Hour</div>';
   }
 
   try {
@@ -161,7 +161,7 @@ function renderAllCharts(chartsRoot, orders, dateRange) {
   } catch (e) {
     console.error("[Analytics] Error rendering Top Products chart:", e);
     var el = document.getElementById("chart-top-products");
-    if (el) el.innerHTML = '<div class="analytics-chart-error" style="height:100%; display:flex; align-items:center; justify-content:center; font-size:11px; color:#ef4444; padding:20px; text-align:center;">Failed to load Top Products</div>';
+    if (el) el.innerHTML = '<div class="analytics-chart-error" style="height:100%; display:flex; align-items:center; justify-content:center; font-size:var(--type-caption); color:#ef4444; padding:20px; text-align:center;">Failed to load Top Products</div>';
   }
   
   // Custom select for Top Cities
@@ -312,9 +312,14 @@ function _renderRealVsMissed(orders) {
   var canvas = document.getElementById("canvas-real-vs-missed");
   if (!canvas || !window.Chart) return;
 
-  var real   = orders.filter(function(o) { return o.source !== "missed"; }).length;
-  var missed = orders.filter(function(o) { return o.source === "missed"; }).length;
-  var total  = real + missed;
+  var counts = {};
+  (orders || []).forEach(function (order) {
+    var bucket = typeof analyticsStatusBucketFromOrder === "function"
+      ? analyticsStatusBucketFromOrder(order)
+      : (window.TaagerStatus ? window.TaagerStatus.normalize(order && order.orderStatus).bucket : String(order && order.orderStatus || "other").toLowerCase());
+    counts[bucket || "other"] = (counts[bucket || "other"] || 0) + 1;
+  });
+  var total  = (orders || []).length;
 
   if (total === 0) { _showChartEmpty(canvas); return; }
 
@@ -325,42 +330,53 @@ function _renderRealVsMissed(orders) {
     delete _chartRegistry["real-vs-missed"];
   }
 
-  var realPct = total > 0 ? Math.round((real / total) * 100) : 0;
-  var missedPct = total > 0 ? Math.round((missed / total) * 100) : 0;
+  var palette = ["#3b82f6", "#10b981", "#14b8a6", "#f59e0b", "#8b5cf6", "#ef4444", "#64748b", "#eab308"];
+  function statusRank(bucket) {
+    return window.TaagerStatus ? (window.TaagerStatus.statusInfo(bucket).order || 999) : 999;
+  }
+  function statusColor(bucket, index) {
+    return window.TaagerStatus && typeof window.TaagerStatus.color === "function"
+      ? window.TaagerStatus.color(bucket)
+      : palette[index % palette.length];
+  }
+  var entries = Object.keys(counts).map(function (bucket) {
+    return { bucket: bucket, count: counts[bucket] || 0 };
+  }).sort(function (a, b) {
+    var rankDiff = statusRank(a.bucket) - statusRank(b.bucket);
+    return rankDiff || b.count - a.count;
+  });
 
   var legendRoot = document.getElementById("donut-legend-root");
   if (legendRoot) {
-    legendRoot.innerHTML = `
-      <div class="donut-legend-item">
-        <div class="legend-item-title">
-          <span class="legend-dot green"></span>
-          <span class="legend-label">` + window.t_anl('charts.delivered') + `</span>
-        </div>
-        <div class="legend-item-numbers">
-          <strong>${real}</strong>
-          <span class="legend-sub">(${realPct}%)</span>
-        </div>
-      </div>
-      <div class="donut-legend-item">
-        <div class="legend-item-title">
-          <span class="legend-dot red"></span>
-          <span class="legend-label">` + window.t_anl('charts.failed') + `</span>
-        </div>
-        <div class="legend-item-numbers">
-          <strong>${missed}</strong>
-          <span class="legend-sub">(${missedPct}%)</span>
-        </div>
-      </div>
-    `;
+    legendRoot.style.flexWrap = "wrap";
+    legendRoot.style.rowGap = "12px";
+    legendRoot.innerHTML = entries.map(function (entry, index) {
+      var pct = total > 0 ? Math.round((entry.count / total) * 100) : 0;
+      var label = typeof analyticsStatusLabel === "function" ? analyticsStatusLabel(entry.bucket) : entry.bucket;
+      var color = statusColor(entry.bucket, index);
+      return `
+        <div class="donut-legend-item">
+          <div class="legend-item-title">
+            <span class="legend-dot" style="background:${color}"></span>
+            <span class="legend-label">${label}</span>
+          </div>
+          <div class="legend-item-numbers">
+            <strong>${entry.count}</strong>
+            <span class="legend-sub">(${pct}%)</span>
+          </div>
+        </div>`;
+    }).join("");
   }
 
   _chartRegistry["real-vs-missed"] = new Chart(canvas, {
     type: "doughnut",
     data: {
-      labels: [window.t_anl('charts.delivered'), window.t_anl('charts.failed')],
+      labels: entries.map(function (entry) {
+        return typeof analyticsStatusLabel === "function" ? analyticsStatusLabel(entry.bucket) : entry.bucket;
+      }),
       datasets: [{
-        data: [real, missed],
-        backgroundColor: ["#10b981", "#ef4444"],
+        data: entries.map(function (entry) { return entry.count; }),
+        backgroundColor: entries.map(function (entry, index) { return statusColor(entry.bucket, index); }),
         borderWidth: 0,
         hoverOffset: 6,
       }],
@@ -398,7 +414,7 @@ function _renderRealVsMissed(orders) {
         ctx2.textBaseline = "middle";
         ctx2.fillStyle    = _cssVar("--text") || "#ffffff";
         ctx2.font         = "bold 26px 'Inter', sans-serif";
-        ctx2.fillText(total.toLocaleString(), cx, cy - 8);
+        ctx2.fillText(total.toLocaleString("en-US"), cx, cy - 8);
         ctx2.fillStyle = _cssVar("--text3") || "#8892a4";
         ctx2.font      = "600 12px 'Inter', sans-serif";
         ctx2.fillText(window.t_anl('charts.total'), cx, cy + 16);
@@ -430,7 +446,7 @@ function _renderTopCities(orders, filterMode) {
     var c = o.city.trim();
     if (!counts[c]) counts[c] = { count: 0, revenue: 0 };
     counts[c].count++;
-    counts[c].revenue += (o.amountDue || o.subtotal || 0);
+    counts[c].revenue += analyticsDashboardRevenueValue(o);
   });
 
   var sorted = Object.keys(counts)
@@ -469,7 +485,7 @@ function _renderTopCities(orders, filterMode) {
       displayVal = c.revenue.toLocaleString("en-SA", { maximumFractionDigits: 0 }) + " SAR";
       pct = Math.round((c.revenue / maxVal) * 100);
     } else {
-      displayVal = c.count.toLocaleString() + " " + window.t_anl('charts.ordersLabel');
+      displayVal = c.count.toLocaleString("en-US") + " " + window.t_anl('charts.ordersLabel');
       pct = Math.round((c.count / maxVal) * 100);
     }
 
@@ -545,7 +561,7 @@ function _analyticsMiniPaginationHtml(prefix, currentPage, totalPages, start, en
   return `
     <div class="analytics-mini-pagination explorer-pagination">
       <div class="explorer-pagination-info">
-        ${window.t_anl('table.paginationInfo', { start: start.toLocaleString(), end: end.toLocaleString(), total: total.toLocaleString() })}
+        ${window.t_anl('table.paginationInfo', { start: start.toLocaleString("en-US"), end: end.toLocaleString("en-US"), total: total.toLocaleString("en-US") })}
       </div>
       <div class="explorer-pagination-controls">
         <button class="pagination-btn pagination-arrow-btn" ${dataPrev} ${currentPage <= 1 ? "disabled" : ""} aria-label="${window.t_anl('table.prev')}">←</button>
@@ -665,7 +681,7 @@ function _renderTopProducts(orders, filterMode) {
     var k = (o.productName || "Unknown").trim();
     if (!map[k]) map[k] = { name: k, count: 0, revenue: 0 };
     map[k].count++;
-    map[k].revenue += (o.amountDue || o.subtotal || 0);
+    map[k].revenue += analyticsDashboardRevenueValue(o);
   });
 
   var sorted = Object.values(map);
@@ -696,7 +712,7 @@ function _renderTopProducts(orders, filterMode) {
     var displayVal = "";
     var relativePct = 0;
     if (filterMode === "orders") {
-      displayVal = p.count.toLocaleString() + " " + window.t_anl('charts.ordersLabel');
+      displayVal = p.count.toLocaleString("en-US") + " " + window.t_anl('charts.ordersLabel');
       relativePct = Math.round((p.count / maxVal) * 100);
     } else {
       displayVal = p.revenue.toLocaleString("en-SA", { maximumFractionDigits: 0 }) + " SAR";
@@ -751,7 +767,7 @@ function _renderOrdersByHour(orders, filterMode) {
     if (hour >= 0 && hour < 24) {
       hasHourData = true;
       if (filterMode === "revenue") {
-        hourCounts[hour] += (o.amountDue || o.subtotal || 0);
+        hourCounts[hour] += analyticsDashboardRevenueValue(o);
       } else {
         hourCounts[hour]++;
       }
@@ -909,6 +925,28 @@ function _renderDeliveryFunnel(orders) {
     var s = (o.orderStatus || "").toLowerCase();
     return s === "delivered" || s === "تم التوصيل";
   }).length;
+
+  // Taager dashboard/status/NDR migration: when the shared status map is
+  // loaded, replace the older English/TAAGER buckets with Taager Arabic buckets.
+  if (window.TaagerStatus) {
+    pendingVal = 0;
+    confirmedVal = 0;
+    waitingVal = 0;
+    processingVal = 0;
+    shippingVal = 0;
+    deliveredVal = 0;
+    orders.forEach(function (o) {
+      var bucket = typeof analyticsStatusBucketFromOrder === "function"
+        ? analyticsStatusBucketFromOrder(o)
+        : window.TaagerStatus.normalize(o && o.orderStatus).bucket;
+      if (bucket === "delivered") deliveredVal++;
+      else if (bucket === "confirmed") confirmedVal++;
+      else if (bucket === "shipping" || bucket === "delivery_suspended") shippingVal++;
+      else if (bucket === "waiting" || bucket === "on_hold" || bucket === "out_of_stock") waitingVal++;
+      else if (bucket === "received" || bucket === "after_sales_done" || bucket === "after_sales_progress") processingVal++;
+      else if (bucket === "customer_refused_confirmation" || bucket === "failed" || bucket === "return_verified") pendingVal++;
+    });
+  }
 
   function pct(n) { return total > 0 ? ((n / total) * 100).toFixed(1) : "0.0"; }
 
@@ -1128,25 +1166,25 @@ function _renderHeatmap(orders) {
         ${cellsHtml}
       </div>
       <div class="heatmap-legend" style="display:flex !important; flex-direction:column !important; gap:8px !important; margin-top:12px !important; border-top:1px solid var(--border) !important; padding-top:10px !important; align-items:stretch !important;">
-        <div style="font-size:9px; font-weight:700; color:var(--text3); letter-spacing:0.06em; margin-bottom:8px;">${window.t_anl('charts.heatmapLegend', { default: 'LEGEND (ORDERS / DAY)' })}</div>
+        <div style="font-size:var(--type-micro); font-weight:var(--weight-semibold); color:var(--text3); letter-spacing:0.06em; margin-bottom:8px;">${window.t_anl('charts.heatmapLegend', { default: 'LEGEND (ORDERS / DAY)' })}</div>
         <div style="display:flex; flex-wrap:wrap; gap:16px; align-items:center;">
-          <div style="display:flex; align-items:center; gap:6px; font-size:9px; color:var(--text2); white-space:nowrap;">
+          <div style="display:flex; align-items:center; gap:6px; font-size:var(--type-micro); color:var(--text2); white-space:nowrap;">
             <div class="heatmap-legend-cell level-0" style="width:10px; height:10px; border-radius:2px; flex-shrink:0;"></div>
             <span>${window.t_anl('charts.heatmapLegendValues.noActivity', { default: '0 orders (No activity)' })}</span>
           </div>
-          <div style="display:flex; align-items:center; gap:6px; font-size:9px; color:var(--text2); white-space:nowrap;">
+          <div style="display:flex; align-items:center; gap:6px; font-size:var(--type-micro); color:var(--text2); white-space:nowrap;">
             <div class="heatmap-legend-cell level-1" style="width:10px; height:10px; border-radius:2px; background:rgba(16, 185, 129, 0.08); border:1.5px solid #10b981; flex-shrink:0;"></div>
             <span>${window.t_anl('charts.heatmapLegendValues.lowVolume', { default: '1-3 orders (Low volume)' })}</span>
           </div>
-          <div style="display:flex; align-items:center; gap:6px; font-size:9px; color:var(--text2); white-space:nowrap;">
+          <div style="display:flex; align-items:center; gap:6px; font-size:var(--type-micro); color:var(--text2); white-space:nowrap;">
             <div class="heatmap-legend-cell level-2" style="width:10px; height:10px; border-radius:2px; background:rgba(245, 158, 11, 0.08); border:1.5px solid #f59e0b; flex-shrink:0;"></div>
             <span>${window.t_anl('charts.heatmapLegendValues.mediumVolume', { default: '4-10 orders (Medium volume)' })}</span>
           </div>
-          <div style="display:flex; align-items:center; gap:6px; font-size:9px; color:var(--text2); white-space:nowrap;">
+          <div style="display:flex; align-items:center; gap:6px; font-size:var(--type-micro); color:var(--text2); white-space:nowrap;">
             <div class="heatmap-legend-cell level-3" style="width:10px; height:10px; border-radius:2px; background:rgba(239, 68, 68, 0.08); border:1.5px solid #ef4444; flex-shrink:0;"></div>
             <span>${window.t_anl('charts.heatmapLegendValues.highVolume', { default: '11-25 orders (High volume)' })}</span>
           </div>
-          <div style="display:flex; align-items:center; gap:6px; font-size:9px; color:var(--text2); white-space:nowrap;">
+          <div style="display:flex; align-items:center; gap:6px; font-size:var(--type-micro); color:var(--text2); white-space:nowrap;">
             <div class="heatmap-legend-cell level-4" style="width:10px; height:10px; border-radius:2px; background:rgba(139, 92, 246, 0.08); border:1.5px solid #8b5cf6; flex-shrink:0;"></div>
             <span>${window.t_anl('charts.heatmapLegendValues.peakVolume', { default: '26+ orders (Peak volume)' })}</span>
           </div>
@@ -1207,13 +1245,13 @@ function _baseOptions(opts) {
         beginAtZero: opts.horizontal ? false : (opts.yBeginAtZero || false),
         grid:  { color: "rgba(255,255,255,0.03)", drawTicks: false },
         border: { display: false },
-        ticks: { color: "#4a5568", font: { size: 9, family: "'Inter', sans-serif" }, maxRotation: 0 },
+        ticks: { color: "#4a5568", font: { size: 10, family: "'Inter', sans-serif" }, maxRotation: 0 },
       },
       y: {
         beginAtZero: opts.horizontal ? false : (opts.yBeginAtZero || false),
         grid:  { color: "rgba(255,255,255,0.03)", drawTicks: false },
         border: { display: false },
-        ticks: { color: "#4a5568", font: { size: 9, family: "'Inter', sans-serif" } },
+        ticks: { color: "#4a5568", font: { size: 10, family: "'Inter', sans-serif" } },
       },
     },
   };

@@ -348,14 +348,14 @@
         'Commission Section', 'This section focuses on earned commission. It shows the trend, period breakdowns, best and weak days, and the signals that explain whether earnings are improving.'),
       dashboardStep('marketing', 'marketing', ['.marketing-platform-card, .marketing-mapping-board, #marketing-sync-now'],
         'Marketing Connections Section', 'This section connects marketing spend to dashboard performance. It handles TikTok connections, account mapping, currencies, sync status, and ad-spend values used by the calculators.'),
-      dashboardStep('calculator', 'calculator', ['.s7-body, #s7-source-breakdown, #sfe-orders'],
-        'Account Calculator Section', 'This section helps you test account-level profitability. Change budget, shipping, exchange rate, delivery assumptions, and source inputs to see what must happen before scaling.'),
+      dashboardStep('calculator', 'calculator', ['.s7-body, #s7-source-breakdown, #sfe-orders, .s7-rate-note'],
+        'Account Calculator Section', 'This section helps you test account-level profitability. Change budget, calculator currency, delivery assumptions, and source inputs to see what must happen before scaling. Exchange rates are managed globally from the dashboard top bar.'),
       dashboardStep('productForecast', 'productForecast', ['.s9-row, [data-sim-panel], #s9-gauge-wrap, .s9-sim-spend-input'],
         'Product Calculator Section', 'This section models product-level scaling. It combines orders, NDR, commission, projected CPA, and budget simulations so each product can be evaluated before more spend.'),
       dashboardStep('prepaid', 'prepaid', ['#sp-city-rows-container, #sp-product-search, #sp-recs-tabs, .sp-city-row'],
         'Prepaid Data Section', 'This section compares prepaid behavior with COD performance. It brings together payment-method trends, card signals, city results, product ROI, and recommendations.'),
       dashboardStep('khodAi', 'khodAi', ['.aii-chat-panel, #aii-chat-input, .aii-streams-panel, .aii-feed-card'],
-        'KHOD AI Section', 'This section is the AI workspace for the dashboard. Ask in English or Arabic to explain data, find risks, calculate scenarios, summarize anomalies, and turn the current section data into actions.')
+        'KHOD WHAAT AI Section', 'This section is the AI workspace for the dashboard. Ask in English or Arabic to explain data, find risks, calculate scenarios, summarize anomalies, and turn the current section data into actions.')
     ];
     if (page === 'analytics') return [
       { target: '#analytics-kpi-section', title: t('analytics', 'kpis.title', 'Top KPI Blocks'), body: t('analytics', 'kpis.body', 'The KPI row aggregates orders, revenue, COD, delivery percentage, failed percentage, and time saved for the active date and account filters.') },

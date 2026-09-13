@@ -2,7 +2,7 @@
   "use strict";
 
   var PAGE_MAP = [
-    { id: "ai-intelligence", label: "Khod Whaat AI Intelligence", path: "/ai-intelligence" },
+    { id: "ai-intelligence", label: "KHOD AI Intelligence", path: "/ai-intelligence" },
     { id: "master", label: "Master dashboard", path: "/dashboard/master" },
     { id: "overview", label: "KPI overview", path: "/dashboard/overview" },
     { id: "pipeline", label: "Pipeline", path: "/dashboard/pipeline" },
@@ -11,12 +11,14 @@
     { id: "products", label: "Product analytics", path: "/dashboard/products" },
     { id: "cities", label: "City analytics", path: "/dashboard/cities" },
     { id: "commission", label: "Commission trend", path: "/dashboard/commission" },
+    { id: "saudiipickMarketing", label: "Saudi iPick API", path: "/dashboard/saudiipickMarketing" },
     { id: "campaigns", label: "Campaign intelligence", path: "/dashboard/campaigns" },
     { id: "calculator", label: "ROI calculator", path: "/dashboard/calculator" },
     { id: "productForecast", label: "Product forecast", path: "/dashboard/product-forecast" },
     { id: "prepaid", label: "Prepaid intelligence", path: "/dashboard/prepaid" },
   ];
-  var CONTEXT_CACHE = [];
+  var contextCache = [];
+  var CONTEXT_CACHE_LIMIT = 8;
 
   function num(value, digits) {
     var n = Number(value || 0);
@@ -30,7 +32,9 @@
   }
 
   function tr(key, params, fallback) {
-    var value = window.dashboardI18n ? window.dashboardI18n.t(key, params) : key;
+    var value = window.dashboardI18n && typeof window.dashboardI18n.t === "function"
+      ? window.dashboardI18n.t(key, params)
+      : key;
     return value && value !== key ? value : (fallback || key);
   }
 
@@ -38,6 +42,83 @@
     var shell = document.getElementById("db-shell-mount");
     return shell && shell._dashboardActiveSection ? shell._dashboardActiveSection : "master";
   }
+
+  function currentLanguage() {
+    if (window.dashboardI18n && typeof window.dashboardI18n.locale === "function") return window.dashboardI18n.locale();
+    return document.documentElement.getAttribute("lang") || window._kbotLang || "en";
+  }
+
+  function currentFilterState() {
+    return window.DashboardFilterBus && typeof window.DashboardFilterBus.getState === "function"
+      ? window.DashboardFilterBus.getState()
+      : {};
+  }
+
+  function marketingFreshnessKey(accountId) {
+    var marketing = window.DashboardMarketingState && typeof window.DashboardMarketingState.get === "function"
+      ? window.DashboardMarketingState.get(accountId)
+      : null;
+    if (!marketing) return "";
+    return [
+      marketing.status || "",
+      marketing.lastSyncAt || "",
+      marketing.manualOverride ? 1 : 0,
+      marketing.summary && marketing.summary.adSpend || 0,
+      marketing.summary && marketing.summary.campaignCount || 0,
+      marketing.summary && marketing.summary.rowCount || 0
+    ].join(":");
+  }
+
+  function campaignFreshnessKey(data) {
+    var campaign = data && (data.campaignIntelligence || data.mediaBuying) || {};
+    return [
+      campaign.updatedAt || campaign.lastUpdatedAt || campaign.lastSyncAt || "",
+      campaign.version || "",
+      campaign.sourceOfTruth || ""
+    ].join(":");
+  }
+
+  function contextCacheKey(opts, data, section) {
+    data = data || {};
+    opts = opts || {};
+    var meta = data.meta || {};
+    var accountId = meta.activeAccountId || "__all__";
+    var filters = currentFilterState();
+    return JSON.stringify({
+      version: data._version != null ? data._version : "",
+      accountId: accountId,
+      language: currentLanguage(),
+      section: section,
+      selectedProduct: opts.productId || filters.selectedProduct || "",
+      selectedCity: opts.city || filters.selectedCity || "",
+      selectedProvince: filters.selectedProvince || "",
+      productLimit: Number(opts.productLimit || 80),
+      cityLimit: Number(opts.cityLimit || 80),
+      forecastLimit: Number(opts.forecastLimit || 40),
+      marketing: marketingFreshnessKey(accountId),
+      campaign: campaignFreshnessKey(data)
+    });
+  }
+
+  function getCachedContext(key) {
+    for (var i = 0; i < contextCache.length; i += 1) {
+      if (contextCache[i].key === key) {
+        var entry = contextCache.splice(i, 1)[0];
+        contextCache.push(entry);
+        return entry.value;
+      }
+    }
+    return null;
+  }
+
+  function setCachedContext(key, value) {
+    contextCache.push({ key: key, value: value });
+    while (contextCache.length > CONTEXT_CACHE_LIMIT) contextCache.shift();
+  }
+
+  window.invalidateDashboardAiContextCache = function () {
+    contextCache = [];
+  };
 
   function currentRoiSettings(data) {
     var meta = data && data.meta ? data.meta : {};
@@ -48,6 +129,7 @@
       : {
         adSpend: Number(fallback.adSpend || 0),
         currency: String(fallback.currency || "SAR").toUpperCase(),
+        egpRate: Number(fallback.egpRate || 52) || 52,
       };
     var marketing = window.DashboardMarketingState && typeof window.DashboardMarketingState.get === "function"
       ? window.DashboardMarketingState.get(accountId)
@@ -73,7 +155,11 @@
   function convertCommissionFromSar(value, settings) {
     var sar = Number(value || 0);
     var currency = String(settings && settings.currency || "SAR").toUpperCase();
+    if (window.TaagerCurrency && typeof window.TaagerCurrency.convert === "function") {
+      return window.TaagerCurrency.convert(sar, window.dashboardActiveCurrency || "SAR", currency);
+    }
     if (currency === "USD") return sar / 3.75;
+    if (currency === "EGP") return (sar / 3.75) * (Number(settings && settings.egpRate) || 52);
     return sar;
   }
 
@@ -87,8 +173,11 @@
     var ndrPct = Number(roi.ndrPct || 0);
     var breakEvenSar = breakEvenCpaSar(avgCommissionSar, ndrPct);
     var breakEvenInCurrency = convertCommissionFromSar(breakEvenSar, settings || roi);
-    var cpa = Number(settings && settings.adSpend || roi.adSpend || 0) > 0 && Number(roi.totalOrders || 0) > 0
-      ? Number(settings && settings.adSpend || roi.adSpend || 0) / Number(roi.totalOrders || 1)
+    var netOrders = window.DashboardOrderMetrics
+      ? window.DashboardOrderMetrics.netOrders(roi)
+      : Number(roi.netOrderCount != null ? roi.netOrderCount : roi.totalOrders || 0);
+    var cpa = Number(settings && settings.adSpend || roi.adSpend || 0) > 0 && netOrders > 0
+      ? Number(settings && settings.adSpend || roi.adSpend || 0) / netOrders
       : Number(roi.avgCPA || 0);
     return {
       formula: "breakEvenCpa = avgCommissionPerDeliveredOrder * NDR",
@@ -106,28 +195,39 @@
 
   function compactProduct(p, financials) {
     financials = financials || {};
-    var placed = Number(p.placedCount || 0);
+    var placed = window.DashboardOrderMetrics
+      ? window.DashboardOrderMetrics.netOrders(p)
+      : Number(p.netOrderCount || p.placedCount || 0);
     var allocatedSpend = Number(financials.totalPlaced || 0) > 0
       ? Number(financials.adSpend || 0) * placed / Number(financials.totalPlaced || 1)
       : 0;
     var cpa = placed > 0 ? allocatedSpend / placed : 0;
-    var commissionInCurrency = convertCommissionFromSar(p.commission || 0, financials);
+    var actualCommission = p.actualCommission != null ? Number(p.actualCommission) : Number(p.commission || 0);
+    var displayedCommission = p.expectedTotalProfitBeforeAdSpend != null
+      ? Number(p.expectedTotalProfitBeforeAdSpend)
+      : Number(p.commission || 0);
+    var commissionInCurrency = convertCommissionFromSar(displayedCommission, financials);
     var profitLoss = commissionInCurrency - allocatedSpend;
     var delivered = Number(p.deliveredCount || p.units || 0);
+    var actualDelivered = Number(p.actualDeliveredCount != null ? p.actualDeliveredCount : delivered);
     var ndrPct = num(p.ndrPct || p.deliveryRate || 0, 1);
-    var avgCommissionSar = window.KhodFinancialMetrics.averageCommission(p.commission || 0, delivered);
+    var avgCommissionSar = actualDelivered > 0 ? actualCommission / actualDelivered : 0;
     var breakEvenSar = breakEvenCpaSar(avgCommissionSar, ndrPct);
     var breakEvenInCurrency = convertCommissionFromSar(breakEvenSar, financials);
     return {
       id: String(p.key || p.sku || p.name || ""),
       name: p.name || p.key || "Unknown product",
       sku: p.sku || "",
-      orders: Number(p.placedCount || 0),
+      orders: placed,
       delivered: delivered,
+      actualDelivered: actualDelivered,
+      expectedDeliveriesExact: p.expectedDeliveriesExact != null ? num(p.expectedDeliveriesExact, 2) : null,
+      expectedTotalProfitBeforeAdSpend: p.expectedTotalProfitBeforeAdSpend != null ? num(p.expectedTotalProfitBeforeAdSpend, 2) : null,
       ndrPct: ndrPct,
       drPct: num(p.drRate || p.deliveryPct || 0, 1),
       cancelPct: num(p.cancelPct || 0, 1),
-      commission: num(p.commission || 0, 2),
+      commission: num(displayedCommission, 2),
+      actualCommission: num(actualCommission, 2),
       avgCommissionSar: num(avgCommissionSar, 2),
       allocatedAdSpend: num(allocatedSpend, 2),
       cpa: num(cpa, 2),
@@ -136,6 +236,17 @@
       cpaStatus: cpa > 0 && breakEvenInCurrency > 0 ? (cpa > breakEvenInCurrency ? "above_break_even_losing" : "below_break_even_safe") : "unknown",
       profitLoss: num(profitLoss, 2),
       financialCurrency: String(financials.currency || "SAR").toUpperCase(),
+      accountBreakdown: (p.accountBreakdown || []).slice(0, 20).map(function (account) {
+        return {
+          accountId: account.accountId || "",
+          accountLabel: account.accountLabel || account.accountId || "",
+          orders: Number(account.orders || 0),
+          delivered: Number(account.delivered || 0),
+          ndrPct: num(account.ndrPct || 0, 1),
+          commission: num(account.commission || 0, 2),
+          deliveredSales: num(account.deliveredSales || 0, 2)
+        };
+      }),
       topCities: (p.cityBreakdown || []).slice(0, 4).map(function (c) {
         return { city: c.name, orders: Number(c.count || c.orders || 0), ndrPct: num(c.ndr || 0, 1) };
       }),
@@ -160,33 +271,76 @@
         : pct(city.drBaseOrders ? (city.deliveredOrders || 0) / city.drBaseOrders : 0),
       codPct: pct(city.count ? (city.codCount || 0) / city.count : 0),
       prepaidPct: pct(city.count ? (city.prepaidCount || 0) / city.count : 0),
-      earnedCommission: num(city.earnedCommission || 0, 2),
+      earnedCommission: num(
+        city.earnedCommission != null ? city.earnedCommission : city.earnedProfitAfterTax || 0,
+        2
+      ),
+      earnedProfitAfterTax: num(
+        city.earnedCommission != null ? city.earnedCommission : city.earnedProfitAfterTax || 0,
+        2
+      ),
       riskScore: Number(city.riskScore || 0),
       scalingScore: Number(city.scalingScore || 0),
+      accountBreakdown: (city.accountBreakdown || []).slice(0, 20).map(function (account) {
+        return {
+          accountId: account.accountId || "",
+          accountLabel: account.accountLabel || account.accountId || "",
+          orders: Number(account.orders || 0),
+          delivered: Number(account.delivered || 0),
+          ndrPct: num(account.ndrPct || 0, 1),
+          commission: num(
+            account.commission != null ? account.commission : account.earnedProfitAfterTax || 0,
+            2
+          ),
+          earnedProfitAfterTax: num(
+            account.commission != null ? account.commission : account.earnedProfitAfterTax || 0,
+            2
+          ),
+          deliveredSales: num(account.deliveredSales || 0, 2)
+        };
+      })
     };
   }
 
   function productForecasts(products, roi) {
     var adSpend = Number(roi && roi.adSpend || 0);
     return (products || []).map(function (p) {
-      var orders = Number(p.placedCount || 0);
-      var delivered = Number(p.deliveredCount || 0);
-      var avgCommission = window.KhodFinancialMetrics.averageCommission(p.commission || 0, delivered);
-      var ndr = orders > 0 ? delivered / orders : 0;
-      var expectedRevenue = delivered * avgCommission;
-      var breakEvenCpa = avgCommission * ndr;
+      var orders = window.DashboardOrderMetrics
+        ? window.DashboardOrderMetrics.netOrders(p)
+        : Number(p.netOrderCount || p.placedCount || 0);
+      var actualDelivered = Number(p.actualDeliveredCount != null ? p.actualDeliveredCount : p.deliveredCount || 0);
+      var actualCommission = Number(p.actualCommission != null ? p.actualCommission : p.commission || 0);
+      var ndr = Math.max(0, Math.min(1, Number(p.ndrPct || 0) / 100));
+      var financialCore = window.KhodDashboardFinancialCore || window.TaagerDashboardFinancialCore;
+      if (!financialCore || typeof financialCore.calculate !== "function") return null;
+      var calculation = financialCore.calculate({
+        mode: 'expected',
+        netOrders: orders,
+        actualDeliveredOrders: actualDelivered,
+        actualEarnedCommission: actualCommission,
+        commissionValue: actualCommission,
+        marketerCommission: actualCommission,
+        actualEarnedProfitAfterTax: actualCommission,
+        currentTotalSales: Number(p.totalSales || p.revenue || 0),
+        expectedNdrRate: ndr,
+        adSpend: 0
+      });
       return {
         productId: String(p.key || p.sku || p.name || ""),
         name: p.name || p.key || "Unknown product",
         orders: orders,
         currentNdrPct: pct(ndr),
-        avgCommission: num(avgCommission, 2),
-        expectedRevenue: num(expectedRevenue, 2),
-        breakEvenCpaSar: num(breakEvenCpa, 2),
+        avgCommission: num(calculation.averageProfit, 2),
+        averageDeliveredCommission: num(calculation.averageProfit, 2),
+        expectedDeliveriesExact: num(calculation.expectedDeliveriesExact, 2),
+        expectedCommission: num(calculation.expectedTotalProfitBeforeAdSpend, 2),
+        projectedCommissionBeforeAdSpend: num(calculation.expectedTotalProfitBeforeAdSpend, 2),
+        expectedTotalProfitBeforeAdSpend: num(calculation.expectedTotalProfitBeforeAdSpend, 2),
+        breakEvenCpaSar: num(calculation.breakEvenCpa, 2),
         breakEvenFormula: "avgCommission * NDR",
         cpaBaseline: orders > 0 && adSpend > 0 ? num(adSpend / orders, 2) : 0,
       };
-    });
+    }).filter(Boolean);
   }
 
   function datasetSummary(data, products, cities) {
@@ -224,74 +378,32 @@
     };
   }
 
-  function compactCampaignIntelligence(intel) {
-    if (!intel) return null;
-    return {
-      sourceOfTruth: intel.sourceOfTruth,
-      periodLabel: intel.periodLabel,
-      lastSyncAt: intel.lastSyncAt || "",
-      totals: intel.totals,
-      objectiveMix: intel.objectiveMix,
-      topSpendCampaigns: (intel.topSpendCampaigns || intel.allCampaigns || []).slice(0, 20),
-      topProductGroups: (intel.topProductGroups || intel.allProductGroups || []).slice(0, 20),
-      worstCampaigns: (intel.worstCampaigns || []).slice(0, 20),
-      creativeSummary: intel.creativeSummary,
-      productFocus: intel.productFocus || null,
-      caps: intel.caps,
-      playbook: window.KhodCampaignIntelligence && window.KhodCampaignIntelligence.playbook
-        ? window.KhodCampaignIntelligence.playbook()
-        : null
-    };
-  }
-
-  function campaignIntelligenceContext(data, selectedProduct, providedIntel) {
-    if (providedIntel) return compactCampaignIntelligence(providedIntel);
-    if (!window.KhodCampaignIntelligence || typeof window.KhodCampaignIntelligence.build !== "function") {
+  function campaignIntelligenceContext(data, selectedProduct) {
+    var campaignIntelligence = window.KhodCampaignIntelligence || window.TaagerCampaignIntelligence;
+    if (!campaignIntelligence || typeof campaignIntelligence.build !== "function") {
       return null;
     }
     var productName = selectedProduct && typeof selectedProduct === "object"
       ? (selectedProduct.name || selectedProduct.sku || selectedProduct.key)
       : selectedProduct;
-    var intel = window.KhodCampaignIntelligence.build({
+    var intel = campaignIntelligence.build({
       data: data || {},
       productName: productName || "",
       limit: 20
     });
-    return compactCampaignIntelligence(intel);
-  }
-
-  function dashboardContextCacheKey(data, opts, section, selectedProduct, selectedCity, filters) {
-    var meta = data && data.meta || {};
-    var accountId = meta.activeAccountId || "__all__";
-    var marketing = window.DashboardMarketingState && typeof window.DashboardMarketingState.get === "function"
-      ? window.DashboardMarketingState.get(accountId)
-      : null;
-    var syncAt = marketing && (marketing.lastSyncAt || marketing.summary && marketing.summary.lastSyncAt) || "";
-    return [
-      accountId,
-      section,
-      selectedProduct && (selectedProduct.id || selectedProduct.sku || selectedProduct.name || selectedProduct) || "",
-      selectedCity && (selectedCity.id || selectedCity.name || selectedCity) || "",
-      meta.lastUpdatedAt || meta.generatedAt || meta.periodLabel || "",
-      syncAt,
-      opts.productLimit || 80,
-      opts.cityLimit || 80,
-      opts.forecastLimit || 40,
-      JSON.stringify(filters || {})
-    ].join("::");
-  }
-
-  function cachedDashboardContext(data, key) {
-    for (var i = 0; i < CONTEXT_CACHE.length; i += 1) {
-      if (CONTEXT_CACHE[i].data === data && CONTEXT_CACHE[i].key === key) return CONTEXT_CACHE[i].value;
-    }
-    return null;
-  }
-
-  function rememberDashboardContext(data, key, value) {
-    CONTEXT_CACHE.unshift({ data: data, key: key, value: value });
-    if (CONTEXT_CACHE.length > 8) CONTEXT_CACHE.length = 8;
-    return value;
+    return {
+      sourceOfTruth: intel.sourceOfTruth,
+      periodLabel: intel.periodLabel,
+      totals: intel.totals,
+      objectiveMix: intel.objectiveMix,
+      topSpendCampaigns: (intel.topSpendCampaigns || []).slice(0, 20),
+      topProductGroups: (intel.topProductGroups || []).slice(0, 20),
+      worstCampaigns: (intel.worstCampaigns || []).slice(0, 20),
+      creativeSummary: intel.creativeSummary,
+      productFocus: intel.productFocus || null,
+      caps: intel.caps,
+      playbook: campaignIntelligence.playbook ? campaignIntelligence.playbook() : null
+    };
   }
 
   function visibleMetrics(data, section) {
@@ -391,7 +503,7 @@
         ? tr("ai.summary.bestLeverProduct", { product: worstProduct.name }, "Best lever: raise NDR on " + worstProduct.name + ".")
         : tr("ai.summary.ready", null, "Dashboard is ready for AI review."),
       insights: [
-        roi.avgCPA ? tr("ai.summary.cpa", { value: roi.avgCPA }, "Current CPA baseline: " + roi.avgCPA + " SAR.") : "",
+        roi.avgCPA ? tr("ai.summary.cpa", { value: roi.avgCPA }, "Current CPA baseline: " + roi.avgCPA + " " + (roi.currency || window.dashboardActiveCurrency || "SAR") + ".") : "",
         bestProduct ? tr("ai.summary.topProduct", { product: bestProduct.name }, "Top commission product: " + bestProduct.name + ".") : "",
         bestCity ? tr("ai.summary.strongestCity", { city: bestCity.city }, "Strongest city: " + bestCity.city + ".") : "",
         riskyCity && riskyCity.riskScore ? tr("ai.summary.riskyCity", { city: riskyCity.city }, "Highest city risk: " + riskyCity.city + ".") : "",
@@ -404,20 +516,20 @@
     opts = opts || {};
     var data = opts.data || window.dashboardGeoData || {};
     var section = opts.section || activeSection();
-    var filters = window.DashboardFilterBus && window.DashboardFilterBus.getState ? window.DashboardFilterBus.getState() : {};
-    var selectedProduct = opts.productId || filters.selectedProduct || null;
-    var selectedCity = opts.city || filters.selectedCity || null;
-    var cacheKey = dashboardContextCacheKey(data, opts, section, selectedProduct, selectedCity, filters);
-    if (!opts.bypassCache && !opts.campaignIntelligence) {
-      var cached = cachedDashboardContext(data, cacheKey);
-      if (cached) return cached;
-    }
+    var perfTimer = window.TaagerPerf && typeof window.TaagerPerf.start === "function"
+      ? window.TaagerPerf.start("ai:context:build", {
+        section: section,
+        dataVersion: data && data._version != null ? data._version : ""
+      })
+      : null;
     var geo = data.geo || {};
     var roiSettings = currentRoiSettings(data);
     var sourceProducts = data.products && data.products.rankedList ? data.products.rankedList : [];
     var productFinancials = Object.assign({}, roiSettings, {
       totalPlaced: sourceProducts.reduce(function (sum, p) {
-        return sum + Number(p.placedCount || 0);
+        return sum + (window.DashboardOrderMetrics
+          ? window.DashboardOrderMetrics.netOrders(p)
+          : Number(p.netOrderCount || p.placedCount || 0));
       }, 0),
     });
     var products = sourceProducts.map(function (p) { return compactProduct(p, productFinancials); });
@@ -430,21 +542,25 @@
     var cityLimit = Number(opts.cityLimit || 80);
     var forecastLimit = Number(opts.forecastLimit || 40);
 
+    var selectedProduct = opts.productId || (window.DashboardFilterBus && window.DashboardFilterBus.getState ? window.DashboardFilterBus.getState().selectedProduct : null);
+    var selectedCity = opts.city || (window.DashboardFilterBus && window.DashboardFilterBus.getState ? window.DashboardFilterBus.getState().selectedCity : null);
+
     var context = {
       currentPage: section,
       pages: PAGE_MAP,
       dataset: datasetSummary(data, products, cities),
       account: data.meta || {},
-      deliveredAttributionMode: data.meta && data.meta.deliveredDateMode === "createdAt" ? "Created At" : "Last Updated",
+      deliveredAttributionMode: data.meta && data.meta.deliveredDateMode === "expected" ? "Expected NDR" : "Actual Delivered",
       productFinancials: {
         allocationRule: "Account ad spend allocated by product placed order share.",
         accountAdSpend: Number(productFinancials.adSpend || 0),
         currency: String(productFinancials.currency || "SAR").toUpperCase(),
+        egpRate: Number(productFinancials.egpRate || 52),
         source: productFinancials.source || "manual_or_roi",
         marketing: productFinancials.marketing || null,
         accountBreakEven: accountBreakEvenContext(data, productFinancials),
       },
-      filters: filters,
+      filters: window.DashboardFilterBus && window.DashboardFilterBus.getState ? window.DashboardFilterBus.getState() : {},
       selectedProduct: selectedProduct,
       selectedCity: selectedCity,
       kpis: {
@@ -476,12 +592,18 @@
       }),
     };
 
-    context.mediaBuying = campaignIntelligenceContext(data, selectedProduct, opts.campaignIntelligence);
+    context.mediaBuying = campaignIntelligenceContext(data, selectedProduct);
     context.sectionSignals = buildSectionSignals(data, context, rawProductForecasts);
     context.localSummary = localExecutiveSummary(context);
     if (context.sectionSignals && context.sectionSignals.master) context.sectionSignals.master.localSummary = context.localSummary;
-    if (opts.bypassCache || opts.campaignIntelligence) return context;
-    return rememberDashboardContext(data, cacheKey, context);
+    if (window.TaagerPerf && typeof window.TaagerPerf.end === "function" && perfTimer) {
+      window.TaagerPerf.end(perfTimer, {
+        products: products.length,
+        cities: cities.length,
+        forecasts: rawProductForecasts.length
+      });
+    }
+    return context;
   };
 
   window.getDashboardAiPages = function () {
@@ -489,7 +611,15 @@
   };
 
   window.getDashboardAiContext = function (opts) {
+    var perfTimer = window.TaagerPerf && typeof window.TaagerPerf.start === "function"
+      ? window.TaagerPerf.start("ai:context:get", {
+        section: opts && opts.section || activeSection()
+      })
+      : null;
     if (typeof window.buildDashboardAiContext !== "function") {
+      if (window.TaagerPerf && typeof window.TaagerPerf.end === "function" && perfTimer) {
+        window.TaagerPerf.end(perfTimer, { fallback: true });
+      }
       return {
         currentPage: activeSection(),
         pages: PAGE_MAP.slice(),
@@ -510,7 +640,26 @@
         },
       };
     }
-    return window.buildDashboardAiContext(opts || {});
+    opts = opts || {};
+    var data = opts.data || window.dashboardGeoData || {};
+    var section = opts.section || activeSection();
+    var cacheKey = contextCacheKey(opts, data, section);
+    var cached = getCachedContext(cacheKey);
+    if (cached) {
+      if (window.TaagerPerf && typeof window.TaagerPerf.end === "function" && perfTimer) {
+        window.TaagerPerf.end(perfTimer, { fallback: false, cacheHit: true });
+      }
+      return cached;
+    }
+    var context = window.buildDashboardAiContext(Object.assign({}, opts, {
+      data: data,
+      section: section
+    }));
+    setCachedContext(cacheKey, context);
+    if (window.TaagerPerf && typeof window.TaagerPerf.end === "function" && perfTimer) {
+      window.TaagerPerf.end(perfTimer, { fallback: false, cacheHit: false });
+    }
+    return context;
   };
 
   window.renderProductAiAdvisor = function (product) {
@@ -524,8 +673,11 @@
       : (cancel >= 40
         ? tr("ai.productAdvisor.cancelRisk", null, "Cancellation risk is too high for aggressive spend.")
         : (ndr >= 40 ? tr("ai.productAdvisor.safeScale", null, "Safe to test controlled scaling.") : tr("ai.productAdvisor.liftNdr", null, "Best lever: lift NDR before scaling.")));
-    var commissionText = Math.round(commission).toLocaleString(window.dashboardI18n ? window.dashboardI18n.locale() : "en-US");
-    var sub = commission > 0 ? tr("ai.productAdvisor.commission", { value: commissionText }, "Commission: " + commissionText + " SAR") : tr("ai.productAdvisor.needsCommission", null, "Needs live commission signal");
+    var locale = window.dashboardI18n && typeof window.dashboardI18n.locale === "function"
+      ? window.dashboardI18n.locale()
+      : "en-US";
+    var commissionText = Math.round(commission).toLocaleString(locale);
+    var sub = commission > 0 ? tr("ai.productAdvisor.commission", { value: commissionText }, "Marketer commission: " + commissionText + " " + (window.dashboardActiveCurrency || "SAR")) : tr("ai.productAdvisor.needsCommission", null, "Needs live commission signal");
     return '<div class="ai-inline-advisor ' + tone + '">' +
       '<span>' + tr("ai.productAdvisor.title", null, "AI product advisor") + '</span>' +
       '<strong>' + message + '</strong>' +

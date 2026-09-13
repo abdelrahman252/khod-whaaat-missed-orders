@@ -21,8 +21,8 @@ function resolveSafeKhodExportRange(dateFrom, dateTo, options = {}) {
   const from = localDay(dateFrom);
   const to = localDay(dateTo);
   const today = localDay(options.today || new Date());
-  if (!from || !to || !today) throw new Error("A valid Khod export date range is required.");
-  if (from > to) throw new Error("Khod export dateFrom cannot be after dateTo.");
+  if (!from || !to || !today) throw new Error("A valid KHOD WHAAT export date range is required.");
+  if (from > to) throw new Error("KHOD WHAAT export dateFrom cannot be after dateTo.");
 
   const lookbackDays = Number.isFinite(options.lookbackDays) ? options.lookbackDays : 2;
   const forwardDays = Number.isFinite(options.forwardDays) ? options.forwardDays : 2;

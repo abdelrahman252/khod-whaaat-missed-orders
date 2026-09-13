@@ -1,7 +1,9 @@
-"use strict";
+﻿"use strict";
 
 const XLSX = require("xlsx");
-const { normalizePhone, normalizePhoneWithMeta } = require("./phone");
+const { normalizePhone, normalizePhoneCandidatesWithMeta } = require("./phone");
+const { matchCityLabel } = require("./city-fallback");
+const { sanitizeCustomerFields } = require("./customer-quality");
 
 function parseExcelDate(val) {
   if (!val) return null;
@@ -32,7 +34,7 @@ function normalizeProductName(name) {
     .replace(/[\u00A0\u1680\u180E\u2000-\u200A\u202F\u205F\u3000]/g, " ")
     .trim();
   s = s.replace(/^\d+x\s*/i, "");
-  s = s.replace(/[‐‑‒–—―]+/g, "-");
+  s = s.replace(/[â€â€‘â€’â€“â€”â€•]+/g, "-");
   s = s.replace(/[-\s]+$/, "");
   s = s.replace(/\s+/g, " ").trim();
   return s;
@@ -42,10 +44,10 @@ function productLookupKey(name) {
   return normalizeProductName(name)
     .toLowerCase()
     .replace(/\s+/g, "")
-    .replace(/[.,،:;؛"'`´()[\]{}<>|\\/!؟?_*~]+/g, "")
-    .replace(/[أإآٱ]/g, "ا")
-    .replace(/ى/g, "ي")
-    .replace(/ة/g, "ه");
+    .replace(/[.,ØŒ:;Ø›"'`Â´()[\]{}<>|\\/!ØŸ?_*~]+/g, "")
+    .replace(/[Ø£Ø¥Ø¢Ù±]/g, "Ø§")
+    .replace(/Ù‰/g, "ÙŠ")
+    .replace(/Ø©/g, "Ù‡");
 }
 
 function productNamesMatch(nameA, nameB) {
@@ -124,17 +126,17 @@ function detectPrepaidMethod(value) {
   if (!text) return "";
   const normalized = text
     .toLowerCase()
-    .replace(/[أإآ]/g, "ا")
-    .replace(/ى/g, "ي")
-    .replace(/ة/g, "ه")
+    .replace(/[Ø£Ø¥Ø¢]/g, "Ø§")
+    .replace(/Ù‰/g, "ÙŠ")
+    .replace(/Ø©/g, "Ù‡")
     .replace(/\s+/g, " ");
 
-  if (/tabby|tabi|تابي/.test(normalized)) return "tabby";
-  if (/tamara|تمارا/.test(normalized)) return "tamara";
-  if (/pay\s*mob|paymob|باي\s*موب/.test(normalized)) return "paymob";
-  if (/شبكه|network/.test(normalized)) return "network";
-  if (/mada|مدي|مدى|visa|فيزا|card|كارت|بطاق/.test(normalized)) return "card";
-  if (/apple\s*pay|stc\s*pay|online|اونلاين|الكتروني|الكترونى|إلكتروني/.test(normalized)) return "online";
+  if (/tabby|tabi|ØªØ§Ø¨ÙŠ/.test(normalized)) return "tabby";
+  if (/tamara|ØªÙ…Ø§Ø±Ø§/.test(normalized)) return "tamara";
+  if (/pay\s*mob|paymob|Ø¨Ø§ÙŠ\s*Ù…ÙˆØ¨/.test(normalized)) return "paymob";
+  if (/Ø´Ø¨ÙƒÙ‡|network/.test(normalized)) return "network";
+  if (/mada|Ù…Ø¯ÙŠ|Ù…Ø¯Ù‰|visa|ÙÙŠØ²Ø§|card|ÙƒØ§Ø±Øª|Ø¨Ø·Ø§Ù‚/.test(normalized)) return "card";
+  if (/apple\s*pay|stc\s*pay|online|Ø§ÙˆÙ†Ù„Ø§ÙŠÙ†|Ø§Ù„ÙƒØªØ±ÙˆÙ†ÙŠ|Ø§Ù„ÙƒØªØ±ÙˆÙ†Ù‰|Ø¥Ù„ÙƒØªØ±ÙˆÙ†ÙŠ/.test(normalized)) return "online";
   return "";
 }
 
@@ -152,6 +154,11 @@ function explodeRealOrderRow(row, phoneMeta) {
     source: "real",
     normPhone,
     uncertain: phoneMeta.uncertain || false,
+    phoneAmbiguous: !!phoneMeta.phoneAmbiguous,
+    phoneAmbiguityGroupId: phoneMeta.phoneAmbiguityGroupId || "",
+    phoneCandidateIndex: phoneMeta.phoneCandidateIndex || 1,
+    phoneCandidateCount: phoneMeta.phoneCandidateCount || 1,
+    phoneCorrection: phoneMeta.correction || "",
     rawPhone: row["Phone"],
     name: (row["FullName"] || "").toString().trim() || ("0" + normPhone),
     city: rawCity !== "" ? rawCity : null,
@@ -159,15 +166,15 @@ function explodeRealOrderRow(row, phoneMeta) {
     address: (row["Address"] || "").toString().trim() || null,
     date: rowDateString(rawDate),
     createdAt: rowDateTimeString(rawDate),
-    // ── Analytics fields ──
+    // â”€â”€ Analytics fields â”€â”€
     // NOTE: explodeRealOrderRow processes the Easy-Orders export (English headers).
-    // The Khod affiliate sheet (Arabic headers) is parsed separately via parseKhodAnalyticsMap().
+    // The KHOD WHAAT affiliate sheet (Arabic headers) is parsed separately via parseKhodAnalyticsMap().
     // runner.js enriches these defaults using exact phone|sku match (update runs) or
     // SKU-level inference (first-run estimation).
-    orderStatus:        "Under processing",               // default until Khod confirms
+    orderStatus:        "Under processing",               // default until KHOD WHAAT confirms
     amountDue:          parseMoney(row["Total Cost"] || "0"),  // Easy-Orders fallback
-    marketerCommission: 0,                                // inferred from Khod SKU data
-    khodOrderNumber:    "",                               // assigned after Khod submission
+    marketerCommission: 0,                                // inferred from KHOD WHAAT SKU data
+    khodOrderNumber:    "",                               // assigned after KHOD WHAAT submission
   };
 
   const bySku = new Map();
@@ -206,7 +213,7 @@ function explodeRealOrderRow(row, phoneMeta) {
   return [...bySku.values()];
 }
 
-function parseRealOrders(buffer, dateFrom, dateTo) {
+function parseRealOrders(buffer, dateFrom, dateTo, country = "sa") {
   const wb = XLSX.read(buffer, { type: "buffer" });
   const ws = wb.Sheets[wb.SheetNames[0]];
   const rows = XLSX.utils.sheet_to_json(ws);
@@ -215,23 +222,38 @@ function parseRealOrders(buffer, dateFrom, dateTo) {
   const skipped = { date: 0, phone: 0, status: 0, sku: 0 };
   let uncertainPhones = 0;
 
-  for (const row of rows) {
+  let ambiguousPhones = 0;
+  for (let rowIndex = 0; rowIndex < rows.length; rowIndex++) {
+    const row = rows[rowIndex];
     if (!matchesDateRange(row["CreatedAt"], dateFrom, dateTo)) { skipped.date++; continue; }
 
     const status = (row["Status"] || "").toString().toLowerCase();
     if (status === "cancelled" || status === "canceled") { skipped.status++; continue; }
 
-    const phoneMeta = normalizePhoneWithMeta(row["Phone"]);
-    if (!phoneMeta) { skipped.phone++; continue; }
-    if (phoneMeta.uncertain) uncertainPhones++;
+    const phoneMetas = normalizePhoneCandidatesWithMeta(row["Phone"], country);
+    if (!phoneMetas.length) { skipped.phone++; continue; }
+    if (phoneMetas.some((meta) => meta.uncertain)) uncertainPhones++;
+    if (phoneMetas.length > 1) ambiguousPhones++;
 
-    const exploded = explodeRealOrderRow(row, phoneMeta);
-    if (exploded.length === 0) { skipped.sku++; continue; }
-    orders.push(...exploded);
+    const groupId = phoneMetas.length > 1 ? `real-${rowIndex + 2}` : "";
+    let explodedCount = 0;
+    phoneMetas.forEach((phoneMeta, candidateIndex) => {
+      const exploded = explodeRealOrderRow(row, {
+        ...phoneMeta,
+        phoneAmbiguous: phoneMetas.length > 1,
+        phoneAmbiguityGroupId: groupId,
+        phoneCandidateIndex: candidateIndex + 1,
+        phoneCandidateCount: phoneMetas.length,
+      });
+      explodedCount += exploded.length;
+      orders.push(...exploded);
+    });
+    if (explodedCount === 0) skipped.sku++;
   }
 
-  console.log(`📦 Real orders: ${orders.length} valid items | skipped date:${skipped.date} phone:${skipped.phone} status:${skipped.status} sku:${skipped.sku}`);
-  if (uncertainPhones > 0) console.log(`⚠️ Real orders uncertain phones rescued with trailing 0: ${uncertainPhones}`);
+  console.log(`ðŸ“¦ Real orders: ${orders.length} valid items | skipped date:${skipped.date} phone:${skipped.phone} status:${skipped.status} sku:${skipped.sku}`);
+  if (uncertainPhones > 0) console.log(`âš ï¸ Real orders uncertain phones rescued with trailing 0: ${uncertainPhones}`);
+  if (ambiguousPhones > 0) console.log(`âš ï¸ Real orders expanded from ambiguous phones: ${ambiguousPhones}`);
   return orders;
 }
 
@@ -241,7 +263,7 @@ function stripProductBrackets(rawProducts) {
   return bracketMatch ? bracketMatch[1].trim() : raw.replace(/^\[|\]$/g, "").trim();
 }
 
-function parseMissedOrders(buffer, dateFrom, dateTo) {
+function parseMissedOrders(buffer, dateFrom, dateTo, country = "sa") {
   const wb = XLSX.read(buffer, { type: "buffer" });
   const ws = wb.Sheets[wb.SheetNames[0]];
   const rows = XLSX.utils.sheet_to_json(ws);
@@ -251,14 +273,16 @@ function parseMissedOrders(buffer, dateFrom, dateTo) {
   const skipped = { date: 0, phone: 0, completed: 0 };
   let uncertainPhones = 0;
 
-  for (const row of rows) {
+  let ambiguousPhones = 0;
+  for (let rowIndex = 0; rowIndex < rows.length; rowIndex++) {
+    const row = rows[rowIndex];
     const isCompleted = String(row["Is Completed"] || "").toLowerCase();
     if (isCompleted === "true" || isCompleted === "1") { skipped.completed++; continue; }
 
     if (!matchesDateRange(row["Created At"], dateFrom, dateTo)) { skipped.date++; continue; }
 
-    const phoneMeta = normalizePhoneWithMeta(row["Phone"]);
-    if (!phoneMeta) {
+    const phoneMetas = normalizePhoneCandidatesWithMeta(row["Phone"], country);
+    if (!phoneMetas.length) {
       skipped.phone++;
       const rawProducts = (row["Products"] || "").toString().trim();
       skippedOrders.push({
@@ -271,49 +295,61 @@ function parseMissedOrders(buffer, dateFrom, dateTo) {
       });
       continue;
     }
-    if (phoneMeta.uncertain) uncertainPhones++;
-    const normPhone = phoneMeta.digits;
-
     const rawCity = (row["Government"] || row["City"] || "").toString().trim();
     const rawProducts = (row["Products"] || "").toString().trim();
-    orders.push({
-      source: "missed",
-      normPhone,
-      uncertain: phoneMeta.uncertain || false,
-      rawPhone: row["Phone"],
-      name: (row["Full Name"] || "").toString().trim() || ("0" + normPhone),
-      city: rawCity !== "" ? rawCity : null,
-      region: "",
-      address: (row["Address"] || "").toString().trim() || null,
-      date: rowDateString(row["Created At"]),
-      createdAt: rowDateTimeString(row["Created At"]),
-      rawProducts,
-      productName: stripProductBrackets(rawProducts),
-      sku: null,
-      qty: null,
-      subtotal: null,
-      unitPrice: null,
-      // Analytics defaults (missed orders have no Khod sheet data)
-      orderStatus:        "missed",
-      amountDue:          0,
-      marketerCommission: 0,
-      khodOrderNumber:    "",
+    if (phoneMetas.some((meta) => meta.uncertain)) uncertainPhones++;
+    if (phoneMetas.length > 1) ambiguousPhones++;
+    const groupId = phoneMetas.length > 1 ? `missed-${rowIndex + 2}` : "";
+
+    phoneMetas.forEach((phoneMeta, candidateIndex) => {
+      const normPhone = phoneMeta.digits;
+      orders.push(sanitizeCustomerFields({
+        source: "missed",
+        normPhone,
+        uncertain: phoneMeta.uncertain || false,
+        phoneAmbiguous: phoneMetas.length > 1,
+        phoneAmbiguityGroupId: groupId,
+        phoneCandidateIndex: candidateIndex + 1,
+        phoneCandidateCount: phoneMetas.length,
+        phoneCorrection: phoneMeta.correction || "",
+        rawPhone: row["Phone"],
+        name: (row["Full Name"] || "").toString().trim() || ("0" + normPhone),
+        city: rawCity !== "" ? rawCity : null,
+        region: "",
+        address: (row["Address"] || "").toString().trim() || null,
+        date: rowDateString(row["Created At"]),
+        createdAt: rowDateTimeString(row["Created At"]),
+        rawProducts,
+        productName: stripProductBrackets(rawProducts),
+        sku: null,
+        qty: null,
+        subtotal: null,
+        unitPrice: null,
+        // Analytics defaults (missed source is origin, not a KHOD WHAAT lifecycle status)
+        orderStatus:        "Under processing",
+        amountDue:          0,
+        marketerCommission: 0,
+        khodOrderNumber:    "",
+      }, { country }));
     });
   }
 
-  console.log(`📦 Missed orders: ${orders.length} valid rows | skipped date:${skipped.date} phone:${skipped.phone} completed:${skipped.completed}`);
-  if (uncertainPhones > 0) console.log(`⚠️ Missed orders uncertain phones rescued with trailing 0: ${uncertainPhones}`);
+  console.log(`ðŸ“¦ Missed orders: ${orders.length} valid rows | skipped date:${skipped.date} phone:${skipped.phone} completed:${skipped.completed}`);
+  if (uncertainPhones > 0) console.log(`âš ï¸ Missed orders uncertain phones rescued with trailing 0: ${uncertainPhones}`);
+  if (ambiguousPhones > 0) console.log(`âš ï¸ Missed orders expanded from ambiguous phones: ${ambiguousPhones}`);
   if (skippedOrders.length > 0) console.log(`Phone-parse failures (will appear in Couldn't Process): ${skippedOrders.length}`);
   return { orders, skippedOrders };
 }
 
 function modeNumber(values) {
   const freq = {};
-  for (const value of values) {
+  for (const value of Array.isArray(values) ? values : []) {
+    if (!Number.isFinite(Number(value))) continue;
     const rounded = Math.round(value);
     freq[rounded] = (freq[rounded] || 0) + 1;
   }
-  return parseInt(Object.entries(freq).sort((a, b) => b[1] - a[1])[0][0], 10);
+  const entries = Object.entries(freq).sort((a, b) => b[1] - a[1]);
+  return entries.length ? parseInt(entries[0][0], 10) : 0;
 }
 
 function buildProductCatalog(realOrders) {
@@ -368,7 +404,7 @@ function buildProductCatalog(realOrders) {
     enumerable: false,
   });
 
-  console.log(`📚 Product catalog: ${Object.keys(result).length} products | ${Object.keys(result.__skuIndex).length} SKUs`);
+  console.log(`ðŸ“š Product catalog: ${Object.keys(result).length} products | ${Object.keys(result.__skuIndex).length} SKUs`);
   return result;
 }
 
@@ -504,50 +540,67 @@ function resolveMissedOrders(missedOrders, catalog) {
   }
 
   if (skipped.length > 0) {
-    console.log(`⚠️ Missed orders skipped (no live catalog match): ${[...new Set(skipped)].join(", ")}`);
+    console.log(`âš ï¸ Missed orders skipped (no live catalog match): ${[...new Set(skipped)].join(", ")}`);
   }
 
-  console.log(`📦 Missed orders resolved: ${resolved.length} SKU-backed items`);
+  console.log(`ðŸ“¦ Missed orders resolved: ${resolved.length} SKU-backed items`);
   return { resolved, skippedOrders };
 }
 
-function parseKhodOrderKeys(buffer) {
+function parseKhodOrderKeys(buffer, country = "sa") {
   const wb = XLSX.read(buffer, { type: "buffer" });
   const ws = wb.Sheets[wb.SheetNames[0]];
   const rows = XLSX.utils.sheet_to_json(ws, { header: 1 });
   const header = rows[0] || [];
 
-  const phoneColIdx = findHeaderIndex(header, ["الهاتف  1", "الهاتف 1", "الهاتف"], 3);
-  const skuColIdx = findHeaderIndex(header, ["sku_code", "SKU", "Sku", "كود_المنتج"], 17);
+  const phoneColIdx = findHeaderIndex(header, ["Ø§Ù„Ù‡Ø§ØªÙ  1", "Ø§Ù„Ù‡Ø§ØªÙ 1", "Ø§Ù„Ù‡Ø§ØªÙ"], 3);
+  const skuColIdx = findHeaderIndex(header, ["sku_code", "SKU", "Sku", "ÙƒÙˆØ¯_Ø§Ù„Ù…Ù†ØªØ¬"], 17);
 
   const keys = new Set();
   let skipped = 0;
   for (let i = 1; i < rows.length; i++) {
-    const normPhone = normalizePhone(rows[i][phoneColIdx]);
+    const normPhone = normalizePhone(rows[i][phoneColIdx], country);
     const sku = (rows[i][skuColIdx] || "").toString().trim();
     const key = makeOrderKey(normPhone, sku);
     if (key) keys.add(key);
     else skipped++;
   }
 
-  console.log(`📋 Khod: ${keys.size} phone+SKU keys loaded | skipped:${skipped}`);
+  console.log(`ðŸ“‹ KHOD WHAAT: ${keys.size} phone+SKU keys loaded | skipped:${skipped}`);
   return keys;
 }
 
-function parseKhodPhones(buffer) {
+function parseKhodOrderCount(buffer) {
   const wb = XLSX.read(buffer, { type: "buffer" });
   const ws = wb.Sheets[wb.SheetNames[0]];
   const rows = XLSX.utils.sheet_to_json(ws, { header: 1 });
   const header = rows[0] || [];
-  const phoneColIdx = findHeaderIndex(header, ["الهاتف  1", "الهاتف 1", "الهاتف"], 3);
+  const orderColIdx = findHeaderIndex(header, ["Ø±Ù‚Ù… Ø§Ù„Ø§ÙˆØ±Ø¯Ø±", "Ø±Ù‚Ù… Ø§Ù„Ø·Ù„Ø¨", "Order Number"], 1);
+  const orderNumbers = new Set();
+
+  for (let i = 1; i < rows.length; i++) {
+    const orderNumber = String(rows[i][orderColIdx] || "").trim();
+    if (orderNumber) orderNumbers.add(orderNumber);
+  }
+
+  console.log(`ðŸ“‹ KHOD WHAAT: ${orderNumbers.size} distinct order numbers loaded`);
+  return orderNumbers.size;
+}
+
+function parseKhodPhones(buffer, country = "sa") {
+  const wb = XLSX.read(buffer, { type: "buffer" });
+  const ws = wb.Sheets[wb.SheetNames[0]];
+  const rows = XLSX.utils.sheet_to_json(ws, { header: 1 });
+  const header = rows[0] || [];
+  const phoneColIdx = findHeaderIndex(header, ["Ø§Ù„Ù‡Ø§ØªÙ  1", "Ø§Ù„Ù‡Ø§ØªÙ 1", "Ø§Ù„Ù‡Ø§ØªÙ"], 3);
 
   const phones = new Set();
   for (let i = 1; i < rows.length; i++) {
-    const normPhone = normalizePhone(rows[i][phoneColIdx]);
+    const normPhone = normalizePhone(rows[i][phoneColIdx], country);
     if (normPhone) phones.add(normPhone);
   }
 
-  console.log(`📋 Khod: ${phones.size} phones loaded`);
+  console.log(`ðŸ“‹ KHOD WHAAT: ${phones.size} phones loaded`);
   return phones;
 }
 
@@ -580,43 +633,157 @@ function mergeAndDeduplicate(realOrders, resolvedMissed, khodOrderKeys) {
   for (const order of realOrders) accept(order, "real");
   for (const order of resolvedMissed) accept(order, "missed");
 
-  console.log(`✅ New orders: real=${stats.realNew} missed=${stats.missedNew}`);
-  console.log(`🚫 Already in Khod (phone+SKU): real=${stats.realInKhod} missed=${stats.missedInKhod}`);
-  console.log(`🔁 Dupes in this batch (phone+SKU): real=${stats.realDupe} missed=${stats.missedDupe}`);
-  console.log(`⚠️ Missing SKU keys: real=${stats.realMissingSku} missed=${stats.missedMissingSku}`);
+  console.log(`âœ… New orders: real=${stats.realNew} missed=${stats.missedNew}`);
+  console.log(`ðŸš« Already in KHOD WHAAT (phone+SKU): real=${stats.realInKhod} missed=${stats.missedInKhod}`);
+  console.log(`ðŸ” Dupes in this batch (phone+SKU): real=${stats.realDupe} missed=${stats.missedDupe}`);
+  console.log(`âš ï¸ Missing SKU keys: real=${stats.realMissingSku} missed=${stats.missedMissingSku}`);
 
   return { orders: result, stats };
 }
 
-// ════════════════════════════════════════════════════════════════
-// KHOD ANALYTICS MAP
-// Reads the Khod affiliate sheet (Arabic headers, from khodBuffer)
+// â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•
+// KHOD WHAAT ANALYTICS MAP
+// Reads the KHOD WHAAT affiliate sheet (Arabic headers, from khodBuffer)
 // Returns:
 //   byPhoneSku  Map<"normPhone|sku", {orderStatus, amountDue, marketerCommission, khodOrderNumber}>
-//   skuDefaults Object<sku, {amountDue, marketerCommission}>  ← mode/avg for first-run inference
-// ════════════════════════════════════════════════════════════════
-function parseKhodAnalyticsMap(buffer) {
+//   skuDefaults Object<sku, {amountDue, marketerCommission}>  â† mode/avg for first-run inference
+// â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•
+const CITY_FALLBACK_POLICY = Object.freeze({
+  skuMinDelivered: 10,
+  skuMinWinner: 3,
+  skuMinShare: 0.30,
+  globalMinDelivered: 10,
+  globalMinWinner: 3,
+  globalMinShare: 0.20,
+});
+
+function isKhodDeliveredStatus(value) {
+  const status = String(value || "")
+    .toLowerCase()
+    .normalize("NFKC")
+    .replace(/[\u064B-\u065F\u0670\u0640]/g, "")
+    .replace(/\s+/g, " ")
+    .trim();
+  return status === "delivered"
+    || status === "completed"
+    || status === "ØªÙ… Ø§Ù„ØªÙˆØµÙŠÙ„"
+    || status === "ØªÙ… Ø§Ù„ØªÙˆØµÙŠÙ„ Ø¨Ù†Ø¬Ø§Ø­"
+    || status === "ØªÙ… Ø§Ù„ØªØ³Ù„ÙŠÙ…"
+    || status === "ØªÙ… Ø§Ù„ØªØ³Ù„ÙŠÙ… Ø¨Ù†Ø¬Ø§Ø­"
+    || status === "Ù…Ø³Ù„Ù…";
+}
+
+function chooseCityFallback(counts, total, policy) {
+  let city = "";
+  let winnerCount = 0;
+  for (const [candidate, count] of counts.entries()) {
+    // Strictly greater preserves first-seen order as the deterministic tie-breaker.
+    if (count > winnerCount) {
+      city = candidate;
+      winnerCount = count;
+    }
+  }
+  const share = total > 0 ? winnerCount / total : 0;
+  const qualified = total >= policy.minDelivered
+    && winnerCount >= policy.minWinner
+    && share >= policy.minShare;
+  return { city: qualified ? city : "", winner: city, winnerCount, total, share, qualified };
+}
+
+function buildCityFallback(rows, indexes) {
+  const globalCounts = new Map();
+  const skuCounts = new Map();
+  const skuTotals = new Map();
+  let deliveredRows = 0;
+  let validDeliveredRows = 0;
+
+  for (let i = 1; i < rows.length; i++) {
+    const row = rows[i] || [];
+    if (!isKhodDeliveredStatus(row[indexes.status])) continue;
+    deliveredRows++;
+    const cityMatch = matchCityLabel(row[indexes.city]);
+    if (!cityMatch.matched) continue;
+    validDeliveredRows++;
+    globalCounts.set(cityMatch.city, (globalCounts.get(cityMatch.city) || 0) + 1);
+
+    const sku = String(row[indexes.sku] || "").trim();
+    if (!sku) continue;
+    if (!skuCounts.has(sku)) skuCounts.set(sku, new Map());
+    const counts = skuCounts.get(sku);
+    counts.set(cityMatch.city, (counts.get(cityMatch.city) || 0) + 1);
+    skuTotals.set(sku, (skuTotals.get(sku) || 0) + 1);
+  }
+
+  const globalChoice = chooseCityFallback(globalCounts, validDeliveredRows, {
+    minDelivered: CITY_FALLBACK_POLICY.globalMinDelivered,
+    minWinner: CITY_FALLBACK_POLICY.globalMinWinner,
+    minShare: CITY_FALLBACK_POLICY.globalMinShare,
+  });
+  const fallbackCityBySku = Object.create(null);
+  const skuStats = Object.create(null);
+  for (const [sku, counts] of skuCounts.entries()) {
+    const choice = chooseCityFallback(counts, skuTotals.get(sku) || 0, {
+      minDelivered: CITY_FALLBACK_POLICY.skuMinDelivered,
+      minWinner: CITY_FALLBACK_POLICY.skuMinWinner,
+      minShare: CITY_FALLBACK_POLICY.skuMinShare,
+    });
+    if (choice.qualified) fallbackCityBySku[sku] = choice.city;
+    skuStats[sku] = { ...choice, counts: Object.fromEntries(counts.entries()) };
+  }
+
+  return {
+    fallbackCity: globalChoice.city,
+    fallbackCityBySku,
+    fallbackCityCounts: Object.fromEntries(globalCounts.entries()),
+    fallbackCityStats: {
+      policy: CITY_FALLBACK_POLICY,
+      deliveredRows,
+      validDeliveredRows,
+      global: globalChoice,
+      bySku: skuStats,
+    },
+  };
+}
+
+function logCityFallbackDecision(fallbackStats) {
+  const stats = fallbackStats.fallbackCityStats;
+  const global = stats.global;
+  const pct = `${Math.round(global.share * 100)}%`;
+  const globalDecision = global.qualified
+    ? `${global.city} (${global.winnerCount}/${global.total}, ${pct})`
+    : `none; leading=${global.winner || "none"} (${global.winnerCount}/${global.total}, ${pct})`;
+  const qualifiedSkus = Object.entries(fallbackStats.fallbackCityBySku);
+  console.log(`[City fallback] delivered rows=${stats.deliveredRows} | usable city rows=${stats.validDeliveredRows} | global=${globalDecision} | qualified SKUs=${qualifiedSkus.length}`);
+  if (qualifiedSkus.length) {
+    const preview = qualifiedSkus.slice(0, 20).map(([sku, city]) => `${sku}=>${city}`).join(", ");
+    console.log(`[City fallback] SKU choices: ${preview}${qualifiedSkus.length > 20 ? `, ... +${qualifiedSkus.length - 20} more` : ""}`);
+  }
+}
+
+function parseKhodAnalyticsMap(buffer, country = "sa") {
   try {
     const wb = XLSX.read(buffer, { type: "buffer" });
     const ws = wb.Sheets[wb.SheetNames[0]];
     const rows = XLSX.utils.sheet_to_json(ws, { header: 1 });
     if (!rows || rows.length < 2) {
-      console.log("📊 Khod analytics map: empty sheet");
-      return { byPhoneSku: new Map(), skuDefaults: {} };
+      console.log("ðŸ“Š KHOD WHAAT analytics map: empty sheet");
+      return { byPhoneSku: new Map(), skuDefaults: {}, fallbackCity: "", fallbackCityBySku: {}, fallbackCityCounts: {}, fallbackCityStats: {} };
     }
 
     const header = rows[0] || [];
 
-    // ── Column discovery with fallbacks ──
-    const phoneIdx  = findHeaderIndex(header, ["الهاتف  1", "الهاتف 1", "الهاتف"], 3);
-    const skuIdx    = findHeaderIndex(header, ["sku_code", "SKU", "Sku", "كود_المنتج"], 17);
-    const orderIdx  = findHeaderIndex(header, ["رقم الاوردر", "رقم الطلب", "Order Number"], 1);
-    const statusIdx = findHeaderIndex(header, ["حالة الأوردر", "حاله الاوردر", "الحالة", "حالة"], 5);
-    const amountIdx = findHeaderIndex(header, ["المطلوب تحصيله", "مبلغ التحصيل", "المبلغ المطلوب"], 25);
-    const commIdx   = findHeaderIndex(header, ["عمولة المسوق", "عمولة المسوّق", "العمولة"], 27);
+    // â”€â”€ Column discovery with fallbacks â”€â”€
+    const phoneIdx  = findHeaderIndex(header, ["Ø§Ù„Ù‡Ø§ØªÙ  1", "Ø§Ù„Ù‡Ø§ØªÙ 1", "Ø§Ù„Ù‡Ø§ØªÙ"], 3);
+    const skuIdx    = findHeaderIndex(header, ["sku_code", "SKU", "Sku", "ÙƒÙˆØ¯_Ø§Ù„Ù…Ù†ØªØ¬"], 17);
+    const orderIdx  = findHeaderIndex(header, ["Ø±Ù‚Ù… Ø§Ù„Ø§ÙˆØ±Ø¯Ø±", "Ø±Ù‚Ù… Ø§Ù„Ø·Ù„Ø¨", "Order Number"], 1);
+    const statusIdx = findHeaderIndex(header, ["Ø­Ø§Ù„Ø© Ø§Ù„Ø£ÙˆØ±Ø¯Ø±", "Ø­Ø§Ù„Ù‡ Ø§Ù„Ø§ÙˆØ±Ø¯Ø±", "Ø§Ù„Ø­Ø§Ù„Ø©", "Ø­Ø§Ù„Ø©"], 5);
+    const cityIdx   = findHeaderIndex(header, ["Ø§Ù„Ù…Ø¯ÙŠÙ†Ø©", "City"], 8);
+    const amountIdx = findHeaderIndex(header, ["Ø§Ù„Ù…Ø·Ù„ÙˆØ¨ ØªØ­ØµÙŠÙ„Ù‡", "Ù…Ø¨Ù„Øº Ø§Ù„ØªØ­ØµÙŠÙ„", "Ø§Ù„Ù…Ø¨Ù„Øº Ø§Ù„Ù…Ø·Ù„ÙˆØ¨"], 25);
+    const commIdx   = findHeaderIndex(header, ["Ø¹Ù…ÙˆÙ„Ø© Ø§Ù„Ù…Ø³ÙˆÙ‚", "Ø¹Ù…ÙˆÙ„Ø© Ø§Ù„Ù…Ø³ÙˆÙ‘Ù‚", "Ø§Ù„Ø¹Ù…ÙˆÙ„Ø©"], 27);
+    const fallbackStats = buildCityFallback(rows, { status: statusIdx, city: cityIdx, sku: skuIdx });
 
     const byPhoneSku = new Map();
-    const skuSamples = {}; // sku → [{amountDue, marketerCommission}]
+    const skuSamples = {}; // sku â†’ [{amountDue, marketerCommission}]
 
     for (let i = 1; i < rows.length; i++) {
       const row = rows[i];
@@ -636,7 +803,7 @@ function parseKhodAnalyticsMap(buffer) {
         skuSamples[sku].push({ amountDue, marketerCommission });
       }
 
-      const normPhone = normalizePhone(row[phoneIdx]);
+      const normPhone = normalizePhone(row[phoneIdx], country);
       if (!normPhone) continue;
 
       byPhoneSku.set(`${normPhone}|${sku}`, {
@@ -647,7 +814,7 @@ function parseKhodAnalyticsMap(buffer) {
       });
     }
 
-    // ── Build SKU defaults using mode for amountDue, mean for commission ──
+    // â”€â”€ Build SKU defaults using mode for amountDue, mean for commission â”€â”€
     const skuDefaults = {};
     for (const [sku, samples] of Object.entries(skuSamples)) {
       if (!samples.length) continue;
@@ -671,22 +838,23 @@ function parseKhodAnalyticsMap(buffer) {
       skuDefaults[sku] = { amountDue: modeAmt || 0, marketerCommission: meanComm };
     }
 
-    console.log(`📊 Khod analytics map: ${byPhoneSku.size} phone+SKU pairs | ${Object.keys(skuDefaults).length} SKU templates`);
-    return { byPhoneSku, skuDefaults };
+    logCityFallbackDecision(fallbackStats);
+    console.log(`ðŸ“Š KHOD WHAAT analytics map: ${byPhoneSku.size} phone+SKU pairs | ${Object.keys(skuDefaults).length} SKU templates | fallback city: ${fallbackStats.fallbackCity || "none"}`);
+    return { byPhoneSku, skuDefaults, ...fallbackStats };
 
   } catch (err) {
     console.error("[Analytics] parseKhodAnalyticsMap error:", err.message);
-    return { byPhoneSku: new Map(), skuDefaults: {} };
+    return { byPhoneSku: new Map(), skuDefaults: {}, fallbackCity: "", fallbackCityBySku: {}, fallbackCityCounts: {}, fallbackCityStats: {} };
   }
 }
 
-// ════════════════════════════════════════════════════════════════
-// FULL MONTH SNAPSHOT — for Dashboard Infrastructure (STEP 2)
-// Reads ALL rows from the Khod affiliate sheet (including Cancelled).
+// â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•
+// FULL MONTH SNAPSHOT â€” for Dashboard Infrastructure (STEP 2)
+// Reads ALL rows from the KHOD WHAAT affiliate sheet (including Cancelled).
 // Date range: selected dashboard range, falling back to current month.
 // Read-only: no phone normalization, no SKU matching, no dedup.
 // Returns flat array of row objects for dashboardStore.
-// ════════════════════════════════════════════════════════════════
+// â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•
 function parseFullMonthSnapshot(buffer, options = {}) {
   try {
     const wb = XLSX.read(buffer, { type: "buffer" });
@@ -699,36 +867,36 @@ function parseFullMonthSnapshot(buffer, options = {}) {
 
     const header = rows[0] || [];
 
-    // ── Column discovery — same robust helper used elsewhere ──
-    const orderNumIdx  = findHeaderIndex(header, ["رقم الاوردر", "رقم الطلب", "Order Number"], 1);
-    const nameIdx      = findHeaderIndex(header, ["اسم المستلم", "الاسم", "FullName"], 2);
-    const phone1Idx    = findHeaderIndex(header, ["الهاتف  1", "الهاتف 1", "الهاتف"], 3);
-    const phone2Idx    = findHeaderIndex(header, ["الهاتف  2", "الهاتف 2"], 4);
-    const statusIdx    = findHeaderIndex(header, ["حالة الأوردر", "حاله الاوردر", "الحالة", "حالة"], 5);
-    const orderValIdx  = findHeaderIndex(header, ["قيمة الاوردر", "قيمة الطلب"], 6);
-    const commIdx      = findHeaderIndex(header, ["العمولة", "Commission"], 7);
-    const cityIdx      = findHeaderIndex(header, ["المدينة", "City"], 8);
-    const regionIdx    = findHeaderIndex(header, ["المنطقة", "Region"], 9);
-    const addressIdx   = findHeaderIndex(header, ["العنوان", "Address"], 10);
-    const dataEntryIdx = findHeaderIndex(header, ["داتا انتري", "Data Entry"], 11);
-    const qtyIdx       = findHeaderIndex(header, ["عدد القطع", "Qty"], 15);
-    const productsIdx  = findHeaderIndex(header, ["المنتجات", "Products"], 16);
-    const skuIdx       = findHeaderIndex(header, ["sku_code", "SKU", "Sku", "كود_المنتج"], 17);
-    const priceNoShipIdx = findHeaderIndex(header, ["السعر الكلي بدون الشحن"], 18);
-    const shippingIdx  = findHeaderIndex(header, ["سعر الشحن"], 19);
-    const totalPriceIdx= findHeaderIndex(header, ["السعر الكلي بالشحن"], 20);
-    const createdAtIdx = findHeaderIndex(header, ["تاريخ الإنشاء", "تاريخ الانشاء", "Created At"], 21);
-    const confirmedIdx = findHeaderIndex(header, ["تاريخ التأكيد", "Confirmed At"], 22);
-    const shippedIdx   = findHeaderIndex(header, ["تاريخ الشحن", "Shipped At"], 23);
-    const updatedIdx   = findHeaderIndex(header, ["تاريخ أخر تحديث", "آخر تحديث", "Last Updated"], 24);
-    const amountDueIdx = findHeaderIndex(header, ["المطلوب تحصيله", "مبلغ التحصيل", "المبلغ المطلوب"], 25);
-    const collectedIdx = findHeaderIndex(header, ["المحصل", "Collected"], 26);
-    const mktCommIdx   = findHeaderIndex(header, ["عمولة المسوق", "عمولة المسوّق"], 27);
-    const orderTypeIdx = findHeaderIndex(header, ["نوع الاوردر", "Order Type"], 28);
-    const notesIdx     = findHeaderIndex(header, ["الملاحظات", "Notes"], 30);
+    // â”€â”€ Column discovery â€” same robust helper used elsewhere â”€â”€
+    const orderNumIdx  = findHeaderIndex(header, ["Ø±Ù‚Ù… Ø§Ù„Ø§ÙˆØ±Ø¯Ø±", "Ø±Ù‚Ù… Ø§Ù„Ø·Ù„Ø¨", "Order Number"], 1);
+    const nameIdx      = findHeaderIndex(header, ["Ø§Ø³Ù… Ø§Ù„Ù…Ø³ØªÙ„Ù…", "Ø§Ù„Ø§Ø³Ù…", "FullName"], 2);
+    const phone1Idx    = findHeaderIndex(header, ["Ø§Ù„Ù‡Ø§ØªÙ  1", "Ø§Ù„Ù‡Ø§ØªÙ 1", "Ø§Ù„Ù‡Ø§ØªÙ"], 3);
+    const phone2Idx    = findHeaderIndex(header, ["Ø§Ù„Ù‡Ø§ØªÙ  2", "Ø§Ù„Ù‡Ø§ØªÙ 2"], 4);
+    const statusIdx    = findHeaderIndex(header, ["Ø­Ø§Ù„Ø© Ø§Ù„Ø£ÙˆØ±Ø¯Ø±", "Ø­Ø§Ù„Ù‡ Ø§Ù„Ø§ÙˆØ±Ø¯Ø±", "Ø§Ù„Ø­Ø§Ù„Ø©", "Ø­Ø§Ù„Ø©"], 5);
+    const orderValIdx  = findHeaderIndex(header, ["Ù‚ÙŠÙ…Ø© Ø§Ù„Ø§ÙˆØ±Ø¯Ø±", "Ù‚ÙŠÙ…Ø© Ø§Ù„Ø·Ù„Ø¨"], 6);
+    const commIdx      = findHeaderIndex(header, ["Ø§Ù„Ø¹Ù…ÙˆÙ„Ø©", "Commission"], 7);
+    const cityIdx      = findHeaderIndex(header, ["Ø§Ù„Ù…Ø¯ÙŠÙ†Ø©", "City"], 8);
+    const regionIdx    = findHeaderIndex(header, ["Ø§Ù„Ù…Ù†Ø·Ù‚Ø©", "Region"], 9);
+    const addressIdx   = findHeaderIndex(header, ["Ø§Ù„Ø¹Ù†ÙˆØ§Ù†", "Address"], 10);
+    const dataEntryIdx = findHeaderIndex(header, ["Ø¯Ø§ØªØ§ Ø§Ù†ØªØ±ÙŠ", "Data Entry"], 11);
+    const qtyIdx       = findHeaderIndex(header, ["Ø¹Ø¯Ø¯ Ø§Ù„Ù‚Ø·Ø¹", "Qty"], 15);
+    const productsIdx  = findHeaderIndex(header, ["Ø§Ù„Ù…Ù†ØªØ¬Ø§Øª", "Products"], 16);
+    const skuIdx       = findHeaderIndex(header, ["sku_code", "SKU", "Sku", "ÙƒÙˆØ¯_Ø§Ù„Ù…Ù†ØªØ¬"], 17);
+    const priceNoShipIdx = findHeaderIndex(header, ["Ø§Ù„Ø³Ø¹Ø± Ø§Ù„ÙƒÙ„ÙŠ Ø¨Ø¯ÙˆÙ† Ø§Ù„Ø´Ø­Ù†"], 18);
+    const shippingIdx  = findHeaderIndex(header, ["Ø³Ø¹Ø± Ø§Ù„Ø´Ø­Ù†"], 19);
+    const totalPriceIdx= findHeaderIndex(header, ["Ø§Ù„Ø³Ø¹Ø± Ø§Ù„ÙƒÙ„ÙŠ Ø¨Ø§Ù„Ø´Ø­Ù†"], 20);
+    const createdAtIdx = findHeaderIndex(header, ["ØªØ§Ø±ÙŠØ® Ø§Ù„Ø¥Ù†Ø´Ø§Ø¡", "ØªØ§Ø±ÙŠØ® Ø§Ù„Ø§Ù†Ø´Ø§Ø¡", "Created At"], 21);
+    const confirmedIdx = findHeaderIndex(header, ["ØªØ§Ø±ÙŠØ® Ø§Ù„ØªØ£ÙƒÙŠØ¯", "Confirmed At"], 22);
+    const shippedIdx   = findHeaderIndex(header, ["ØªØ§Ø±ÙŠØ® Ø§Ù„Ø´Ø­Ù†", "Shipped At"], 23);
+    const updatedIdx   = findHeaderIndex(header, ["ØªØ§Ø±ÙŠØ® Ø£Ø®Ø± ØªØ­Ø¯ÙŠØ«", "Ø¢Ø®Ø± ØªØ­Ø¯ÙŠØ«", "Last Updated"], 24);
+    const amountDueIdx = findHeaderIndex(header, ["Ø§Ù„Ù…Ø·Ù„ÙˆØ¨ ØªØ­ØµÙŠÙ„Ù‡", "Ù…Ø¨Ù„Øº Ø§Ù„ØªØ­ØµÙŠÙ„", "Ø§Ù„Ù…Ø¨Ù„Øº Ø§Ù„Ù…Ø·Ù„ÙˆØ¨"], 25);
+    const collectedIdx = findHeaderIndex(header, ["Ø§Ù„Ù…Ø­ØµÙ„", "Collected"], 26);
+    const mktCommIdx   = findHeaderIndex(header, ["Ø¹Ù…ÙˆÙ„Ø© Ø§Ù„Ù…Ø³ÙˆÙ‚", "Ø¹Ù…ÙˆÙ„Ø© Ø§Ù„Ù…Ø³ÙˆÙ‘Ù‚"], 27);
+    const orderTypeIdx = findHeaderIndex(header, ["Ù†ÙˆØ¹ Ø§Ù„Ø§ÙˆØ±Ø¯Ø±", "Order Type"], 28);
+    const notesIdx     = findHeaderIndex(header, ["Ø§Ù„Ù…Ù„Ø§Ø­Ø¸Ø§Øª", "Notes"], 30);
 
-    // ── Date range: selected range, matching the Khod list filter/count ──
-    // Khod's "all orders" counter follows the order creation date selected in
+    // â”€â”€ Date range: selected range, matching the KHOD WHAAT list filter/count â”€â”€
+    // KHOD WHAAT's "all orders" counter follows the order creation date selected in
     // the page filters. Keep dashboard totals on the same basis so the UI count
     // matches the source screen exactly after each fetch.
     const now = new Date();
@@ -810,6 +978,7 @@ function parseFullMonthSnapshot(buffer, options = {}) {
       const safeNum  = (v) => parseFloat((v || "0").toString().replace(/[^\d.]/g, "")) || 0;
       const notes = safeStr(row[notesIdx]);
       const paymentMethod = detectPrepaidMethod(notes);
+      const paymentClassification = paymentMethod ? "prepaid" : "cod";
       const amountDueRaw = safeStr(row[amountDueIdx]);
       const rowQty = parseInt(safeStr(row[qtyIdx]) || "1", 10) || 1;
       const rowSku = safeStr(row[skuIdx]);
@@ -851,6 +1020,11 @@ function parseFullMonthSnapshot(buffer, options = {}) {
         orderType:          safeStr(row[orderTypeIdx]),
         notes:              notes,
         paymentMethod:      paymentMethod,
+        paymentClassification,
+        paymentMethodSource: "khod-notes",
+        paymentEvidenceSource: "khod-notes",
+        effectivePaymentClassification: paymentClassification,
+        isEffectiveCod:     paymentClassification !== "prepaid",
         isPrepaid:          !!paymentMethod,
         dashboardDate:       dashboardDate,
         dashboardBucketMonth: sameMonthRange ? rangeFromKey.slice(0, 7) : dashboardDate.slice(0, 7),
@@ -876,7 +1050,7 @@ function loadProductMap() {
 function saveProductMap() {}
 
 function learnProductMappings() {
-  console.log("ℹ️ Product map learning skipped: live SKU catalog is used for dedupe.");
+  console.log("â„¹ï¸ Product map learning skipped: live SKU catalog is used for dedupe.");
   return {};
 }
 
@@ -887,6 +1061,7 @@ function lookupEoNameInMap() {
 module.exports = {
   parseKhodPhones,
   parseKhodOrderKeys,
+  parseKhodOrderCount,
   parseKhodAnalyticsMap,
   parseRealOrders,
   parseMissedOrders,

@@ -3,6 +3,9 @@
   window.KHOD_LOCALES = window.KHOD_LOCALES || {};
   window.KHOD_LOCALES.en = window.KHOD_LOCALES.en || {};
   window.KHOD_LOCALES.en.operations = {
+    actions: {
+      updateUploadedOrders: "Update Uploaded Orders"
+    },
     tour: {
       common: {
         quickGuide: "Quick Guide"
