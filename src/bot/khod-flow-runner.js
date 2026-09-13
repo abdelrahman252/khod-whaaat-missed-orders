@@ -3361,12 +3361,29 @@ async function verifyFinalTotal(page, targetSubtotal, orderNum) {
     const { resolved: resolvedMissed, skippedOrders: catalogFailedOrders } =
       resolveMissedOrders(missedOrders, catalog);
 
-    const allSkippedOrders = [...phoneFailedOrders, ...catalogFailedOrders].map(o => ({
+    const initialSkippedOrders = [...phoneFailedOrders, ...catalogFailedOrders].map(o => ({
       ...o,
       accountEmail: config.easyEmail || "",
       accountLabel: config.label || "",
       khodCountry: config.khodCountry || "sa",
     }));
+
+    // ── Learn product name mappings (KHOD WHAAT ↔ Easy-Orders) ──
+    // Cross-references phone numbers across both exports to discover which
+    // KHOD WHAAT product name corresponds to which Easy-Orders marketing name.
+    // Saves learned pairs to disk — grows over time, never cleared.
+    // If the file doesn't exist yet (first run or deleted) → starts fresh and works normally.
+    const mergedResult = mergeAndDeduplicate(realOrders, resolvedMissed, khodOrderKeys);
+    const stats = mergedResult.stats;
+    const allSkippedOrders = [
+      ...initialSkippedOrders,
+      ...(mergedResult.skippedOrders || []).map(o => ({
+        ...o,
+        accountEmail: config.easyEmail || "",
+        accountLabel: config.label || "",
+        khodCountry: config.khodCountry || "sa",
+      })),
+    ];
     let skippedBuffer = null;
     let skippedFilePath = "";
     if (allSkippedOrders.length > 0) {
@@ -3379,14 +3396,6 @@ async function verifyFinalTotal(page, targetSubtotal, orderNum) {
         log(`Couldnt-process file saved: ${skippedFilePath}`);
       }
     }
-
-    // ── Learn product name mappings (KHOD WHAAT ↔ Easy-Orders) ──
-    // Cross-references phone numbers across both exports to discover which
-    // KHOD WHAAT product name corresponds to which Easy-Orders marketing name.
-    // Saves learned pairs to disk — grows over time, never cleared.
-    // If the file doesn't exist yet (first run or deleted) → starts fresh and works normally.
-    const mergedResult = mergeAndDeduplicate(realOrders, resolvedMissed, khodOrderKeys);
-    const stats = mergedResult.stats;
     const orders = config.manualReviewMode === true && Array.isArray(config.manualReviewOrders)
       ? normalizeManualReviewOrders(config.manualReviewOrders, orderCountry)
       : mergedResult.orders;

@@ -3,7 +3,8 @@
 const XLSX = require("xlsx");
 const { normalizePhone, normalizePhoneCandidatesWithMeta } = require("./phone");
 const { matchCityLabel } = require("./city-fallback");
-const { sanitizeCustomerFields } = require("./customer-quality");
+const { sanitizeCustomerFields, assessCustomerOrder } = require("./customer-quality");
+const { buildGroupedCartOrders, mergeItemList } = require("./cart-order-groups");
 
 function parseExcelDate(val) {
   if (!val) return null;
@@ -152,6 +153,7 @@ function explodeRealOrderRow(row, phoneMeta) {
   const rawCity = (row["City"] || row["Government"] || "").toString().trim();
   const base = {
     source: "real",
+    orderId: String(row["Order ID"] || row["ID"] || row["External Order ID"] || "").trim(),
     normPhone,
     uncertain: phoneMeta.uncertain || false,
     phoneAmbiguous: !!phoneMeta.phoneAmbiguous,
@@ -213,6 +215,22 @@ function explodeRealOrderRow(row, phoneMeta) {
   return [...bySku.values()];
 }
 
+function applyCustomerIdentityReview(order) {
+  const assessment = assessCustomerOrder(order);
+  if (!assessment.ok) {
+    order.manualReview = true;
+    order.uncertain = true;
+    order.reason = "invalid_customer_data";
+    order.actionMessage = assessment.message || "Customer data needs correction before upload.";
+    order.customerQuality = {
+      ...(order.customerQuality || {}),
+      identity: assessment,
+    };
+    if (order.rawCustomerName) order.name = order.rawCustomerName;
+  }
+  return order;
+}
+
 function parseRealOrders(buffer, dateFrom, dateTo, country = "sa") {
   const wb = XLSX.read(buffer, { type: "buffer" });
   const ws = wb.Sheets[wb.SheetNames[0]];
@@ -231,7 +249,35 @@ function parseRealOrders(buffer, dateFrom, dateTo, country = "sa") {
     if (status === "cancelled" || status === "canceled") { skipped.status++; continue; }
 
     const phoneMetas = normalizePhoneCandidatesWithMeta(row["Phone"], country);
-    if (!phoneMetas.length) { skipped.phone++; continue; }
+    if (!phoneMetas.length) {
+      skipped.phone++;
+      const reviewItems = explodeRealOrderRow(row, { digits: "", uncertain: true, correction: "phone_parse_failed" });
+      const rowsForReview = reviewItems.length ? reviewItems : [{
+        source: "real",
+        orderId: String(row["Order ID"] || row["ID"] || row["External Order ID"] || "").trim(),
+        rawPhone: row["Phone"],
+        name: String(row["FullName"] || "").trim(),
+        sku: String(row["SKU"] || "").trim(),
+        productName: String(row["Product Name"] || "").trim(),
+        qty: parseQty(row["Quantity"]),
+        subtotal: parseMoney(row["Total Cost"]),
+        city: String(row["City"] || row["Government"] || "").trim(),
+        address: String(row["Address"] || "").trim(),
+      }];
+      rowsForReview.forEach((order) => {
+        const reviewed = applyCustomerIdentityReview(sanitizeCustomerFields({
+          ...order,
+          manualReview: true,
+          uncertain: true,
+        }, { country }));
+        reviewed.manualReview = true;
+        reviewed.uncertain = true;
+        reviewed.reason = "phone_parse_failed";
+        reviewed.actionMessage = "Phone could not be normalized automatically. Correct it before upload.";
+        orders.push(reviewed);
+      });
+      continue;
+    }
     if (phoneMetas.some((meta) => meta.uncertain)) uncertainPhones++;
     if (phoneMetas.length > 1) ambiguousPhones++;
 
@@ -246,7 +292,9 @@ function parseRealOrders(buffer, dateFrom, dateTo, country = "sa") {
         phoneCandidateCount: phoneMetas.length,
       });
       explodedCount += exploded.length;
-      orders.push(...exploded);
+      orders.push(...exploded.map((order) => applyCustomerIdentityReview(
+        sanitizeCustomerFields(order, { country })
+      )));
     });
     if (explodedCount === 0) skipped.sku++;
   }
@@ -288,10 +336,15 @@ function parseMissedOrders(buffer, dateFrom, dateTo, country = "sa") {
       skippedOrders.push({
         name: (row["Full Name"] || "").toString().trim(),
         rawPhone: (row["Phone"] || "").toString().trim(),
+        normalizedPhone: "",
+        sku: "",
         productName: stripProductBrackets(rawProducts) || rawProducts,
         city: (row["Government"] || row["City"] || "").toString().trim(),
         address: (row["Address"] || "").toString().trim(),
         reason: "phone_parse_failed",
+        actionMessage: "Phone could not be normalized automatically. Correct it before upload.",
+        manualReview: true,
+        uncertain: true,
       });
       continue;
     }
@@ -303,7 +356,7 @@ function parseMissedOrders(buffer, dateFrom, dateTo, country = "sa") {
 
     phoneMetas.forEach((phoneMeta, candidateIndex) => {
       const normPhone = phoneMeta.digits;
-      orders.push(sanitizeCustomerFields({
+      orders.push(applyCustomerIdentityReview(sanitizeCustomerFields({
         source: "missed",
         normPhone,
         uncertain: phoneMeta.uncertain || false,
@@ -330,7 +383,7 @@ function parseMissedOrders(buffer, dateFrom, dateTo, country = "sa") {
         amountDue:          0,
         marketerCommission: 0,
         khodOrderNumber:    "",
-      }, { country }));
+      }, { country })));
     });
   }
 
@@ -614,14 +667,75 @@ function isInKhod(orderOrPhone, khodOrderKeys, sku) {
 function mergeAndDeduplicate(realOrders, resolvedMissed, khodOrderKeys) {
   const seen = new Set();
   const result = [];
+  const skippedOrders = [];
   const stats = {
     realNew: 0, realDupe: 0, realInKhod: 0, realMissingSku: 0,
+    realPartialInKhod: 0,
     missedNew: 0, missedDupe: 0, missedInKhod: 0, missedMissingSku: 0,
+    missedPartialInKhod: 0,
   };
 
+  function addSkipped(order, reason, detail = {}) {
+    skippedOrders.push({
+      ...(order || {}),
+      rawPhone: order?.rawPhone || order?.phone || order?.normPhone || "",
+      normalizedPhone: detail.normalizedPhone != null
+        ? detail.normalizedPhone
+        : (order?.normPhone || order?.phone || ""),
+      reason,
+      actionMessage: detail.actionMessage || order?.actionMessage || "",
+      manualReview: detail.manualReview === true || order?.manualReview === true,
+      uncertain: detail.uncertain === true || order?.uncertain === true,
+    });
+  }
+
+  // An EasyOrders order that expands to several phone candidates is a
+  // customer-data correction. Keep one editable row for it. A different
+  // source-ID conflict without candidate expansion remains a normal skip.
+  const conflictedOrders = new Set();
+  const bySourceOrderId = new Map();
+  for (const order of [...realOrders, ...resolvedMissed]) {
+    const sourceId = String(order?.orderId || "").trim();
+    if (!sourceId) continue;
+    if (!bySourceOrderId.has(sourceId)) bySourceOrderId.set(sourceId, []);
+    bySourceOrderId.get(sourceId).push(order);
+  }
+  for (const items of bySourceOrderId.values()) {
+    const phones = new Set(items.map((item) => String(item?.normPhone || "").trim()).filter(Boolean));
+    if (phones.size <= 1 || items.length <= 1) continue;
+    items.forEach((item) => conflictedOrders.add(item));
+    const grouped = buildGroupedCartOrders(mergeItemList(items))[0] || items[0];
+    const phoneCandidateConflict = items.some((item) => item?.phoneAmbiguous === true);
+    const reason = "duplicate_easyorders_uuid_conflicting_phone";
+    addSkipped(grouped, reason, {
+      manualReview: phoneCandidateConflict,
+      uncertain: phoneCandidateConflict,
+      normalizedPhone: phoneCandidateConflict ? String(grouped.rawPhone || "").trim() : undefined,
+      actionMessage: phoneCandidateConflict
+        ? "Phone has more than one plausible correction; review it before upload."
+        : "Same EasyOrders order ID produced conflicting phone candidates; it was not uploaded.",
+    });
+    const source = grouped.source === "missed" ? "missed" : "real";
+    stats[`${source}PartialInKhod`]++;
+  }
+
   function accept(order, source) {
+    if (conflictedOrders.has(order)) return;
+    if (order && order.manualReview === true) {
+      addSkipped(order, order.reason || "invalid_customer_data", {
+        manualReview: true,
+        uncertain: true,
+        normalizedPhone: order.normalizedPhone || order.normPhone || order.rawPhone || "",
+      });
+      stats[`${source}PartialInKhod`]++;
+      return;
+    }
     const key = makeOrderKey(order.normPhone, order.sku);
-    if (!key) { stats[`${source}MissingSku`]++; return; }
+    if (!key) {
+      stats[`${source}MissingSku`]++;
+      addSkipped(order, "missing_sku_in_group");
+      return;
+    }
     if (khodOrderKeys.has(key)) { stats[`${source}InKhod`]++; return; }
     if (seen.has(key)) { stats[`${source}Dupe`]++; return; }
 
@@ -638,7 +752,7 @@ function mergeAndDeduplicate(realOrders, resolvedMissed, khodOrderKeys) {
   console.log(`ðŸ” Dupes in this batch (phone+SKU): real=${stats.realDupe} missed=${stats.missedDupe}`);
   console.log(`âš ï¸ Missing SKU keys: real=${stats.realMissingSku} missed=${stats.missedMissingSku}`);
 
-  return { orders: result, stats };
+  return { orders: result, stats, skippedOrders };
 }
 
 // â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•

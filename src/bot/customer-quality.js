@@ -43,6 +43,25 @@ function hasUnsafeSymbols(value) {
   return /https?:|www\.|@|[<>{}\[\]|]/i.test(normalizeText(value));
 }
 
+function hasRepeatedDigits(value, minRun = 7) {
+  const digits = digitsOnly(value);
+  if (!digits) return false;
+  const re = new RegExp(`(\\d)\\1{${Math.max(1, minRun - 1)},}`);
+  return re.test(digits);
+}
+
+function hasSequentialDigitRun(value, minRun = 8) {
+  const digits = digitsOnly(value);
+  if (digits.length < minRun) return false;
+  const forward = "01234567890123456789";
+  const backward = "98765432109876543210";
+  for (let i = 0; i <= digits.length - minRun; i++) {
+    const slice = digits.slice(i, i + minRun);
+    if (forward.includes(slice) || backward.includes(slice)) return true;
+  }
+  return false;
+}
+
 function hasEmoji(value) {
   return /\p{Extended_Pictographic}/u.test(normalizeText(value));
 }
@@ -131,6 +150,45 @@ function assessCustomerAddress(value, options = {}) {
   };
 }
 
+function assessCustomerPhone(rawPhone, normPhone) {
+  const rawDigits = digitsOnly(rawPhone);
+  const normalized = digitsOnly(normPhone);
+  const candidate = normalized || rawDigits;
+  const issues = [];
+
+  if (!candidate) issues.push("missing");
+  if (candidate.length >= 7 && new Set(Array.from(candidate)).size <= 1) issues.push("repeated_digit_phone");
+  else if (candidate.length >= 8 && hasRepeatedDigits(candidate, 7)) issues.push("repeated_digit_run");
+  if (candidate.length >= 9 && hasSequentialDigitRun(candidate, 9)) issues.push("sequential_digits");
+  else if (hasSequentialDigitRun(rawDigits || candidate, 8)) issues.push("sequential_digit_run");
+
+  return { ok: issues.length === 0, issues, severity: issues.length ? "strong" : "ok" };
+}
+
+function assessCustomerOrder(order) {
+  const rawName = normalizeText(order && (order.rawCustomerName || order.name));
+  const rawPhone = order && (order.rawPhone || order.phone);
+  const normPhone = order && order.normPhone;
+  const phoneQuality = assessCustomerPhone(rawPhone, normPhone);
+  const nameQuality = assessCustomerName(rawName, { rawPhone, normPhone });
+  const nameIssues = (nameQuality.issues || []).filter((issue) => [
+    "missing", "placeholder", "unsafe_symbols", "repeated_chars", "mostly_digits", "phone_like", "too_long",
+  ].includes(issue));
+  if (order && order.phoneAmbiguous === true) phoneQuality.issues.push("ambiguous_candidates");
+  const issues = [
+    ...phoneQuality.issues.map((issue) => `phone:${issue}`),
+    ...nameIssues.map((issue) => `name:${issue}`),
+  ];
+  return {
+    ok: issues.length === 0,
+    reason: issues.length ? "invalid_customer_data" : "",
+    issues,
+    phone: phoneQuality,
+    name: nameQuality,
+    message: issues.length ? `Customer data looks fake or invalid: ${issues.join(", ")}` : "",
+  };
+}
+
 function phoneNameFallback(normPhone, country = "sa") {
   const phone = digitsOnly(normPhone);
   if (!phone) return "عميل";
@@ -176,7 +234,8 @@ module.exports = {
   compactText,
   assessCustomerName,
   assessCustomerAddress,
+  assessCustomerPhone,
+  assessCustomerOrder,
   phoneNameFallback,
   sanitizeCustomerFields,
 };
-

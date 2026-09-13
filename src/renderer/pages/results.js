@@ -249,34 +249,43 @@ window.renderResults = function (data, dateFrom, dateTo, onRunAgain, onHome) {
     const reviewId = safeFilenamePart(accountId || "single");
     const reviewRows = Array.isArray(skippedOrders.rows) ? skippedOrders.rows : [];
     const escReview = value => String(value == null ? "" : value).replace(/[&<>"']/g, ch => ({"&":"&amp;","<":"&lt;",">":"&gt;","\"":"&quot;","'":"&#39;"}[ch]));
+    const isManualReviewRow = row => row && row.manualReview === true;
     const reasonLabels = {
       phone_parse_failed: t("results.reason_phone_parse_failed"),
       phone_uncertain_zero_appended: t("results.reason_phone_uncertain_zero_appended"),
       product_not_in_catalog: t("results.reason_product_not_in_catalog"),
+      invalid_customer_data: "Customer data looks fake or invalid",
+      duplicate_easyorders_uuid_conflicting_phone: "Phone has multiple plausible corrections",
     };
     const paged = buildPagedItems(reviewRows, (row, i, attrs) => {
       const reasonKey = row.uncertain && row.reason === "phone_parse_failed" ? "phone_uncertain_zero_appended" : row.reason;
-      return `<tr ${attrs} data-res-review-row="${reviewId}" style="background:rgba(249,115,22,0.09);border-inline-start:3px solid #f97316">
-        <td style="color:var(--text2)">${i + 1}</td>
-        <td style="font-weight:700;color:${row.uploadedWithWarning ? "var(--warning)" : "var(--danger)"}">${row.uploadedWithWarning ? t("results.warning_uploaded") : t("results.warning_skipped")}</td>
-        <td><input data-res-review-account="${reviewId}" data-res-review-index="${i}" data-res-review-field="name" value="${escReview(row.name || "")}" style="width:130px;background:rgba(255,255,255,.05);border:1px solid #f97316;color:var(--text);padding:5px;border-radius:4px"></td>
-        <td><input data-res-review-account="${reviewId}" data-res-review-index="${i}" data-res-review-field="phone" value="${escReview(row.normalizedPhone || row.rawPhone || "")}" style="width:125px;background:rgba(255,255,255,.05);border:1px solid #f97316;color:var(--text);padding:5px;border-radius:4px;font-family:monospace"></td>
-        <td><input data-res-review-account="${reviewId}" data-res-review-index="${i}" data-res-review-field="sku" value="${escReview(row.sku || "")}" placeholder="SKU" style="width:90px;background:rgba(255,255,255,.05);border:1px solid #f97316;color:var(--text);padding:5px;border-radius:4px"></td>
-        <td><input data-res-review-account="${reviewId}" data-res-review-index="${i}" data-res-review-field="productName" value="${escReview(row.productName || "")}" style="width:180px;background:rgba(255,255,255,.05);border:1px solid #f97316;color:var(--text);padding:5px;border-radius:4px"></td>
-        <td><input data-res-review-account="${reviewId}" data-res-review-index="${i}" data-res-review-field="qty" type="number" min="1" value="${escReview(row.qty || 1)}" style="width:55px;background:rgba(255,255,255,.05);border:1px solid #f97316;color:var(--text);padding:5px;border-radius:4px"></td>
-        <td><input data-res-review-account="${reviewId}" data-res-review-index="${i}" data-res-review-field="unitPrice" type="number" min="0" step="0.01" value="${escReview(row.unitPrice || row.price || "")}" style="width:80px;background:rgba(255,255,255,.05);border:1px solid #f97316;color:var(--text);padding:5px;border-radius:4px"></td>
-        <td><input data-res-review-account="${reviewId}" data-res-review-index="${i}" data-res-review-field="city" value="${escReview(row.city || "")}" style="width:110px;background:rgba(255,255,255,.05);border:1px solid #f97316;color:var(--text);padding:5px;border-radius:4px"></td>
-        <td style="font-size:11px">${reasonLabels[reasonKey] || reasonKey || "—"}</td>
-        <td style="text-align:center;color:#f97316">⚠️</td>
+      const editable = isManualReviewRow(row);
+      const field = (name, value, extra = "") => editable
+        ? `<input data-res-review-account="${reviewId}" data-res-review-index="${i}" data-res-review-field="${name}" value="${escReview(value)}" ${extra} style="width:130px;background:rgba(255,255,255,.05);border:1px solid #f97316;color:var(--text);padding:5px;border-radius:4px">`
+        : escReview(value || "—");
+      return `<tr ${attrs} data-res-review-row="${reviewId}" style="${editable ? "background:rgba(249,115,22,0.09);border-inline-start:3px solid #f97316" : ""}">
+        <td style="color:var(--text2)">${editable ? `<input type="checkbox" data-res-review-select data-res-review-account="${reviewId}" data-res-review-index="${i}" style="accent-color:#f97316">` : i + 1}</td>
+        <td style="font-weight:700;color:${editable ? "#f97316" : "var(--danger)"}">${editable ? "Manual Review" : (row.uploadedWithWarning ? t("results.warning_uploaded") : t("results.warning_skipped"))}</td>
+        <td>${field("name", row.name || "")}</td>
+        <td>${field("phone", row.normalizedPhone || row.rawPhone || "", "inputmode=\"tel\"")}</td>
+        <td>${editable ? field("sku", row.sku || "", "placeholder=\"SKU\"") : escReview(row.sku || "—")}</td>
+        <td>${field("productName", row.productName || "")}</td>
+        <td>${editable ? field("qty", row.qty || 1, "type=\"number\" min=\"1\"") : escReview(row.qty || "—")}</td>
+        <td>${editable ? field("unitPrice", row.unitPrice || row.price || "", "type=\"number\" min=\"0\" step=\"0.01\"") : escReview(row.unitPrice || row.price || "—")}</td>
+        <td>${field("city", row.city || "")}</td>
+        <td style="font-size:11px">${escReview(reasonLabels[reasonKey] || reasonKey || "—")}</td>
+        <td style="text-align:center;color:${editable ? "#f97316" : "var(--warning)"}">${editable ? "⚠️" : "—"}</td>
       </tr>`;
     }, "skipped");
+    const manualCount = reviewRows.filter(isManualReviewRow).length;
+    const hasManualReview = manualCount > 0;
     return `
-      <div class="dash-section" style="border-color:var(--warning);margin-top:12px">
-        <div class="dash-section-header" style="background:rgba(255,170,0,0.06)">
-          <div class="dash-section-title" style="color:var(--warning)">
-            <span>⚠️</span> ${typeof t("results.couldnt_process_title") === "function" ? t("results.couldnt_process_title")(skippedOrders.count) : t("results.couldnt_process_title")}
+      <div class="dash-section" style="border-color:${hasManualReview ? "#f97316" : "var(--warning)"};margin-top:12px">
+        <div class="dash-section-header" style="background:${hasManualReview ? "rgba(249,115,22,0.08)" : "rgba(255,170,0,0.06)"}">
+          <div class="dash-section-title" style="color:${hasManualReview ? "#f97316" : "var(--warning)"}">
+            <span>⚠️</span> ${hasManualReview ? "Needs Manual Review" : (typeof t("results.couldnt_process_title") === "function" ? t("results.couldnt_process_title")(skippedOrders.count) : t("results.couldnt_process_title"))}
           </div>
-          <div style="font-size:11px;color:var(--text2)">${t("results.skipped_followup")}</div>
+          <div style="font-size:11px;color:var(--text2)">${hasManualReview ? `${manualCount} row(s) need correction` : t("results.skipped_followup")}</div>
         </div>
         <div class="dash-section-body no-pad" style="overflow-x:auto">
           <table class="orders-preview-table" style="font-size:12px">
@@ -296,11 +305,7 @@ window.renderResults = function (data, dateFrom, dateTo, onRunAgain, onHome) {
             <tbody>${paged.itemsHtml}</tbody>
           </table>
           ${paged.pagerHtml}
-          <div style="display:flex;align-items:center;gap:10px;padding:12px 14px;background:rgba(249,115,22,.08);border-top:1px solid rgba(249,115,22,.3)">
-            <strong style="color:#f97316">⚠️ Manual review required</strong>
-            <span style="font-size:11px;color:var(--text2)">Edit the orange rows, then run the reviewed orders.</span>
-            <button type="button" class="btn" data-res-start-reviewed="${reviewId}" style="margin-left:auto;background:rgba(249,115,22,.16);border-color:#f97316;color:#f97316">Start Reviewed</button>
-          </div>
+          ${hasManualReview ? `<div style="display:flex;align-items:center;gap:10px;padding:12px 14px;background:rgba(249,115,22,.08);border-top:1px solid rgba(249,115,22,.3)"><strong style="color:#f97316">⚠️ Manual review required</strong><span style="font-size:11px;color:var(--text2)">Select and edit the orange rows, then run the reviewed orders.</span><button type="button" class="btn" data-res-start-reviewed="${reviewId}" style="margin-left:auto;background:rgba(249,115,22,.16);border-color:#f97316;color:#f97316">Start Reviewed</button></div>` : ""}
         </div>
       </div>`;
   }
@@ -311,13 +316,20 @@ window.renderResults = function (data, dateFrom, dateTo, onRunAgain, onHome) {
     if (!button || button._manualReviewReady) return;
     button._manualReviewReady = true;
     button.addEventListener("click", () => {
-      const payload = (Array.isArray(rows) ? rows : []).map((row, index) => {
+      const payload = [];
+      el.querySelectorAll(`[data-res-review-select][data-res-review-account="${reviewId}"]:checked`).forEach((checkbox) => {
+        const index = Number(checkbox.dataset.resReviewIndex);
+        const row = Array.isArray(rows) ? rows[index] : null;
         const next = { ...(row || {}), manualReviewIndex: index };
-        el.querySelectorAll(`[data-res-review-account="${reviewId}"][data-res-review-index="${index}"]`).forEach(input => {
+        el.querySelectorAll(`[data-res-review-account="${reviewId}"][data-res-review-index="${index}"][data-res-review-field]`).forEach(input => {
           next[input.dataset.resReviewField] = input.value;
         });
-        return next;
+        payload.push(next);
       });
+      if (!payload.length) {
+        showToast("Select at least one Manual Review row first.");
+        return;
+      }
       window._pendingManualReviewRun = {
         manualReviewOrders: payload,
         manualReviewMode: true,
