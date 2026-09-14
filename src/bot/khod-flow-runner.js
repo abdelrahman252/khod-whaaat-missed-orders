@@ -2324,11 +2324,25 @@ async function phaseAffiliateRecovery(page, orders, fromDate, toDate, catalog = 
     subtotal: row.subtotal || (row.items || [])[0]?.subtotal || 0,
     actionStatus: row.actionStatus || "skipped_manual",
     error: row.actionMessage || row.reason || "EasyOrders recovery requires manual review",
+    easyOrderUuid: row.easyOrderUuid || row.orderUuid || row.orderId || "",
+    easyShortId: row.easyShortId || row.shortId || row.ID || "",
+    detailUrl: row.detailUrl || "",
+    recoverySource: row.recoverySource || row.source || "real",
+    destination: "affiliate-recovery",
+    manualReview: true,
+  }));
+  const manualReviewRows = failedOrders.map((row) => ({
+    ...row,
+    source: row.recoverySource || row.source || "real",
+    reason: row.actionStatus || "affiliate_recovery_failed",
+    actionStatus: "skipped_manual",
+    actionMessage: row.error || "EasyOrders affiliate recovery requires manual review",
   }));
   const results = {
     success: successful.length,
-    failed: failedOrders.length,
+    failed: 0,
     failedOrders,
+    manualReviewRows,
     successfulIndexes: successful.map((row) => Number(row.originalIndex)).filter(Number.isInteger),
   };
   for (let i = 0; i < orders.length; i++) {
@@ -3545,7 +3559,9 @@ async function verifyFinalTotal(page, targetSubtotal, orderNum) {
     }
 
     // ── Send final result ──
-    const failedBuffer = uploadResults.failedOrders.length > 0
+    const manualReviewRows = Array.isArray(uploadResults.manualReviewRows) ? uploadResults.manualReviewRows : [];
+    const displaySkippedOrders = [...allSkippedOrders, ...manualReviewRows];
+    const failedBuffer = uploadResults.failedOrders.length > 0 && manualReviewRows.length === 0
       ? buildFailedExcel(uploadResults.failedOrders, cityFallbackOptions)
       : null;
 
@@ -3567,8 +3583,8 @@ async function verifyFinalTotal(page, targetSubtotal, orderNum) {
           buffer: failedBuffer ? Array.from(failedBuffer) : null,
         },
         skippedOrders: {
-          count: allSkippedOrders.length,
-          rows: allSkippedOrders,
+          count: displaySkippedOrders.length,
+          rows: displaySkippedOrders,
           buffer: skippedBuffer ? Array.from(skippedBuffer) : null,
           filePath: skippedFilePath,
         },

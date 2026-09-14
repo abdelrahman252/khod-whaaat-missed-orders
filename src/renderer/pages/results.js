@@ -107,6 +107,15 @@ window.renderResults = function (data, dateFrom, dateTo, onRunAgain, onHome) {
         width: 100%;
         min-width: 1360px;
       }
+      .orders-preview-table [data-res-review-select] {
+        width: 18px;
+        height: 18px;
+        margin: 0 4px;
+        transform: scale(1.2);
+        accent-color: #f97316;
+        cursor: pointer;
+        vertical-align: middle;
+      }
       .results-orders-table th,
       .results-orders-table td {
         padding: 9px 14px;
@@ -244,10 +253,14 @@ window.renderResults = function (data, dateFrom, dateTo, onRunAgain, onHome) {
   ensureResultsPaginationStyle();
   attachResultPagination();
 
-  function buildSkippedOrdersHtml(skippedOrders, accountId) {
-    if (!skippedOrders || !skippedOrders.count) return "";
+  function buildSkippedOrdersHtml(skippedOrders, accountId, recoveryRows = []) {
+    if (!skippedOrders) return "";
     const reviewId = safeFilenamePart(accountId || "single");
-    const reviewRows = Array.isArray(skippedOrders.rows) ? skippedOrders.rows : [];
+    const reviewRows = [
+      ...(Array.isArray(skippedOrders.rows) ? skippedOrders.rows : []),
+      ...(Array.isArray(recoveryRows) ? recoveryRows : []).map((row) => ({ ...row, manualReview: true, destination: "affiliate-recovery" })),
+    ];
+    if (!reviewRows.length) return "";
     const escReview = value => String(value == null ? "" : value).replace(/[&<>"']/g, ch => ({"&":"&amp;","<":"&lt;",">":"&gt;","\"":"&quot;","'":"&#39;"}[ch]));
     const isManualReviewRow = row => row && row.manualReview === true;
     const reasonLabels = {
@@ -263,8 +276,9 @@ window.renderResults = function (data, dateFrom, dateTo, onRunAgain, onHome) {
       const field = (name, value, extra = "") => editable
         ? `<input data-res-review-account="${reviewId}" data-res-review-index="${i}" data-res-review-field="${name}" value="${escReview(value)}" ${extra} style="width:130px;background:rgba(255,255,255,.05);border:1px solid #f97316;color:var(--text);padding:5px;border-radius:4px">`
         : escReview(value || "—");
-      return `<tr ${attrs} data-res-review-row="${reviewId}" style="${editable ? "background:rgba(249,115,22,0.09);border-inline-start:3px solid #f97316" : ""}">
-        <td style="color:var(--text2)">${editable ? `<input type="checkbox" data-res-review-select data-res-review-account="${reviewId}" data-res-review-index="${i}" style="accent-color:#f97316">` : i + 1}</td>
+      const destination = row.destination === "affiliate-recovery" || row.recoverySource === "affiliate-recovery" ? "affiliate-recovery" : "cart";
+      return `<tr ${attrs} data-res-review-row="${reviewId}" style="${editable ? "background:rgba(255,255,255,0.018);border-inline-start:3px solid #f97316" : ""}">
+        <td style="color:var(--text2)">${editable ? `<input type="checkbox" data-res-review-select data-res-review-account="${reviewId}" data-res-review-index="${i}" data-res-review-destination="${destination}">` : i + 1}</td>
         <td style="font-weight:700;color:${editable ? "#f97316" : "var(--danger)"}">${editable ? "Manual Review" : (row.uploadedWithWarning ? t("results.warning_uploaded") : t("results.warning_skipped"))}</td>
         <td>${field("name", row.name || "")}</td>
         <td>${field("phone", row.normalizedPhone || row.rawPhone || "", "inputmode=\"tel\"")}</td>
@@ -279,6 +293,7 @@ window.renderResults = function (data, dateFrom, dateTo, onRunAgain, onHome) {
     }, "skipped");
     const manualCount = reviewRows.filter(isManualReviewRow).length;
     const hasManualReview = manualCount > 0;
+    const hasAffiliateRecoveryRows = reviewRows.some((row) => row && row.destination === "affiliate-recovery");
     return `
       <div class="dash-section" style="border-color:${hasManualReview ? "#f97316" : "var(--warning)"};margin-top:12px">
         <div class="dash-section-header" style="background:${hasManualReview ? "rgba(249,115,22,0.08)" : "rgba(255,170,0,0.06)"}">
@@ -305,7 +320,7 @@ window.renderResults = function (data, dateFrom, dateTo, onRunAgain, onHome) {
             <tbody>${paged.itemsHtml}</tbody>
           </table>
           ${paged.pagerHtml}
-          ${hasManualReview ? `<div style="display:flex;align-items:center;gap:10px;padding:12px 14px;background:rgba(249,115,22,.08);border-top:1px solid rgba(249,115,22,.3)"><strong style="color:#f97316">⚠️ Manual review required</strong><span style="font-size:11px;color:var(--text2)">Select and edit the orange rows, then run the reviewed orders.</span><button type="button" class="btn" data-res-start-reviewed="${reviewId}" style="margin-left:auto;background:rgba(249,115,22,.16);border-color:#f97316;color:#f97316">Start Reviewed</button></div>` : ""}
+          ${hasManualReview ? `<div style="display:flex;align-items:center;gap:10px;padding:12px 14px;background:rgba(249,115,22,.08);border-top:1px solid rgba(249,115,22,.3)"><strong style="color:#f97316">⚠️ Manual review required</strong><span style="font-size:11px;color:var(--text2)">Select and edit the rows, then run the reviewed orders.</span><button type="button" class="btn" data-res-start-reviewed="${reviewId}" style="margin-left:auto;background:rgba(249,115,22,.16);border-color:#f97316;color:#f97316">${hasAffiliateRecoveryRows ? "Run Affiliate Recovery" : "Run Reviewed Orders"}</button></div>` : ""}
         </div>
       </div>`;
   }
@@ -333,6 +348,8 @@ window.renderResults = function (data, dateFrom, dateTo, onRunAgain, onHome) {
       window._pendingManualReviewRun = {
         manualReviewOrders: payload,
         manualReviewMode: true,
+        manualReviewDestination: payload.some(row => row.destination === "affiliate-recovery") ? "affiliate-recovery" : "cart",
+        easyOrdersAffiliateRecoveryEnabled: payload.some(row => row.destination === "affiliate-recovery"),
         accountId: accountId || ""
       };
       button.disabled = true;
@@ -851,7 +868,7 @@ window.renderResults = function (data, dateFrom, dateTo, onRunAgain, onHome) {
           <div class="notice-text">${t("results.all_ok")}</div>
         </div>`}
 
-        ${buildSkippedOrdersHtml(skippedOrders, r.accountId)}
+        ${buildSkippedOrdersHtml(skippedOrders, r.accountId, accData.affiliateRecovery?.blockedReviewRows || accData.affiliateRecovery?.manualReviewRows || [])}
 
         <!-- ALL ORDERS TABLE -->
         ${buildOrdersTableHtml(accData.attemptedOrderRows || accData.orderRows, t("results.all_attempted") || t("results.all_uploaded"))}
@@ -868,7 +885,10 @@ window.renderResults = function (data, dateFrom, dateTo, onRunAgain, onHome) {
         const r = accountResults.find(x => x.accountId === selectedPane);
         if (!r) return;
         wrap.innerHTML = buildAccountPane(r);
-        wireManualReview(r.accountId, (r.data && r.data.skippedOrders && r.data.skippedOrders.rows) || []);
+        wireManualReview(r.accountId, [
+          ...((r.data && r.data.skippedOrders && r.data.skippedOrders.rows) || []),
+          ...((r.data && r.data.affiliateRecovery && (r.data.affiliateRecovery.blockedReviewRows || r.data.affiliateRecovery.manualReviewRows)) || []).map((row) => ({ ...row, manualReview: true, destination: "affiliate-recovery" })),
+        ]);
         // Wire download buttons
         document.getElementById(`acc-btn-download-${r.accountId}`)?.addEventListener("click", async () => {
           const dateTag  = dateFrom.replace(/-/g,"");
@@ -1213,7 +1233,7 @@ window.renderResults = function (data, dateFrom, dateTo, onRunAgain, onHome) {
         <div class="notice-text">${t("results.all_ok")}</div>
       </div>`}
 
-      ${buildSkippedOrdersHtml(skippedOrders, data.accountId || "single")}
+      ${buildSkippedOrdersHtml(skippedOrders, data.accountId || "single", data.affiliateRecovery?.blockedReviewRows || data.affiliateRecovery?.manualReviewRows || [])}
 
       <!-- ALL ORDERS TABLE -->
       ${buildOrdersTableHtml(data.attemptedOrderRows || data.orderRows, t("results.all_attempted") || t("results.all_uploaded"))}
@@ -1226,7 +1246,10 @@ window.renderResults = function (data, dateFrom, dateTo, onRunAgain, onHome) {
   wireSharedSidebar(el);
   document.getElementById("btn-home")?.addEventListener("click", onHome);
   document.getElementById("btn-run-again")?.addEventListener("click", onRunAgain);
-  wireManualReview(data.accountId || "single", skippedOrders.rows || []);
+  wireManualReview(data.accountId || "single", [
+    ...(skippedOrders.rows || []),
+    ...((data.affiliateRecovery && (data.affiliateRecovery.blockedReviewRows || data.affiliateRecovery.manualReviewRows)) || []).map((row) => ({ ...row, manualReview: true, destination: "affiliate-recovery" })),
+  ]);
 
   document.getElementById("btn-download-failed")?.addEventListener("click", async () => {
     const dateTag  = dateFrom.replace(/-/g, "");

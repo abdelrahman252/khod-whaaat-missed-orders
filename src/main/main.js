@@ -6841,7 +6841,7 @@ ipcMain.handle("bulk-orders:run", async (_, payload = {}) => {
   });
 });
 
-ipcMain.handle("run-bot", async (_, { dateFrom, dateTo, accountIds, autoConfirm: requestedAutoConfirm, easyOrdersAffiliateRecoveryEnabled: requestedAffiliateRecovery, manualReviewOrders, manualReviewMode } = {}) => {
+ipcMain.handle("run-bot", async (_, { dateFrom, dateTo, accountIds, autoConfirm: requestedAutoConfirm, easyOrdersAffiliateRecoveryEnabled: requestedAffiliateRecovery, manualReviewOrders, manualReviewMode, manualReviewDestination } = {}) => {
   if (!(await isLicenseValid())) return { success: false, error: "LICENSE_INVALID" };
   if (licenseStore.get("teamLeaderEnabled", false) === true) {
     return { success: false, error: "TEAM_LEADER_DASHBOARD_ONLY" };
@@ -6918,6 +6918,7 @@ ipcMain.handle("run-bot", async (_, { dateFrom, dateTo, accountIds, autoConfirm:
       reportingDataEnabled,
       autoConfirm,
       easyOrdersAffiliateRecoveryEnabled,
+      manualReviewDestination: manualReviewDestination === "affiliate-recovery" ? "affiliate-recovery" : "cart",
       manualReviewOrders: Array.isArray(manualReviewOrders) ? manualReviewOrders : [],
       manualReviewMode: manualReviewMode === true,
       chromePath: getCachedChromePath() || undefined,
@@ -7090,6 +7091,7 @@ ipcMain.handle("run-bot", async (_, { dateFrom, dateTo, accountIds, autoConfirm:
       reportingDataEnabled,
       autoConfirm,
       easyOrdersAffiliateRecoveryEnabled,
+      manualReviewDestination: manualReviewDestination === "affiliate-recovery" ? "affiliate-recovery" : "cart",
       manualReviewOrders: Array.isArray(manualReviewOrders) ? manualReviewOrders : [],
       manualReviewMode: manualReviewMode === true,
       chromePath: getCachedChromePath() || undefined,
