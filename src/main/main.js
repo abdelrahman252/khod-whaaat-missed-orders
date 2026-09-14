@@ -2610,6 +2610,32 @@ ipcMain.handle("install-update", () => {
     return null;
   }
 
+  function launchInstallerAfterExit(installerPath) {
+    if (process.platform !== "win32") {
+      const child = spawn(installerPath, ["--updated"], {
+        detached: true,
+        stdio: "ignore",
+        windowsHide: false,
+      });
+      child.unref();
+      return child;
+    }
+
+    // Delay NSIS until this process has disappeared.  Starting it directly
+    // races the installer's running-process check when the app was hidden in
+    // the system tray.
+    const comspec = process.env.ComSpec || "cmd.exe";
+    const quotedInstaller = `"${String(installerPath).replace(/"/g, '""')}"`;
+    const command = `ping 127.0.0.1 -n 3 > nul & start "" ${quotedInstaller} --updated`;
+    const child = spawn(comspec, ["/d", "/s", "/c", command], {
+      detached: true,
+      stdio: "ignore",
+      windowsHide: true,
+    });
+    child.unref();
+    return child;
+  }
+
   // 1. Tear everything down
   app.isQuitting = true;
   app.__sentryFlushed = true;
@@ -2637,22 +2663,14 @@ ipcMain.handle("install-update", () => {
 
   if (installerPath && fs.existsSync(installerPath)) {
     try {
-      // Spawn the NSIS installer fully detached so it survives this process exiting.
-      // "--updated" is the silent flag electron-builder's NSIS script looks for
-      // to know it was launched by the app (triggers the "updated" finish screen).
-      const child = spawn(installerPath, ["--updated"], {
-        detached: true,
-        stdio: "ignore",
-        windowsHide: false,
-      });
-      child.unref(); // do NOT wait for it
-      log.info("[AutoUpdate] Installer spawned detached, exiting now");
+      launchInstallerAfterExit(installerPath);
+      log.info("[AutoUpdate] Delayed installer helper spawned, exiting now");
     } catch (spawnErr) {
       log.error("[AutoUpdate] Failed to spawn installer:", spawnErr.message);
       // Fall through to quitAndInstall below
     }
     // Hard-exit immediately — installer is running on its own
-    setTimeout(() => process.exit(0), 200);
+    process.exit(0);
     return;
   }
 
