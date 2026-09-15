@@ -1,0 +1,91 @@
+name: Build and Release - macOS and Windows
+on:
+  release:
+    types: [published]
+permissions:
+  contents: write
+jobs:
+  build-mac:
+    name: Build macOS
+    runs-on: macos-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+      - name: Install locked dependencies
+        run: npm ci
+        env:
+          PLAYWRIGHT_SKIP_BROWSER_DOWNLOAD: 1
+      - name: Create env files
+        run: |
+          mkdir -p .runtime-build
+          {
+            echo "SUPABASE_URL=${{ secrets.SUPABASE_URL }}"
+            echo "SUPABASE_PUBLISHABLE_KEY=${{ secrets.SUPABASE_PUBLISHABLE_KEY }}"
+            echo "KHOD_DASHBOARD_QUERY_SHADOW=1"
+            echo "KHOD_DASHBOARD_QUERY_ORDERS=1"
+            echo "KHOD_DASHBOARD_QUERY_PRODUCTS=1"
+            echo "KHOD_DASHBOARD_QUERY_CAMPAIGNS=1"
+            echo "KHOD_MARKETING_INCREMENTAL_SYNC=1"
+            echo "GEMINI_API_KEY=${{ secrets.GEMINI_API_KEY }}"
+          } > .runtime-build/build-runtime.env
+      - name: Build macOS x64 and arm64
+        run: |
+          for i in {1..3}; do
+            echo "Build attempt $i..."
+            if npm exec -- electron-builder --mac --x64 --arm64 --publish=never; then
+              echo "Build succeeded!"
+              exit 0
+            else
+              echo "Build failed. Cleaning up mount points and retrying..."
+              hdiutil detach "/Volumes/KHOD WHAAT Orders" -force 2>/dev/null || true
+              sleep 10
+            fi
+          done
+          echo "Build failed after 3 attempts."
+          exit 1
+        env:
+          PLAYWRIGHT_SKIP_BROWSER_DOWNLOAD: 1
+          CSC_IDENTITY_AUTO_DISCOVERY: false
+      - name: Upload macOS files to release
+        run: gh release upload "${{ github.event.release.tag_name }}" dist/*.dmg dist/*.zip dist/*.blockmap dist/latest-mac.yml --clobber --repo "${{ github.repository }}"
+        env:
+          GH_TOKEN: ${{ github.token }}
+  build-win:
+    name: Build Windows x64
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+      - name: Install locked dependencies
+        run: npm ci
+        env:
+          PLAYWRIGHT_SKIP_BROWSER_DOWNLOAD: 1
+      - name: Create env files
+        run: |
+          mkdir -p .runtime-build
+          {
+            echo "SUPABASE_URL=${{ secrets.SUPABASE_URL }}"
+            echo "SUPABASE_PUBLISHABLE_KEY=${{ secrets.SUPABASE_PUBLISHABLE_KEY }}"
+            echo "KHOD_DASHBOARD_QUERY_SHADOW=1"
+            echo "KHOD_DASHBOARD_QUERY_ORDERS=1"
+            echo "KHOD_DASHBOARD_QUERY_PRODUCTS=1"
+            echo "KHOD_DASHBOARD_QUERY_CAMPAIGNS=1"
+            echo "KHOD_MARKETING_INCREMENTAL_SYNC=1"
+            echo "GEMINI_API_KEY=${{ secrets.GEMINI_API_KEY }}"
+          } > .runtime-build/build-runtime.env
+        shell: bash
+      - name: Build Windows
+        run: npm exec -- electron-builder --win --x64 --publish=never
+        env:
+          PLAYWRIGHT_SKIP_BROWSER_DOWNLOAD: 1
+      - name: Upload Windows files to release
+        run: gh release upload "${{ github.event.release.tag_name }}" (Get-ChildItem dist\*.exe,dist\*.blockmap,dist\latest.yml | ForEach-Object { $_.FullName }) --clobber --repo "${{ github.repository }}"
+        shell: pwsh
+        env:
+          GH_TOKEN: ${{ github.token }}

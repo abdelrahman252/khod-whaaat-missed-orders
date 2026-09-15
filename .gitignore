@@ -1,0 +1,17 @@
+node_modules/
+dist/
+.runtime-build/
+.codex-tmp/
+scripts/perf/fixtures/
+.env
+admin-panel/admin.env
+*.xlsx
+*.exe
+*.dmg
+*.log
+*.csv
+*.png
+data.txt
+outputs/
+affiliate-recovery-live-artifacts/
+src/graphify-out/

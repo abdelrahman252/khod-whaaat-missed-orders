@@ -1,0 +1,1110 @@
+KHOD-from-Taager migration notes
+
+
+Folders:
+- Old working KHOD source of truth:
+  F:\code\khod-bot2\khod-order-bot
+- New migration target you are on:
+  F:\code\khod-bot2\khod-from-taager
+- Taager clone from khod folder was used as the base because it has newer architecture/features.
+
+Important product model:
+The app has two big parts:
+1. Upload missed orders:
+   EasyOrders export -> KHOD export -> parser/dedupe -> upload missed orders into EasyOrders.
+   Old KHOD has this working flow and is source of truth for it.
+2. Dashboard:
+   Taager clone has better dashboard architecture, CSS, responsive behavior, sections, marketing, performance.
+   Dashboard migration is later, not Phase 0-1.
+
+Migration strategy:
+- Do NOT downgrade khod-from-taager by copying old KHOD wholesale.
+- Preserve newer Taager infrastructure/features unless they directly conflict with KHOD Phase 1.
+- Old KHOD is source of truth for KHOD identity, KHOD account fields, KHOD Supabase project, license semantics, and later runner flow.
+- New Taager app is source of truth for newer architecture/features.
+
+Dashboard business rules:
+- KHOD identity is email-only: khodEmail/khod_email plus EasyOrders easyEmail/easy_email.
+- Do not use Taager/Tiger phone, login method, country, merchant ID, or merchant identity as active KHOD dashboard identity.
+- real/missed are EasyOrders source labels, not KHOD lifecycle statuses.
+- KHOD lifecycle statuses come from the KHOD sheet orderStatus field.
+- Failed and Canceled are separate KHOD statuses.
+- Revenue/value uses KHOD sheet fields; COD uses amountDue; commission uses marketerCommission/commission.
+- Keep the new target design and robust infra, but replace Taager business semantics with KHOD semantics.
+
+
+- Edit only khod-from-taager.
+- Preserve new app features unless they block KHOD Phase 1.
+- Old KHOD is source of truth for branding, KHOD Supabase project, KHOD account fields, license semantics, and later runner flow.
+- New Taager app is source of truth for newer architecture: license devices, credential backup, reset cache, admin device controls, setup UX, support helper, dashboard enrichment settings, and future dashboard.
+- Phase 0-1 scope: app identity, admin/license, setup credential save, and app boot.
+- Out of scope: runner upload, operations, analytics, dashboard, marketing connection, and full Taager-to-KHOD dashboard rename.
+
+Current phase checklist:
+- [x] App identity changed to KHOD
+- [x] KHOD Supabase/admin license files adapted
+- [x] Main process calls KHOD license RPCs
+- [x] Setup page uses KHOD account fields
+- [ ] App opens and accepts valid KHOD license
+
+
+Phase 2.9 - Pre-Dashboard Stabilization Audit (2026-06-23)
+
+Scope:
+- Phase 2.9 is a pre-dashboard stabilization audit.
+- Dashboard migration is intentionally deferred.
+- Non-dashboard verification covers the admin panel, license and credential backup/restore,
+  setup/accounts, single- and multi-account runner/upload, results, analytics, and operations.
+- Changes in this phase are limited to small, safe fixes for verified defects and visible branding leaks.
+
+Verified/fixed in code:
+- KHOD account identity is KHOD email plus EasyOrders email/store and the stored account hash;
+  no KHOD phone or login-method database columns are required.
+- Setup requires EasyOrders store/email/password and KHOD email/password, with Saudi Arabia fixed.
+- EasyOrders exports use the robust helper, enforce English, and cache identity per child/account session.
+- Multi-account runs use isolated profile paths and wait from the preceding real export timestamp.
+- A child exit without a result message is treated as failure for single- and multi-account runs.
+- Results use KHOD stats with realInTaager/missedInTaager compatibility fallbacks only; duplicate totals
+  are realDupe + missedDupe; KHOD preview/result filenames no longer expose Taager.
+- First-run rows remain explicitly KHOD-unknown. KHOD status/order number/amount due/commission enrich
+  later by phone+SKU, including legitimate zero-valued KHOD financial fields.
+- Analytics uses subtotal for revenue, amountDue for COD, marketerCommission for KHOD-known commission,
+  and source for Real versus Missed. Missed is not a lifecycle status.
+- Operations account/product performance and performance insights exclude EasyOrders-only rows until
+  KHOD enrichment is known, while live run monitoring remains available.
+- Visible non-dashboard product identity is KHOD / Khod Whaat. Remaining taager-named globals, events,
+  stored aliases, and legacy result fields are compatibility internals unless they are dashboard-only.
+
+Verification completed:
+- `npm.cmd run check:syntax` passed for 111 JavaScript files.
+- `npm.cmd run verify:admin-cache-reset` and `npm.cmd run verify:license-warning` passed.
+- Targeted semantic checks passed for KHOD lifecycle/source handling, result compatibility totals,
+  child-exit failure handling, multi-account export scheduling, profile isolation, and SQL coverage.
+- The admin panel was served locally and checked read-only against the configured project: KHOD branding,
+  license listing, generation fields, expiry editor, account lock/re-lock controls, device/slot limits,
+  credential reset, device reset, and revoke/un-revoke controls rendered without submitting mutations.
+
+Still requires live/manual verification:
+- Supabase license generation/renew/revoke, device slot limits/reset, account unlock/re-lock/clear,
+  and credential backup/restore against the deployed project.
+- One- and two-account browser runs against live EasyOrders and KHOD, including second-run enrichment.
+- Dashboard behavior and dashboard-only Taager terminology remain deferred to the dashboard phase.
+
+Current migration phase: Operations/Analytics KHOD data semantics cleanup
+
+Scope:
+- This phase cleans Operations and Analytics KHOD data semantics only.
+- Dashboard migration is still not part of this phase.
+
+Semantics:
+- EasyOrders source/origin is stored as source: "real" or source: "missed".
+- EasyOrders source: "missed" is not a KHOD lifecycle status.
+- KHOD lifecycle status is trusted only when it comes from KHOD export/enrichment.
+- First-run uploaded orders may not yet have a KHOD order number or KHOD lifecycle status.
+- Later runs enrich previous analytics rows by phone+SKU from the KHOD export.
+
+Analytics markers:
+- khodStatusKnown/orderStatusKnown means the row has KHOD lifecycle status from KHOD export/enrichment, or it already carried a real KHOD order number/status from a prior enrichment.
+- khodFinancialsKnown means KHOD financial fields such as amountDue/marketerCommission came from KHOD export/enrichment.
+- khodOrderNumberKnown means a KHOD order number is known.
+- First-run EasyOrders-only rows must not become KHOD-known just because they have the neutral placeholder "Under processing".
+
+Revenue and financial fields:
+- revenue/value = EasyOrders subtotal for uploaded order value.
+- COD = KHOD/EasyOrders amountDue when known.
+- commission/profit = KHOD marketerCommission when known.
+
+Reporting behavior:
+- Analytics status breakdown counts only rows with khodStatusKnown/orderStatusKnown = true.
+- "Missed" must not appear as a lifecycle status bucket.
+- If no KHOD-known statuses exist yet, status widgets should show an empty/neutral state instead of fake placeholder statuses.
+- Operations Product Performance uses only KHOD-known/enriched rows, so first-run EasyOrders-only uploads do not immediately count as KHOD product performance.
+- Normal Analytics/Operations order tables may still show first-run rows, but should distinguish EasyOrders created time, source real/missed, and pending/unknown KHOD status until enrichment.
+
+Results semantics:
+- "Already in KHOD" means orders skipped because phone+SKU already exists in the KHOD export.
+- Use realInKhod + missedInKhod, with compatibility fallback for old realInTaager/missedInTaager stats.
+- Do not mix "Already in KHOD" with duplicates removed inside the current batch (realDupe + missedDupe).
+
+Phase 3.2 - KHOD dashboard logic core (2026-06-23)
+
+Scope:
+- Created the shared KHOD dashboard logic core at src/renderer/pages/dashboard/dashboard-khod-logic-core.js.
+- Dashboard sections must consume this core in later phases instead of carrying Taager dashboard semantics forward.
+- The dashboard aggregator now has a small prep hook into the core for KHOD status and financial normalization; full section migration is deferred.
+
+Dashboard semantics:
+- KHOD lifecycle statuses come from orderStatus and normalize to Pending, Confirmed, Under processing, Waiting, In shipping, Delivered, Failed, or Canceled.
+- Failed and Canceled are separate buckets.
+- real and missed are EasyOrders source labels, not KHOD lifecycle statuses.
+- Taager exact status buckets are not KHOD statuses.
+- KHOD dashboard value fields are revenue/order value from totalPrice/priceNoShipping/subtotal, COD from amountDue/dashboardAmountDue, and commission from marketerCommission/commission.
+
+Phase 3.3 - Aggregator KHOD semantic cleanup (2026-06-23)
+
+Dashboard status contract:
+- KHOD lifecycle statuses are only Pending, Confirmed, Under processing, Waiting, In shipping, Delivered, Failed, and Canceled/Cancelled.
+- Failed and Canceled remain separate lifecycle buckets.
+- KHOD Canceled is visible in dashboard status summaries and is not treated as canceled_by_you.
+- canceled_by_you is a Taager legacy fallback only.
+- real and missed are EasyOrders source labels, not KHOD lifecycle statuses.
+- missed must never appear as a status bucket, and source-only real/missed rows must not enter KHOD status breakdowns or status-rate denominators.
+- Dashboard status order, labels, groups, colors, eligibility, and lifecycle normalization should come from src/renderer/pages/dashboard/dashboard-khod-logic-core.js.
+
+Dashboard financial contract:
+- KHOD revenue/order value comes from KHOD order amount fields totalPrice, priceNoShipping, and subtotal.
+- KHOD COD comes from amountDue/dashboardAmountDue.
+- KHOD commission comes from marketerCommission/commission.
+- Taager profit-after-tax is not a KHOD business meaning and must not be used as KHOD commission when the KHOD dashboard core is available.
+- Existing Taager/dashboard field names may remain only as compatibility aliases for not-yet-migrated dashboard sections.
+
+Phase 3.4 - Dashboard Sections 1, 2, and 3 KHOD semantics (2026-06-23)
+
+Scope:
+- Migrated only the Overview, Pipeline, and Orders dashboard sections.
+- Preserved the existing dashboard layout, interactions, date handling, table behavior, and marketing connection behavior.
+- Runner, setup, admin, license, marketing connection, and Section 8 were not changed.
+
+Section 1 - Overview:
+- Primary totals now read the aggregator's KHOD-ready salesValue, codValue, commissionValue,
+  deliveredSales, failedSales, and canceledSales fields.
+- Visible profit-after-tax/Taager-profit language was replaced with KHOD sales, COD, and commission wording.
+- Failed Sales and Canceled Sales are separate cards and separate outcome-analysis entries.
+- The outcome distribution is Delivered, Failed, and Canceled; no Taager lost-status taxonomy is inferred.
+
+Section 2 - Pipeline:
+- The pipeline is exactly Pending, Confirmed, Under processing, Waiting, In shipping, Delivered,
+  Failed, and Canceled.
+- Failed and Canceled have separate stages, rates, counts, and insights.
+- real/missed and Taager-only exact statuses are not accepted as lifecycle pipeline stages.
+
+Section 3 - Orders:
+- Pipeline cards, status filters, lifecycle ordering, chips, and backend status filters use only the
+  eight KHOD lifecycle buckets.
+- Failed and Canceled remain separate filters and chips.
+- Unknown/source-only values render neutrally instead of becoming a lifecycle status; real/missed
+  therefore never appear as order statuses.
+- Order value and commission wording use KHOD semantics; old profit-after-tax and Taager order fields
+  remain only as last-resort compatibility aliases for historical cached/query rows.
+
+Verification:
+- `npm.cmd run check:syntax` passed for 112 JavaScript files.
+
+Phase 3.5 - Dashboard Section 8 Master KHOD semantics (2026-06-23)
+
+Scope:
+- Migrated only src/renderer/pages/dashboard/sections/section8-master.js and preserved its current
+  layout, styling, interactions, navigation, marketing state integration, and calculator snapshot.
+- Runner, setup, admin, license, marketing connection, Sections 1-3, and the dedicated
+  products/forecast/AI/calculator migrations were not changed.
+
+Section 8 status contract:
+- The visible master pipeline is exactly Pending, Confirmed, Under processing, Waiting, In shipping,
+  Delivered, Failed, and Canceled.
+- Failed and Canceled render as separate lifecycle cards with independent counts, percentages,
+  colors, and sales values. Failed commission trend data does not include Canceled.
+- real and missed remain EasyOrders source labels only and cannot enter the Section 8 lifecycle pipeline.
+- Taager-only exact statuses and canceled_by_you are ignored by the Section 8 lifecycle renderer.
+
+Section 8 financial contract:
+- Primary financial cards read the aggregator's KHOD-ready salesValue, codValue, commissionValue,
+  deliveredSales, failedSales, and canceledSales fields first.
+- Older overview and trend field names remain only as compatibility aliases for historical snapshots.
+- Visible master labels use KHOD sales, COD, and marketer commission semantics rather than Taager
+  profit-after-tax semantics.
+
+Verification:
+- `npm.cmd run check:syntax` passed for 112 JavaScript files.
+
+Phase 3.6 - Dashboard COD, financial core, commission, and calculator KHOD semantics (2026-06-23)
+
+Scope:
+- Continued from a partial edit instead of restarting the dashboard migration.
+- Migrated/rechecked only these Phase 3.6 files:
+  src/renderer/pages/dashboard/dashboard-aggregator.js
+  src/renderer/pages/dashboard/dashboard-financial-core.js
+  src/renderer/pages/dashboard/dashboard-khod-logic-core.js
+  src/renderer/pages/dashboard/sections/section4-cod.js
+  src/renderer/pages/dashboard/sections/section6-commission.js
+  src/renderer/pages/dashboard/sections/section7-calculator.js
+- Runner, setup, admin, license, marketing connection, Sections 1-3, Section 8, and
+  products/forecast/AI migrations were not changed.
+
+KHOD financial field contract:
+- Revenue/order value is KHOD order value and must come from totalPrice, priceNoShipping,
+  subtotal, or salesValue.
+- COD is money due from the customer and must come from amountDue, dashboardAmountDue,
+  or codValue.
+- Commission is marketer commission and must come from marketerCommission, commission,
+  or commissionValue.
+- Taager profit-after-tax is not a KHOD business meaning when KHOD commission fields
+  exist.
+
+COD repair/fill behavior:
+- The aggregator keeps the KHOD core path first for COD via rowAmountDue ->
+  KhodDashboardLogic.codValue.
+- Delivered rows with empty amountDue/dashboardAmountDue/codValue are repaired from
+  the SKU+quantity lookup when another matching row provides an amount.
+- Repaired values are written into dashboardAmountDue and codValue for downstream
+  sections. Rows that cannot be repaired are counted as zero COD and listed in the
+  unfilled repair report with the reason.
+- Section 4 reads codValue/amountDue/dashboardAmountDue first, then totalDue as a
+  display fallback, so empty amountDue repair remains driven by the aggregator.
+
+Failed/Canceled contract:
+- Failed and Canceled remain separate KHOD lifecycle statuses.
+- Canceled is not Failed.
+- The aggregator's fallback status path was tightened so canceled/cancelled values do
+  not enter the failed bucket when the KHOD core is unavailable.
+- real/missed remain EasyOrders source labels only and are never lifecycle statuses.
+
+Compatibility-only aliases:
+- Existing Taager-named globals, currency helpers, localStorage keys, and dashboard
+  field aliases remain only for historical cached data or not-yet-renamed infrastructure.
+- The financial core still exposes TaagerDashboardFinancialCore as an alias, but the
+  KHOD name is the primary path.
+- Section 6 keeps the persisted "profit" mode key for UI state compatibility, while
+  rendering marketer commission semantics.
+- Section 7 keeps old profit-shaped fallback fields such as averageProfit,
+  actualEarnedProfitAfterTax, and taagerProfitAfterTax only as last-resort compatibility
+  fallbacks; visible calculator wording now uses KHOD marketer commission, net result,
+  delivered sales, CPA, and ROI semantics.
+
+Verification:
+- `npm.cmd run check:syntax` passed for 112 JavaScript files.
+
+Phase 3.7 - Dashboard Products and Product Forecast KHOD semantics (2026-06-23)
+
+Scope:
+- Migrated only the product-level dashboard views:
+  src/renderer/pages/dashboard/sections/section5-products.js
+  src/renderer/pages/dashboard/sections/section9-product-forecast.js
+- Runner, setup, admin, license, marketing connection, Sections 1-4, 6-8, and AI were not changed.
+- Existing layout, interactions, backend product loading, marketing spend attribution, and compare/forecast UI structure were preserved.
+
+Section 5 - Products:
+- Status chips, status filtering, highlighted status counts, product rows, and product detail funnels now use the KHOD lifecycle:
+  Pending, Confirmed, Under processing, Waiting, In shipping, Delivered, Failed, and Canceled.
+- Failed and Canceled remain separate product outcomes. KHOD canceledCount is preferred, with old canceledByYouCount only as a fallback alias.
+- Visible Taager profit-after-tax wording was replaced with marketer commission wording.
+- Product financial mapping prefers KHOD salesValue/totalPlacedSales/totalSales for order value, codValue/amountDue/dashboardAmountDue for COD,
+  and commissionValue/marketerCommission/commission for marketer commission. Old commission/revenue-shaped fields remain compatibility carriers.
+
+Section 9 - Product Forecast:
+- Forecast product summaries now map product counts to KHOD stages: Pending/Confirmed through core metrics, plus In shipping,
+  Under processing, Waiting, Failed, and Canceled cards.
+- Taager-only forecast labels such as Out for delivery and Delivery suspended were removed from the UI. Their old fields are only accepted
+  as compatibility fallbacks into KHOD In shipping or Under processing counts.
+- Forecast math uses the KHOD financial core name first and passes actualEarnedCommission. The old TaagerDashboardFinancialCore name remains
+  only as the shared compatibility alias exposed by the financial core.
+- Average-profit/profit-after-tax visible wording was moved toward average marketer commission, commission before ad spend, and net result semantics.
+
+Status/source contract:
+- real and missed remain EasyOrders source labels only. They are not lifecycle statuses in Section 5 or Section 9.
+- Failed is not Canceled, and Canceled is not Failed.
+
+Compatibility-only aliases:
+- TaagerCurrency, TaagerProductNames, TaagerProductAttribution, TaagerSmartInsights, TaagerUI, local CSS/class names, and some Taager-named
+  fallback fields remain infrastructure or historical-cache aliases.
+- outForDeliveryCount, deliverySuspendedCount, and realFailedCount are accepted only as fallback inputs for KHOD In shipping, Under processing,
+  or Failed product counts; they are not visible KHOD statuses.
+
+Phase 3.8 - Static update/upload and prepaid data semantics (2026-06-23)
+
+Scope:
+- Migrated only static dashboard update/upload handling and prepaid/COD data semantics.
+- Runner, setup, admin, license, marketing connection, AI/context migration, and dashboard section redesign were not changed.
+- Old KHOD source remains the source of truth for static upload and prepaid detection.
+
+Static dashboard update:
+- Static upload now accepts one KHOD/Khod Whaat affiliate orders sheet per account, matching the old KHOD flow.
+- Static processing validates KHOD workbook headers, parses the KHOD full-month snapshot, and filters rows by the selected dashboard period using KHOD createdAt dates.
+- The static processor reports outside-period rows as warnings and tags rows as Saudi Arabia only.
+- The old dual Taager + EasyOrders static-upload assumption was removed from the active flow. taagerBuffer/processDashboardSheets/taagerCountry remain compatibility aliases only where older callers or cached rows may still exist.
+
+Prepaid/COD source contract:
+- Prepaid is sourced from the KHOD sheet notes/source logic used by old KHOD: parser.detectPrepaidMethod(notes) detects Tabby, Tamara, Paymob, network/card/Mada/Visa, Apple Pay/STC Pay/online signals.
+- Rows with KHOD prepaid evidence are marked paymentClassification: "prepaid"; rows without prepaid evidence are classified as COD.
+- paymentMethodSource/paymentEvidenceSource are set to khod-notes for static KHOD rows.
+- Taager is not treated as a prepaid payment method.
+
+Failed/Canceled contract:
+- Failed and Canceled remain separate KHOD lifecycle outcomes in static-derived prepaid city metrics.
+- prepaidCanceledCount/codCanceledCount count KHOD Canceled only.
+- prepaidFailedCount/codFailedCount count KHOD Failed where the aggregator/backend needs failed payment aliases.
+- real and missed remain EasyOrders source labels only and are never KHOD lifecycle statuses.
+
+Visible wording:
+- Static update wording now refers to KHOD/Khod Whaat orders sheets.
+- Prepaid no-data/help wording now explains KHOD order-notes prepaid evidence and COD fallback, not Taager-only COD or EasyOrders enrichment setup.
+
+Phase 3.9 - KHOD AI / Insights semantic migration (2026-06-23)
+
+Summary:
+- Taager AI architecture preserved; KHOD business semantics applied.
+- The current Taager-derived AI, mirror, campaign attribution, caching, and UI section architecture remains the source of implementation truth.
+- Old KHOD is used only as the semantic/business-logic reference for labels, financial meaning, lifecycle language, and AI contracts.
+
+AI source-of-truth contract:
+- KHOD lifecycle statuses are Pending, Confirmed, Under processing, Waiting, In shipping, Delivered, Failed, and Canceled/Cancelled.
+- Failed and Canceled remain separate outcomes.
+- real and missed remain EasyOrders source labels only; they are not KHOD lifecycle statuses.
+- Revenue/order value means salesValue, totalPrice, priceNoShipping, subtotal, deliveredSales, or totalSales depending context.
+- COD means amountDue, dashboardAmountDue, or codValue.
+- Commission means marketerCommission, commission, commissionValue, earnedCommission, or lostCommission depending context.
+- Taager profit-after-tax is not a KHOD business meaning. AI-facing wording now uses marketer commission, commission ROAS, net result, delivered sales, CPA, and break-even.
+
+Compatibility-only aliases:
+- TaagerCurrency, TaagerUI, TaagerPerf, TaagerProductAttribution, TaagerSmartInsights, old route names, and renderSectionTaagerAi remain infrastructure aliases.
+- window.KhodCampaignDecision and window.KhodCampaignIntelligence are primary; TaagerCampaignDecision and TaagerCampaignIntelligence remain aliases for old callers.
+- khod_ai_session_id is primary for the AI session. taager_ai_session_id is read only as a legacy fallback.
+- taagerOrders, taagerCpa, taagerProfit, earnedProfitAfterTax, lostProfitAfterTax, and avgDeliveredProfit may remain only as compatibility fields paired with KHOD/commission primary fields such as khodOrders, khodCpa, commission, earnedCommission, lostCommission, and avgDeliveredCommission.
+
+Phase 3.10 - Global visible dashboard wording cleanup (2026-06-24)
+
+Summary:
+- Updated dashboard-visible Taager profit/profit-after-tax wording to KHOD marketer commission wording in English and Arabic.
+- Earned, expected, and lost commission labels now use marketer commission semantics; simulator copy now refers to simulator marketer commission.
+- Dashboard text sanitizers still recognize legacy Taager/Tiger profit wording for compatibility, but now emit Marketer Commission / عمولة المسوق.
+- This phase changed visible wording only. Dashboard calculations, field precedence, routes, runner, setup, admin/license, upload, marketing connection, and AI logic were not changed.
+
+Phase 3.11 - Full Dashboard KHOD QA audit and targeted fixes (2026-06-24)
+
+Active routes audited:
+- dashboard-shell.js and app.js expose 15 active dashboard sections: Master / Section 8,
+  Overview / Section 1, Pipeline / Section 2, Orders / Section 3, COD / Section 4,
+  Products / Section 5, Cities, Commission / Section 6, Marketing Connections,
+  Campaigns, Calculator / Section 7, Product Forecast / Section 9, Prepaid,
+  Static Update, and KHOD AI through the legacy taagerAi route alias.
+- The standalone page-ai-intelligence app route was also audited because it reuses the same
+  KHOD AI renderer, aggregator output, campaign context, and marketing state.
+
+Targeted fixes:
+- Added KhodDashboardLogic.hasKnownLifecycleStatus so khodStatusKnown/orderStatusKnown=false
+  is authoritative. First-run EasyOrders-only Under processing placeholders and real/missed
+  source labels no longer enter dashboard lifecycle counts or product/city/campaign performance.
+- Gated aggregator product, city, city-product, and campaign-product performance on known KHOD
+  lifecycle rows. Overall uploaded order value may still include an EasyOrders subtotal, but an
+  unknown row cannot create fake KHOD status or product-performance results.
+- Replaced the aggregator's non-KHOD status fallback flow with the eight KHOD lifecycle buckets.
+  Failed and Canceled stay separate, and the legacyStages compatibility field now carries the
+  same KHOD stages instead of rendering a Taager-only pipeline.
+- Kept canceled_by_you only as a legacy exclusion fallback for historical rows. It is not mapped
+  to KHOD Canceled and is not exposed as a KHOD pipeline stage.
+- Clamped dashboard business rows/accounts to Saudi Arabia so legacy Taager country metadata
+  cannot split or relabel KHOD dashboard data. Reporting-currency selection remains independent.
+- Orders now prefer totalPrice, priceNoShipping, subtotal, and salesValue before historical value
+  aliases. Missing cities render as Unknown City / مدينة غير معروفة instead of fake Riyadh data.
+- Campaign query aggregation now accepts only KHOD lifecycle statuses, excludes unknown/source-only
+  rows, uses a Canceled-specific NDR denominator, and prefers KHOD sales and marketer-commission
+  fields before historical aliases. Campaign attribution notes now say KHOD, not Taager.
+- Dashboard query shadow comparisons now normalize only KHOD lifecycle buckets and use KHOD
+  financial precedence. The English dashboard locale's remaining visible Taager store summary
+  was changed to KHOD wording.
+
+Compatibility aliases intentionally remaining:
+- TaagerCurrency, TaagerUI, TaagerPerf, TaagerGeo, TaagerCountry, TaagerProductNames,
+  TaagerProductAttribution, TaagerSmartInsights, and TaagerCampaign* globals remain infrastructure
+  or historical-caller aliases. KhodCampaignQueryCore is now also exposed as the primary alias.
+- taagerAi/renderSectionTaagerAi, old localStorage keys, taagerOrderNumber, profit-shaped calculator
+  fields, canceledByYouCount, and canceled_by_you remain compatibility inputs only.
+- The multi-country atlas and currency helpers remain donor infrastructure, but active KHOD business
+  data is forced to Saudi Arabia and does not expose Taager countries.
+
+Verification:
+- npm.cmd run check:syntax passed for 112 JavaScript files.
+- Custom aggregator smoke coverage passed for empty data, a single account, All Accounts,
+  EasyOrders-only unknown rows, KHOD sales/commission precedence, and separate Failed/Canceled.
+- Campaign query smoke coverage passed for empty/missing marketing data, unknown-row exclusion,
+  priceNoShipping sales, marketerCommission, and Canceled NDR handling.
+- npm.cmd run verify:campaign-decisions passed 22/22; npm.cmd run verify:dashboard-query passed.
+- The requested terminology/status scan now contains only compatibility comments/sanitizers,
+  internal/global/route aliases, real/missed source-label checks, normal-language uses of "real",
+  and canceled_by_you legacy fallback handling.
+- Full Electron visual QA could launch only outside the sandbox but did not complete before the
+  three-minute timeout, so interactive visual coverage remains a manual follow-up risk.
+- Two older optional verifiers still encode pre-migration expectations: verify:static-update uses
+  the removed dual Taager/EasyOrders workbook fixture, and verify:actual-financials has three stale
+  source-text assertions for old profit wording. These are test-debt failures, not syntax failures.
+
+Phase 4 - Full KHOD release QA / packaging readiness (2026-06-25)
+
+Scope:
+- This phase was a release-readiness QA pass after the Phase 0-3 migrations, not a new migration.
+- Changes were limited to clear release blockers, visible branding cleanup, packaging safety, and
+  stale QA/verifier harness updates. Dashboard business semantics were not intentionally changed.
+
+Checks run:
+- npm.cmd run check:syntax passed repeatedly; final run passed for 112 JavaScript files.
+- npm.cmd run qa:static passed: i18n/theme static QA 16/16 and dashboard static validation 92/92.
+- npm.cmd run verify:explicit-dashboard-refresh passed 17/17.
+- npm.cmd run verify:license-warning passed all license-expiry warning behavior checks.
+- Admin panel local read-only smoke opened at http://127.0.0.1:8787/ with HTTP 200 and KHOD,
+  generate, renew/revoke/status UI hooks present. Live Supabase/admin data was not mutated.
+- admin-panel/SUPABASE_SETUP.sql was scanned for removed identity fields; no phone/login-method/
+  merchant/affiliate identity terms were found in the KHOD email-only SQL.
+- EasyOrders identity/language/cache verifiers were rerun with elevated browser launch when the
+  Windows sandbox blocked Chromium:
+  verify-easyorders-identity.js passed, verify-easyorders-language.js passed, and
+  verify-easyorders-identity-cache.js passed.
+- Required dashboard command passed after QA-harness stabilization:
+  $env:TAAGER_QA_LIGHT_SCREENSHOTS='1'; npm.cmd run qa:dashboard:only
+  It verified all 15 dashboard sections plus All Accounts, single-account, and empty dashboard
+  states. Runtime remained several minutes and used the Chromium renderer fallback after CDP attach
+  failed with fetch failed; this remains a QA-harness caveat, not a production blocker.
+- npm.cmd run prepare:runtime-env passed elevated after sandbox mkdir EPERM. The generated build
+  runtime env contained only SUPABASE_URL, SUPABASE_PUBLISHABLE_KEY, GEMINI_API_KEY, SENTRY_DSN,
+  SENTRY_ENVIRONMENT, SENTRY_RELEASE, SENTRY_TRACES_SAMPLE_RATE, and SENTRY_ERROR_SAMPLE_RATE.
+  Build-only Sentry tokens/settings were excluded. The generated .runtime-build folder was removed
+  after verification.
+
+Release blockers fixed:
+- Removed active setup auto-confirm leftovers from the Electron account/setup flow. The remaining
+  autoConfirm hit is an inert QA fixture field only.
+- Updated visible KHOD branding in app/dashboard/AI/preview/license surfaces, including dashboard
+  fallback copy, dashboard warning text, premium preview email/copy, license-mask prefixes, guided
+  tour fallback copy, tray tooltip/menu label, and close-dialog title.
+- Removed the redundant Product Forecast "Sync Now" button from the dashboard section and updated
+  stale static QA expectations. Product Forecast continues to use shared marketing spend state.
+- Stabilized dashboard QA harness only:
+  active-section blank detection now ignores hidden cached panes, section switching uses direct DOM
+  click fallback, light screenshots have a wider timeout, and stale per-section selectors were
+  relaxed in favor of the active visible pane/content gate.
+- Updated stale KHOD-valid verifier assertions for explicit dashboard refresh, EasyOrders identity,
+  dashboard validation, and shared runner split expectations.
+- Packaging safety fix: package.json now stages a generated runtime-only env file via
+  scripts/prepare-runtime-env.js instead of shipping the raw .env through electron-builder. This
+  prevents build-only values such as SENTRY_AUTH_TOKEN, SENTRY_ORG, SENTRY_PROJECT, SENTRY_DEBUG,
+  and SENTRY_ENABLE_DEV from being copied into packaged resources.
+
+Packaging/build readiness:
+- package.json version is 1.0.57.
+- appId is com.khodbot.app and productName is Khod Whaat Orders.
+- Windows installer artifact is Khod.Whaat.Orders.Setup.${version}.${ext}; the updater discovery
+  regex in src/main/main.js matches Khod.Whaat.Orders.Setup.*.exe.
+- npm.cmd run build was attempted after the runtime-env staging change. electron-builder packaged
+  win-unpacked, then failed while downloading/extracting winCodeSign because 7zip could not create
+  symlinks on this Windows environment ("A required privilege is not held by the client"). One retry
+  also hit a GitHub connectivity timeout. No final installer/portable artifact was produced in this
+  environment, and generated dist/.runtime-build output was removed after inspection.
+
+Checks not run / skipped:
+- Live Supabase license mutations were not performed. Generate/renew/revoke/status/device-slot/reset
+  flows require Abdel-approved explicit test data or a staging admin project.
+- Live Electron activation and live EasyOrders/KHOD account runs were not performed because valid
+  production/staging credentials were not provided in scope.
+- Multi-account upload/run remains a manual live test unless test credentials are supplied.
+- scripts/verify-product-attribution.js still depends on donor/Taager-header fixture assumptions and
+  failed with an assertion mismatch; treated as optional donor-era test debt, not a KHOD release gate.
+- scripts/verify-sku-dedupe.js requires explicit workbook CLI arguments and was not run without real
+  fixture paths.
+
+Remaining risks / manual tests required from Abdel:
+- Release status is blocked until packaging is run successfully in a Windows environment that can
+  extract winCodeSign symlinks or uses a preseeded/cached electron-builder code-sign toolchain.
+- Superseded by Phase 4.1 below: the live dashboard update worker path was donor-derived:
+  src/main/main.js run-dashboard-fetch
+  launched src/bot/dashboard-fetch.js, which was explicitly Taager export automation and checked
+  Taager email/phone/merchant ID fields. This was not rewritten in Phase 4 because it was a major
+  flow migration. Phase 4.1 replaces that live dashboard path with KHOD identity/export logic.
+- GEMINI_API_KEY is still a runtime key shipped to the desktop app. The Phase 4 packaging fix removed
+  build-only secrets from artifacts, but client-side Gemini key exposure remains an architectural
+  risk unless AI calls move fully behind a backend gateway.
+- Abdel should manually verify with explicit safe test data: admin generate/renew/revoke/status,
+  max-device/device-slot/reset-cache behavior, duplicate-account unlock/relock, fresh license
+  activation, add/edit multiple accounts with EasyOrders store/email/password plus KHOD email/password,
+  single-account live run, two-account live run, first-run KHOD-unknown rows, later enrichment,
+  result page categories, and the current live dashboard update limitation.
+
+Phase 4 status:
+- NOT READY for production release from this machine because packaging did not produce an installer
+  and before Phase 4.1 the live dashboard update path remained Taager-derived.
+
+Phase 4.1 - KHOD live dashboard update / dashboard-fetch migration:
+
+What changed:
+- Replaced src/bot/dashboard-fetch.js with a Khod Whaat dashboard worker.
+- run-dashboard-fetch in src/main/main.js now passes KHOD identity only to the dashboard worker:
+  khodEmail/khod_email, khodPassword, optional khodAffiliateCode, khodCountry, account labels,
+  profilePath, date range, and chromePath.
+- Review fix: parent dashboard watchdog is now 45 minutes so it exceeds the KHOD worker's 15-minute
+  download timeout and retry wait windows.
+- Removed active dashboard-fetch checks for donor email, phone, merchant ID, login method, Google
+  login, and EasyOrders 2FA. Dashboard update progress/error text now says Khod Whaat/KHOD.
+- The live worker logs into https://khod-whaat.com/affiliate/auth/login, verifies the visible KHOD
+  account email, confirms Arabic language when possible, exports the KHOD affiliate orders sheet,
+  and feeds it to processDashboardSheets({ khodBuffer }).
+- Dashboard account display fallbacks now prefer khodEmail over donor email in the dashboard update
+  UI/shell/aggregator labels.
+- Added scripts/verify-dashboard-fetch-khod-identity.js and package script
+  npm.cmd run verify:dashboard-fetch-khod.
+
+Identity contract:
+- Required for live dashboard update: khodEmail/khod_email and khodPassword.
+- Optional identity guard: khodAffiliateCode if visible/configured, Saudi-only khodCountry defaults
+  to sa.
+- EasyOrders credentials are not used by live dashboard fetch. EasyOrders remains part of runner/
+  upload flow and some dashboard marketing/static compatibility tests.
+- Output remains the KHOD dashboard pipeline: KHOD lifecycle statuses from the KHOD sheet, Failed and
+  Canceled preserved separately by downstream dashboard logic, source/diagnostics identify the sheet
+  as khod-sheet, sales values come from totalPrice/priceNoShipping/orderValue, COD from amountDue and
+  amountDue lookup fields, commission from marketerCommission/commission, and prepaid from KHOD notes.
+
+Tests run:
+- npm.cmd run check:syntax passed: 112 JavaScript files.
+- npm.cmd run qa:static passed: i18n/theme static QA 16/16 and dashboard static validation 92/92.
+- npm.cmd run verify:explicit-dashboard-refresh passed 19/19.
+- npm.cmd run verify:dashboard-fetch-khod passed.
+- npm.cmd run verify:static-update passed 16/16.
+- npm.cmd run qa:dashboard:only was attempted twice:
+  - sandboxed run failed with spawn EPERM while launching Electron.
+  - escalated long run launched Electron and verified multiple dashboard sections, then failed at
+    waitForDashboardSectionReady after the cities section while moving to the next section. The
+    failure was a dashboard QA readiness timeout, not a dashboard-fetch worker execution.
+- Targeted scan was run:
+  rg -n "taagerEmail|taagerPhone|taagerMerchant|merchantId|loginMethod|taager_login|taager_phone|taager_merchant|Taager email|Taager phone|Taager merchant" src\bot\dashboard-fetch.js src\main\main.js src\renderer\pages\dashboard scripts
+  The new src/bot/dashboard-fetch.js has no hits. Remaining hits are outside the live dashboard
+  worker/handler: runner/setup account recovery helpers in src/main/main.js, dashboard marketing
+  mapping compatibility aliases, and old verifier/QA fixture names.
+
+Manual live dashboard update test steps for Abdel:
+1. Open the app with a valid license that has dashboard enabled.
+2. Add or edit one account with KHOD email/password filled. EasyOrders fields may remain as required
+   by setup, but dashboard update should not ask for donor phone/merchant/login method.
+3. Open Dashboard, select a current-year date range with known KHOD orders, and click Update Dashboard
+   for that single account.
+4. Confirm the browser logs into Khod Whaat, not any donor dashboard. If already logged in, confirm
+   the verified KHOD email matches the selected account.
+5. Confirm progress messages mention Khod Whaat/KHOD and never ask for donor merchant ID, donor phone,
+   donor email login, Google login, or EasyOrders 2FA.
+6. After completion, confirm saved dashboard rows match the selected KHOD created-date range and show
+   KHOD statuses with Failed and Canceled separate.
+7. Spot-check one delivered/COD order and one prepaid-notes order:
+   totalPrice/priceNoShipping/orderValue drive sales, amountDue drives COD, marketerCommission/
+   commission drives commission, and prepaid is classified from KHOD notes.
+8. Repeat with a second account to verify account-specific profile/session isolation.
+
+Remaining risks:
+- Live dashboard fetch was not executed here because production/staging KHOD credentials were not
+  provided.
+- The broad donor-term scan still finds non-dashboard-fetch compatibility code for runner/upload,
+  setup/account recovery, dashboard marketing mapping keys, and old fixtures. These were intentionally
+  not removed in Phase 4.1 because the request excluded runner upload/setup and dashboard calculation
+  changes.
+- The Electron dashboard QA suite still has a readiness-timeout instability in this environment.
+- Packaging/build and client-side Gemini key risks from Phase 4 remain separate release risks.
+
+Phase 4.1 status:
+- READY WITH MANUAL LIVE TEST for the live dashboard update code path.
+
+Phase 4.2 - Packaging/build readiness with limited-access Codex (2026-06-25)
+
+Scope:
+- Packaging/build readiness only.
+- Dashboard logic, dashboard-fetch logic, runner/upload, setup/admin/license, AI/Gemini, and
+  Supabase SQL were not changed.
+- Added a packaging-only preflight script:
+  scripts/build-preflight.js
+  package script: npm.cmd run build:preflight
+
+Build config confirmed:
+- package.json productName is Khod Whaat Orders.
+- package.json version is 1.0.57.
+- Windows installer artifactName is Khod.Whaat.Orders.Setup.${version}.${ext}.
+- Expanded expected installer artifact is:
+  dist\Khod.Whaat.Orders.Setup.1.0.57.exe
+- src/main/main.js updater discovery regex matches the installer artifact:
+  /^Khod\.Whaat\.Orders\.Setup\..+\.exe$/i
+- Build output directory is dist.
+- Windows targets are nsis x64 and portable x64. The current portable artifact config is:
+  Khod.Whaaat.Orders.Portable.${version}.${ext}
+  This is separate from the updater-discovered installer artifact.
+
+Runtime env staging confirmed:
+- npm.cmd run prepare:runtime-env passed outside the Codex sandbox.
+- .runtime-build\build-runtime.env contains only these runtime keys:
+  SUPABASE_URL
+  SUPABASE_PUBLISHABLE_KEY
+  GEMINI_API_KEY
+  SENTRY_DSN
+  SENTRY_ENVIRONMENT
+  SENTRY_RELEASE
+  SENTRY_TRACES_SAMPLE_RATE
+  SENTRY_ERROR_SAMPLE_RATE
+- Build-only secrets/settings are excluded by the allowlist, including:
+  SENTRY_AUTH_TOKEN, SENTRY_ORG, SENTRY_PROJECT, SENTRY_DEBUG, SENTRY_ENABLE_DEV,
+  GH_TOKEN, GITHUB_TOKEN, SUPABASE_SERVICE_ROLE_KEY, and SUPABASE_SERVICE_KEY.
+- The generated .runtime-build folder was removed after verification because it can contain
+  runtime key values and is recreated by npm.cmd run prepare:runtime-env.
+
+Commands run:
+- npm.cmd run check:syntax
+  Result: passed, Syntax OK: 112 JavaScript file(s).
+- npm.cmd run build:preflight
+  Result: config checks passed; cache path identified; symlink privilege warning found.
+- npm.cmd run prepare:runtime-env
+  Result: sandboxed run failed with EPERM creating .runtime-build, then elevated run passed.
+- npm.cmd run build
+  Result: blocked by Windows environment before final installer creation.
+
+Observed build failure:
+- electron-builder 24.13.3 packaged win-unpacked, then downloaded:
+  https://github.com/electron-userland/electron-builder-binaries/releases/download/winCodeSign-2.6.0/winCodeSign-2.6.0.7z
+- Download succeeded in this run, so GitHub/network was reachable at the time of this test.
+- 7-Zip failed extracting winCodeSign because it could not create symlinks:
+  ERROR: Cannot create symbolic link : A required privilege is not held by the client.
+  C:\Users\sec codex\AppData\Local\electron-builder\Cache\winCodeSign\390961419\darwin\10.12\lib\libcrypto.dylib
+  ERROR: Cannot create symbolic link : A required privilege is not held by the client.
+  C:\Users\sec codex\AppData\Local\electron-builder\Cache\winCodeSign\390961419\darwin\10.12\lib\libssl.dylib
+- npm.cmd run build did not produce dist\Khod.Whaat.Orders.Setup.1.0.57.exe.
+- Partial output exists only as dist\win-unpacked plus dist\builder-debug.yml.
+
+Diagnosis:
+- Missing Windows symlink privilege is confirmed by both npm.cmd run build:preflight and the
+  electron-builder/7-Zip error.
+- Administrator PowerShell or Windows Developer Mode is needed for this environment.
+- electron-builder cache is not missing. Current environment cache root is:
+  C:\Users\sec codex\AppData\Local\electron-builder\Cache
+- winCodeSign cache is cluttered by repeated failed extraction attempts:
+  C:\Users\sec codex\AppData\Local\electron-builder\Cache\winCodeSign
+  This is not proven corrupt, but it is the folder to delete if the same extraction keeps failing
+  after symlink privilege is fixed.
+- Network/GitHub was not blocked in the final build attempt; the winCodeSign download completed.
+  A previous GitHub timeout remains an environment/network risk, not a code/config blocker.
+
+Manual build runbook for Abdel:
+1. Open PowerShell as Administrator OR enable Windows Developer Mode and open a fresh PowerShell.
+2. Go to:
+   F:\code\khod-bot2\khod-from-taager
+3. Run:
+   npm.cmd run build:preflight
+4. Confirm the preflight no longer warns on Windows symlink privilege.
+5. Run:
+   npm.cmd run prepare:runtime-env
+   npm.cmd run build
+6. If winCodeSign extraction still fails after admin/Developer Mode, delete the winCodeSign cache
+   and rerun:
+   Remove-Item -Recurse -Force "$env:LOCALAPPDATA\electron-builder\Cache\winCodeSign"
+   npm.cmd run build
+7. If GitHub download times out, rerun on a stable network or preseed electron-builder's cache under:
+   $env:LOCALAPPDATA\electron-builder\Cache
+8. Expected installer artifact after a successful build:
+   dist\Khod.Whaat.Orders.Setup.1.0.57.exe
+
+Phase 4.2 status:
+- BUILD BLOCKED BY ENVIRONMENT, MANUAL RUNBOOK READY.
+
+Phase 4.3 - Manual live test runbook and release gate checklist (2026-06-25)
+
+Scope:
+- Documentation/checklist only.
+- No production code changes were made in this phase.
+- Do not print, paste, screenshot, or commit secrets. Capture only redacted evidence.
+- Do not run destructive production admin/license actions. Use disposable/test license data where possible.
+- Current status remains READY WITH MANUAL TESTS until Abdel runs this checklist with real credentials/test data.
+
+Evidence package Abdel should capture:
+- [ ] PASS / [ ] FAIL - Installer artifact path and screenshot/file properties for:
+  dist\Khod.Whaat.Orders.Setup.1.0.57.exe
+- [ ] PASS / [ ] FAIL - Build command logs for build:preflight, prepare:runtime-env, and build.
+- [ ] PASS / [ ] FAIL - Screenshot confirming installer/product name/version:
+  productName Khod Whaat Orders, version 1.0.57, installer Khod.Whaat.Orders.Setup.1.0.57.exe.
+- [ ] PASS / [ ] FAIL - Redacted .runtime-build key-name listing only; do not capture key values.
+- [ ] PASS / [ ] FAIL - Admin/license screenshots for generate, activate, renew, revoke, restore, slots,
+  reset cache, duplicate, unlock, and relock results.
+- [ ] PASS / [ ] FAIL - Fresh app/setup screenshots for account list, account edit, and Saudi-only setup.
+- [ ] PASS / [ ] FAIL - Upload/missed-orders run logs and result counts for single-account and multi-account runs.
+- [ ] PASS / [ ] FAIL - Operations/Analytics screenshots showing KHOD-known rows, EasyOrders-only rows,
+  financial values, and account filters.
+- [ ] PASS / [ ] FAIL - Dashboard live update stage logs, exported/downloaded evidence, dashboard screenshots,
+  and any exact error stage/message if it fails.
+- [ ] PASS / [ ] FAIL - Dashboard visual QA terminal output showing 15 sections passed.
+- [ ] PASS / [ ] FAIL - Final release decision note: READY, READY WITH ACCEPTED RISKS, or NOT READY.
+
+1. Packaging manual build:
+- [ ] PASS / [ ] FAIL - Enable Windows Developer Mode OR run PowerShell as Administrator.
+- [ ] PASS / [ ] FAIL - Run:
+  cd F:\code\khod-bot2\khod-from-taager
+- [ ] PASS / [ ] FAIL - Run:
+  npm.cmd run build:preflight
+- [ ] PASS / [ ] FAIL - Confirm build:preflight no longer warns about Windows symlink privilege.
+- [ ] PASS / [ ] FAIL - Run:
+  npm.cmd run prepare:runtime-env
+- [ ] PASS / [ ] FAIL - Run:
+  npm.cmd run build
+- [ ] PASS / [ ] FAIL - Confirm expected installer artifact exists:
+  dist\Khod.Whaat.Orders.Setup.1.0.57.exe
+- [ ] PASS / [ ] FAIL - Confirm installer name/version/productName:
+  Khod.Whaat.Orders.Setup.1.0.57.exe, version 1.0.57, productName Khod Whaat Orders.
+- [ ] PASS / [ ] FAIL - Confirm .runtime-build does not contain build-only secrets.
+  Expected runtime key names only:
+  SUPABASE_URL, SUPABASE_PUBLISHABLE_KEY, GEMINI_API_KEY, SENTRY_DSN,
+  SENTRY_ENVIRONMENT, SENTRY_RELEASE, SENTRY_TRACES_SAMPLE_RATE, SENTRY_ERROR_SAMPLE_RATE.
+  Do not capture or paste key values.
+
+2. License/admin live safe test:
+- [ ] PASS / [ ] FAIL - Use a disposable/test license if possible.
+- [ ] PASS / [ ] FAIL - Admin panel opens.
+- [ ] PASS / [ ] FAIL - Generate a license.
+- [ ] PASS / [ ] FAIL - Activate a fresh app with the generated license.
+- [ ] PASS / [ ] FAIL - Renew the license and confirm app/admin reflect the new validity.
+- [ ] PASS / [ ] FAIL - Revoke the license and confirm the app blocks correctly.
+- [ ] PASS / [ ] FAIL - Restore/generate a valid test license after revoke and confirm the app unblocks.
+- [ ] PASS / [ ] FAIL - Device slots/max devices/reset cache behave correctly.
+- [ ] PASS / [ ] FAIL - Account duplicate/unlock/relock behavior works as expected.
+- [ ] PASS / [ ] FAIL - Confirm identity is KHOD email plus EasyOrders email/store only.
+- [ ] PASS / [ ] FAIL - Confirm no KHOD phone, login-method, merchant ID, or merchant identity is required
+  or displayed as active KHOD identity.
+
+3. Fresh app setup/account test:
+- [ ] PASS / [ ] FAIL - Start with fresh data/profile if safe.
+- [ ] PASS / [ ] FAIL - Activate a KHOD license.
+- [ ] PASS / [ ] FAIL - Add account using EasyOrders store/email/password plus KHOD email/password.
+- [ ] PASS / [ ] FAIL - Edit account name and credentials.
+- [ ] PASS / [ ] FAIL - Add a second account.
+- [ ] PASS / [ ] FAIL - Confirm accounts show under the license slot limit.
+- [ ] PASS / [ ] FAIL - Confirm setup is Saudi-only.
+- [ ] PASS / [ ] FAIL - Confirm no Taager-only mode, no EasyOrders+KHOD mode wording, and no active
+  auto-confirm leftover.
+
+4. Upload/missed-orders live test:
+- [ ] PASS / [ ] FAIL - Use a safe small date range.
+- [ ] PASS / [ ] FAIL - Run a single-account upload/missed-orders test.
+- [ ] PASS / [ ] FAIL - Run a multi-account upload/missed-orders test.
+- [ ] PASS / [ ] FAIL - Confirm EasyOrders identity is checked once per session.
+- [ ] PASS / [ ] FAIL - Confirm EasyOrders language is English where needed.
+- [ ] PASS / [ ] FAIL - Confirm KHOD flow exports, parses, and uploads missed orders.
+- [ ] PASS / [ ] FAIL - Confirm result categories are present and counted:
+  new orders, failed EasyOrders uploads, already in KHOD, duplicates removed.
+- [ ] PASS / [ ] FAIL - First run: new rows can be KHOD-unknown.
+- [ ] PASS / [ ] FAIL - Second run over an overlapping range: status, order number, and financials enrich correctly.
+- [ ] PASS / [ ] FAIL - Failed and Canceled remain separate.
+- [ ] PASS / [ ] FAIL - real and missed remain source labels only.
+
+5. Operations/Analytics live check:
+- [ ] PASS / [ ] FAIL - First-run EasyOrders-only rows do not create fake KHOD statuses.
+- [ ] PASS / [ ] FAIL - KHOD-known rows populate status/product performance.
+- [ ] PASS / [ ] FAIL - Revenue, COD, and commission are correct from KHOD fields.
+- [ ] PASS / [ ] FAIL - Single-account and All Accounts filters work.
+
+6. Dashboard live update test:
+- [ ] PASS / [ ] FAIL - Run live dashboard update for one account.
+- [ ] PASS / [ ] FAIL - Verify KHOD login identity email matches the selected account.
+- [ ] PASS / [ ] FAIL - Verify export/download completes without parent timeout.
+- [ ] PASS / [ ] FAIL - Verify dashboard sections update.
+- [ ] PASS / [ ] FAIL - Verify no visible Taager or profit-after-tax wording.
+- [ ] PASS / [ ] FAIL - Verify Prepaid uses KHOD notes evidence.
+- [ ] PASS / [ ] FAIL - Verify static update still works with a KHOD sheet.
+- [ ] PASS / [ ] FAIL - If live update fails, record exact stage and error.
+
+7. Dashboard visual smoke after live data:
+- [ ] PASS / [ ] FAIL - Run:
+  $env:TAAGER_QA_LIGHT_SCREENSHOTS='1'; npm.cmd run qa:dashboard:only
+- [ ] PASS / [ ] FAIL - Expected result: pass, 15 sections.
+- [ ] PASS / [ ] FAIL - Note known QA runtime: can be more than 3 minutes and may use Chromium renderer
+  harness fallback.
+
+8. AI/Gemini release decision:
+- [ ] PASS / [ ] FAIL - Document the current risk: GEMINI_API_KEY is still a shipped runtime desktop key.
+- [ ] PASS / [ ] FAIL - For private/internal build, Abdel may accept this risk.
+- [ ] PASS / [ ] FAIL - For public release, AI should be backend-gated before shipping.
+
+9. Final release gate status labels:
+- READY:
+  Packaging passes, manual live tests pass, and AI key risk is accepted or mitigated.
+- READY WITH ACCEPTED RISKS:
+  Packaging passes and manual live tests pass, but AI runtime key exposure is accepted for private use.
+- NOT READY:
+  Any live dashboard, run/upload, license/admin, or build failure remains.
+
+Phase 4.3 status:
+- READY WITH MANUAL TESTS until Abdel completes the checklist above.
+
+Phase 4.4 - KHOD dashboard query env flags and live query verification
+
+Supported dashboard query flags:
+- Canonical runtime flags:
+  KHOD_DASHBOARD_QUERY_SHADOW=1
+  KHOD_DASHBOARD_QUERY_ORDERS=1
+  KHOD_DASHBOARD_QUERY_PRODUCTS=1
+  KHOD_DASHBOARD_QUERY_CAMPAIGNS=1
+- Runtime-safe internal/prewarm flag:
+  KHOD_DASHBOARD_QUERY_CITIES=1
+- Legacy fallback only:
+  TAAGER_DASHBOARD_QUERY_SHADOW=1
+  TAAGER_DASHBOARD_QUERY_ORDERS=1
+  TAAGER_DASHBOARD_QUERY_PRODUCTS=1
+  TAAGER_DASHBOARD_QUERY_CAMPAIGNS=1
+  TAAGER_DASHBOARD_QUERY_CITIES=1
+
+Fallback behavior:
+- Runtime reads KHOD_DASHBOARD_QUERY_* first and treats TAAGER_DASHBOARD_QUERY_* as compatibility fallback only.
+- Products still enables the cities query prewarm path, matching the previous rollout behavior.
+- prepare-runtime-env and build preflight allow the KHOD_DASHBOARD_QUERY_* runtime toggles and continue excluding build-only secrets.
+
+Flagged verification commands run:
+- npm.cmd run check:syntax
+- npm.cmd run build:preflight
+- npm.cmd run qa:static
+- npm.cmd run verify:explicit-dashboard-refresh
+- npm.cmd run verify:performance
+- npm.cmd run verify:dashboard-rollout
+- npm.cmd run verify:dashboard-query:khod-flags
+- With KHOD_DASHBOARD_QUERY_SHADOW/ORDERS/PRODUCTS/CAMPAIGNS=1:
+  npm.cmd run verify:explicit-dashboard-refresh
+  npm.cmd run qa:static
+  npm.cmd run qa:dashboard:only
+
+Issues found and fixed:
+- Added KHOD canonical query flags in main runtime with TAAGER fallback compatibility.
+- Added verify:dashboard-query:khod-flags so query service coverage can be run with all canonical KHOD query flags enabled.
+- Updated rollout/performance static assertions from TAAGER-only checks to KHOD-first fallback checks.
+- Updated .env query toggles from TAAGER_* to KHOD_*.
+- Seeded the dashboard QA fixture into the main-process dashboard snapshot so shadow mode verifies the real IPC query service instead of comparing renderer fixture data to an empty main store.
+- Made dashboard QA use a deterministic May 2026 fixture period for shadow query parity.
+- Expanded query row totals to honor KHOD-compatible subtotal/sales/amountDue fields after canonical dashboard totals.
+- Normalized shadow status comparison so query labels such as received/unknown pending rows compare against renderer pending buckets.
+- Tightened QA product fixture fields so Products shadow mode verifies backend-style query rows for rankings, NDR/DR, net orders, and commission.
+
+Verification observations:
+- Orders query path verified in shadow mode with mismatchCount=0.
+- Products query path verified in shadow mode with mismatchCount=0.
+- Campaigns query path and campaign AI context verified in shadow mode with mismatchCount=0.
+- Shadow mode did not break static/cached dashboard rendering.
+- qa:dashboard:only rendered the dashboard sections, single-account state, and empty state without layout overflow, clipped text, visible Taager/profit-after-tax wording, or renderer/main runtime failures.
+- Failed and Canceled remain separate in static/product checks.
+- real/missed remain source labels only; no architecture changes were made to runner/upload.
+- KHOD financial fields remain first-priority; query totals now also accept subtotal/sales/amountDue fallback fields when canonical dashboard totals are absent.
+
+Remaining risks:
+- build:preflight still reports existing non-fatal local Windows warnings for winCodeSign cache clutter and symlink privilege.
+- Live production data with real credentials still needs Abdel's manual release checklist; this phase verified deterministic live/query-backed runtime paths, not external dashboard-fetch credentials or Supabase SQL.
+
+Phase 4.4 status:
+- Dashboard query paths are release-ready for the KHOD-flagged runtime path, pending the broader manual live release checklist.
+
+Phase 4.5 - Dashboard master/overview/product correctness
+
+Dashboard card contract corrected:
+- Section 1 Overview now restores KHOD commission semantics: Earned Commission, Incoming Commission, Lost Commission, Total Orders, Confirmation Rate, Net Delivery Rate (NDR), Total Sales, AOV, Total Delivered Sales, Delivered AOV, Net ROAS, Delivery Rate (DR).
+- Section 1 also keeps the useful newer spend/profit cards: Average Commission, Account CPA, Account Break-even CPA, Total Spend, Total Revenue, Net Profit.
+- Section 8 Master now starts from KHOD commission/order semantics and keeps the sales, AOV, NDR/DR, ROAS, spend, revenue, and profit cards visible.
+- Removed visible Commission Return / Net Commission Return wording in favor of Total Revenue / Net Profit.
+- Removed visible Net Orders primary wording from dashboard sections covered by the scan; internal netOrderCount keys remain compatibility implementation details.
+
+Status and NDR mode corrections:
+- KHOD lifecycle order remains Pending, Confirmed, Under processing, Waiting, In shipping, Delivered, Failed, Canceled.
+- Pending was preserved; Under processing, Waiting, Failed, and Canceled remain distinct.
+- Restored old KHOD-style Last Updated delivered-count mode as a third NDR selector option beside Actual NDR and Expected NDR / Closed Cycle.
+- Last Updated maps delivered outcome rows to lastUpdatedAt/updatedAt while Actual keeps current created-date behavior and Expected keeps the historical cohort behavior.
+
+Product correctness:
+- Shared dashboard product aggregation already used KHOD order-value fields, delivered-only delivered sales, marketerCommission/commission/commissionValue, and separate Failed/Canceled counters.
+- Dashboard Products no longer exposes product-name editing UI or the delegated edit-name click path.
+- real/missed remain treated as source labels, not KHOD lifecycle statuses.
+- Product Forecast now labels total order counts as Total Orders instead of Net Orders.
+
+Spend lock behavior:
+- Section 9 Product Forecast now locks table spend and scenario spend inputs when matched/synced platform spend is present.
+- Synced product spend overwrites stale manual scenario spend during assignment and manual events are ignored while locked.
+- Section 7 Account Calculator already disables its main budget input when synced spend is active; labels were corrected to Total Orders, Total Revenue, and Net Profit.
+
+Operations/Analytics product issues:
+- No separate Operations/Analytics code was changed in Phase 4.5. The dashboard shared aggregation path was inspected first; any independent Operations/Analytics product-performance defects should be handled as Phase 4.6.
+
+Verification commands run:
+- npm.cmd run check:syntax
+- npm.cmd run qa:static
+- npm.cmd run verify:explicit-dashboard-refresh
+- npm.cmd run verify:dashboard-query:khod-flags
+- Targeted scan:
+  rg -n "Commission Return|Net Commission Return|Net Orders|Bending|bending|Taager profit|profit after tax|Profit After Tax|Ø±Ø¨Ø­ ØªØ§Ø¬Ø±" src\renderer\pages\dashboard src\renderer\pages\ai-intelligence
+- With KHOD_DASHBOARD_QUERY_SHADOW/ORDERS/PRODUCTS/CAMPAIGNS/CITIES=1 and TAAGER_QA_LIGHT_SCREENSHOTS=1:
+  npm.cmd run qa:dashboard:only
+
+Verification results:
+- check:syntax passed: 112 JavaScript files.
+- qa:static passed: 92 dashboard validation checks and 16 i18n/theme checks.
+- verify:explicit-dashboard-refresh passed: 19 checks.
+- verify:dashboard-query:khod-flags passed.
+- Targeted forbidden-label scan returned no matches.
+- qa:dashboard:only inspected Master, Overview, Pipeline, Orders, COD, Products, Cities, Commission, Marketing, Campaigns, Calculator, Product Forecast, Prepaid, and Static Update with no overflows, no visible text overflows, and no legacy visible text.
+- qa:dashboard:only still failed at the existing taagerAi dashboard section because that section rendered blank in the QA harness; this was not changed in Phase 4.5 and remains a follow-up blocker.
+
+Phase 4.6 - Section 3 backend orders query flag and KHOD status semantics
+
+Dev query flags:
+- Plain npm start loads .env through dotenv, so dashboard query flags must use normal dotenv syntax:
+  KHOD_DASHBOARD_QUERY_SHADOW=1
+  KHOD_DASHBOARD_QUERY_ORDERS=1
+  KHOD_DASHBOARD_QUERY_PRODUCTS=1
+  KHOD_DASHBOARD_QUERY_CAMPAIGNS=1
+  KHOD_DASHBOARD_QUERY_CITIES=1
+- Do not use PowerShell assignment syntax inside .env, such as:
+  $env:KHOD_DASHBOARD_QUERY_ORDERS='1'
+- To run the app with the query fast paths in this dev folder:
+  cd F:\code\khod-bot2\khod-from-taager
+  npm.cmd start
+
+Section 3 backend orders query:
+- The Orders section now waits for get-dashboard-query-flags and enables the backend table path only when KHOD_DASHBOARD_QUERY_ORDERS resolves true.
+- Normal table paging, filtering, searching, and sorting use the main-process orders query when the flag is enabled; renderer fallback remains for disabled or failed backend query cases.
+
+Backend query KHOD lifecycle contract:
+- Backend query status buckets are limited to pending, confirmed, processing, waiting, shipping, delivered, failed, canceled, plus neutral other for unknown/source-only values.
+- Failed and Canceled remain separate.
+- real and missed remain EasyOrders source labels only.
+- canceled_by_you is accepted only as a legacy input fallback and normalizes to canceled; it is not returned as a visible query bucket.
+- Taager-only delivery/return/refusal statuses are not emitted by dashboard-query-service.
+
+Phase 4.5A - Dashboard Products KHOD correctness fix
+
+Products section bugs fixed:
+- Products English labels now say Canceled, not Canceled by you.
+- The Product table now shows direct KHOD status columns: Pending, Confirmed, Under processing, Waiting, In shipping, Delivered, Failed, Canceled.
+- Product row actions are compact fixed-size icon buttons, and the actions column/header use a narrower fixed width.
+- Product-name editing UI and the Section 5 edit-name modal code were removed from Products. The underlying product-name compatibility storage remains outside this table for attribution/fallback code.
+- The Products sort dropdown is capped to a viewport-aware max height and scrolls internally instead of covering the table.
+
+Pending aggregate definition:
+- Products Pending uses the old KHOD pending-like aggregate: Pending + Under processing + Waiting.
+- Raw individual counts for pending, processing, and waiting remain preserved. The grouped count is exposed separately as pendingGroupCount for Products filtering/sorting/table display.
+
+Product aggregation changes:
+- Product compatibility canceledByYouCount no longer falls back to canceledCount, so visible Canceled metrics stay KHOD Canceled only.
+- Failed and Canceled remain separate.
+- Product sales/order value fields, delivered-only delivered sales, and marketerCommission/commission/commissionValue paths were inspected and left on the existing shared KHOD aggregation path.
+- real/missed remain source labels only, not status buckets.
+- First-run EasyOrders-only unknown status rows continue to be blocked by the KHOD known-lifecycle checks.
+
+Operations/Analytics product issue:
+- Deferred to Phase 4.6 unless a specific shared aggregation defect is reproduced there. This phase changed the shared Products aggregation compatibility field but did not expand into separate Operations/Analytics UI pages.
+
+Verification commands run:
+- npm.cmd run check:syntax
+- npm.cmd run qa:static
+- npm.cmd run verify:dashboard-query:khod-flags
+- npm.cmd run verify:explicit-dashboard-refresh
+- With KHOD_DASHBOARD_QUERY_SHADOW/ORDERS/PRODUCTS/CAMPAIGNS/CITIES=1 and TAAGER_QA_LIGHT_SCREENSHOTS=1:
+  npm.cmd run qa:dashboard:only
+- Targeted scan:
+  rg -n "Canceled by you|canceled_by_you|Bending|Net Orders|Taager profit|profit after tax|Profit After Tax" src\renderer\pages\dashboard\sections\section5-products.js src\renderer\pages\dashboard src\renderer\pages\ai-intelligence
+
+Verification results:
+- check:syntax passed: 112 JavaScript files.
+- qa:static passed: 92 dashboard validation checks and 16 i18n/theme checks.
+- verify:explicit-dashboard-refresh passed: 19 checks.
+- verify:dashboard-query:khod-flags failed twice on an existing Campaigns timing assertion: "Initial Campaigns page query should complete within 300ms".
+- qa:dashboard:only first failed with sandbox spawn EPERM; rerun with escalation timed out after 304 seconds. Recent QA Node child processes were cleaned up.
+- Targeted visible-label scan returned no matches for Canceled by you, Bending, Net Orders, Taager profit, profit after tax, or Profit After Tax. canceled_by_you remains only in hidden dashboard aggregation compatibility code/comments.
+
+Phase 4.5B - 5K/15K dashboard performance migration continuation (2026-06-29)
+
+Harness setup:
+- Added fixture-backed performance harness under scripts/perf.
+- Added npm scripts:
+  npm.cmd run perf:fixture
+  npm.cmd run perf:dashboard-load
+- Added scripts/perf/fixtures to .gitignore.
+- Generated fixtures:
+  scripts/perf/fixtures/perf-fixture-smoke.json (20 orders / 5 products)
+  scripts/perf/fixtures/perf-fixture-5k.json (5,000 orders / 100 products)
+  scripts/perf/fixtures/perf-fixture-15k.json (15,000 orders / 250 products)
+- The fixture generator now emits KHOD-shaped statuses and IDs:
+  Pending, Confirmed, Under processing, Waiting, In shipping, Delivered, Failed, Canceled
+  orderNumber/khodOrderNumber, KHOD-* SKUs, khodCountry
+
+Production changes ported:
+- Section 3 backend orders query gate:
+  Backend Orders starts disabled and is enabled only when get-dashboard-query-flags returns flags.orders true.
+  This prevents the query runtime existing by itself from bypassing fixture/local aggregation.
+- Snapshot transport:
+  Main process now exposes get-dashboard-snapshot-json and get-dashboard-snapshot-gzip.
+  Preload exposes getDashboardSnapshotJson/getDashboardSnapshotGzip.
+  Dashboard aggregator prefers gzip + DecompressionStream, then JSON, then legacy object IPC.
+- Dashboard i18n:
+  MutationObserver now queues changed visible roots per animation frame instead of re-applying to the full dashboard on every mutation.
+  Hidden dashboard cache panes are ignored.
+- Dashboard aggregator:
+  Row collection no longer uses concat(map()) for account snapshot rows.
+  Active country detection now uses a single-pass object set instead of map/filter/indexOf.
+- Dashboard shell:
+  Added donor stale-lazy-callback guard to destroy duplicate same-section panes before caching a new pane.
+  Pane cache limit aligned to this repo's performance QA threshold: 5 children.
+
+Targeted performance results:
+- Untouched 5K Orders baseline:
+  aggregation 5340ms, initial mount 7390ms, Orders first visible 7725ms, Orders search invalid because zero rendered rows.
+- After Orders gate:
+  search measurement fixed (10 rendered rows), aggregation 4577ms, Orders first visible 7502ms.
+- After gzip snapshot transport:
+  initial mount 5305ms, aggregation 2535ms, Orders first visible 5620ms.
+- After incremental i18n:
+  Orders first visible dropped to 238-246ms; search 19-39ms.
+  Aggregation remained above threshold, typically 3460-3971ms at 5K.
+- After active-country single-pass cleanup:
+  15K Orders completed reliably instead of timing out.
+  15K latest targeted run: initial mount 12856ms, aggregation 11288ms, Orders first visible 980ms, Orders search 7ms.
+
+Verification commands run:
+- npm.cmd run check:syntax
+- npm.cmd run qa:dashboard:perf (rerun with escalation after sandbox spawn EPERM)
+- node scripts/perf/qa-dashboard-perf-load.js --fixture=perf-fixture-smoke.json --sections=orders --skipStability=true
+- node scripts/perf/qa-dashboard-perf-load.js --fixture=perf-fixture-5k.json --sections=orders --skipStability=true
+- node scripts/perf/qa-dashboard-perf-load.js --fixture=perf-fixture-15k.json --sections=orders --skipStability=true
+- npm.cmd run verify:dashboard-query:khod-flags
+
+Verification results:
+- check:syntax passed: 114 JavaScript files.
+- qa:dashboard:perf passed after shell pane-cache fix.
+- 20-order perf smoke passed.
+- 5K/15K targeted Orders rendering/search now pass, but full aggregation remains over the 2500ms target.
+- verify:dashboard-query:khod-flags still fails intermittently on existing timing assertions:
+  Products first query measured about 302ms against a 300ms assertion.
+  Campaign overview measured about 428ms against a 300ms assertion.
+
+Remaining performance target:
+- Dashboard startup is now aggregation-bound, not section-render-bound.
+- Next phase should defer or split heavy aggregator Products/Cities/Campaign-derived datasets so the initial dashboard/Orders path does not eagerly compute every section's derived model for 5K/15K rows.
+
+Phase 4.5C - 5K/15K performance migration checkpoint (2026-06-30)
+
+Harness/parity fixes:
+- Perf harness CLI now accepts --sections value, --sections=value, --switches, --skip-stability, --skipStability, and --help.
+- Perf harness writes partial JSON reports for fixture load/generation failures and Electron launch/runtime failures.
+- Perf harness cleans fresh repo Electron PIDs after launch failure and exits after writing the report so Node does not linger.
+- Aggregation reports now include phase timings from meta.aggregationPhaseTimings and dashboard:aggregation:phase:* entries.
+- Electron launch allowance is 60s; dashboard acceptance thresholds were not relaxed.
+- Dashboard shell pane cache restored to six entries, matching the donor/fixture harness expectation. qa-dashboard-responsive.js now asserts >6 children as unbounded.
+- runDashboardSectionStabilityCheck now prewarms unique sections before baseline, returns to baseline before the after snapshot, and long-task entries include the latest section/aggregation phase.
+- AI mirror warming now runs once per dashboard data version during idle with force:false.
+- Marketing refresh is keyed once per account instead of account|section.
+
+Aggregation/render changes:
+- prepareReportingRows now enriches the aggregation pass's already-cloned rows in place instead of cloning every row again.
+- Actual-mode ndrSourceRows reuses the prepared period rows instead of preparing the same row set twice.
+- Product ranked-list construction is lazy via a products.rankedList getter, so the initial aggregation path does not eagerly build the full Products model.
+- Section 3 outcome-order normalization is lazy; non-all stage clicks normalize outcome rows on first use.
+- Aggregator now exposes getOutcomeOrders() instead of eagerly materializing outcomeOrders in the return object.
+
+Latest measured reports before Electron launch became flaky:
+- 5K Orders targeted PASS:
+  .codex-tmp/perf-reports/perf-report-1782774663197.json
+  aggregation 2193ms, initial mount 3379ms, shell mount 121ms, Orders render 231ms, Orders visible 577ms, Orders search 23ms.
+- 15K Orders targeted after lazy Section 3 normalization:
+  .codex-tmp/perf-reports/perf-report-1782774852451.json
+  aggregation 6117ms (still over 2500ms), initial mount 7583ms, shell mount 112ms, Orders render 305ms, Orders visible 417ms, Orders search 27.9ms.
+- 5K all sections without stability:
+  .codex-tmp/perf-reports/perf-report-1782774902654.json
+  aggregation 3006ms (over 2500ms on that run), all cold renders and interaction checks passed, cached restore 8ms.
+
+Current verification:
+- npm.cmd run check:syntax passed after the latest lazy getOutcomeOrders patch.
+- Subsequent Electron perf launches timed out before app load at 40s and 60s, but each wrote a partial report and left no Electron/Node process behind:
+  .codex-tmp/perf-reports/perf-report-1782812152789.json
+  .codex-tmp/perf-reports/perf-report-1782812218669.json
+  .codex-tmp/perf-reports/perf-report-1782812322091.json
+
+Remaining performance target:
+- 15K is still aggregation-bound, especially process:main-row-loop and process:return-shape.
+- The next safe reduction is to split the main row loop into an Orders/Overview/COD core pass and lazy Products/Cities/Campaign/Geo builders cached per data version/account/period.

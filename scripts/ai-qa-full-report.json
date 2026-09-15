@@ -1,0 +1,907 @@
+{
+  "mode": "full",
+  "generatedAt": "2026-06-15T01:05:32.454Z",
+  "total": 56,
+  "passed": 56,
+  "failed": 0,
+  "categories": {
+    "account-health": 5,
+    "products": 6,
+    "cities": 7,
+    "campaigns": 4,
+    "cpa": 4,
+    "profit": 3,
+    "ndr": 3,
+    "scaling": 2,
+    "planning": 5,
+    "forecasting": 3,
+    "comparisons": 2,
+    "mixed-language": 2,
+    "typos": 2,
+    "ambiguity": 3,
+    "follow-ups": 3,
+    "out-of-scope": 2
+  },
+  "results": [
+    {
+      "id": "account-health-en",
+      "category": "account-health",
+      "userMessage": "How is my account doing?",
+      "expectedRoute": "local",
+      "route": "local",
+      "expectedLanguage": "en",
+      "latencyMs": 1.5,
+      "selectedSlice": "account",
+      "actions": [
+        "OPEN_PAGE"
+      ],
+      "answer": "Account health is healthy.\nWhy: 92 orders, NDR 52%, CPA 12.5 SAR.\nNext move: Start with TinyRaw.",
+      "failures": [],
+      "passed": true
+    },
+    {
+      "id": "account-loss-en",
+      "category": "account-health",
+      "userMessage": "Why am I losing?",
+      "expectedRoute": "local-plus-gemini",
+      "route": "local-plus-gemini",
+      "expectedLanguage": "en",
+      "latencyMs": 0.6,
+      "selectedSlice": "account",
+      "actions": [
+        "OPEN_PAGE"
+      ],
+      "answer": "The account is not currently losing money, but profit is weak.\nWhy: NDR is 52% and net profit is 5050 SAR.\nNext move: Review TinyRaw first, and pause scaling until NDR and CPA improve.",
+      "failures": [],
+      "passed": true
+    },
+    {
+      "id": "account-change-en",
+      "category": "account-health",
+      "userMessage": "What changed this month?",
+      "expectedRoute": "local",
+      "route": "local",
+      "expectedLanguage": "en",
+      "latencyMs": 0.5,
+      "selectedSlice": "account",
+      "actions": [
+        "OPEN_PAGE"
+      ],
+      "answer": "Account health is healthy.\nWhy: 92 orders, NDR 52%, CPA 12.5 SAR.\nNext move: Start with TinyRaw.",
+      "failures": [],
+      "passed": true
+    },
+    {
+      "id": "account-health-ar",
+      "category": "account-health",
+      "userMessage": "كيف أداء الحساب؟",
+      "expectedRoute": "local",
+      "route": "local",
+      "expectedLanguage": "ar",
+      "latencyMs": 1.4,
+      "selectedSlice": "account",
+      "actions": [
+        "OPEN_PAGE"
+      ],
+      "answer": "صحة الحساب جيدة.\nالدليل: 92 طلب، NDR 52%، تكلفة CPA 12.5 SAR.\nالخطوة الجاية: ابدأ بـ TinyRaw.",
+      "failures": [],
+      "passed": true
+    },
+    {
+      "id": "account-loss-ar",
+      "category": "account-health",
+      "userMessage": "ليه بخسر؟",
+      "expectedRoute": "local-plus-gemini",
+      "route": "local-plus-gemini",
+      "expectedLanguage": "ar",
+      "latencyMs": 0.5,
+      "selectedSlice": "account",
+      "actions": [
+        "OPEN_PAGE"
+      ],
+      "answer": "الحساب ليس خاسرًا حاليًا، لكن الربح ضعيف.\nالدليل: NDR 52% وصافي الربح 5050 SAR.\nالخطوة الجاية: راجع TinyRaw أولًا، وأوقف التوسع حتى يتحسن NDR و CPA.",
+      "failures": [],
+      "passed": true
+    },
+    {
+      "id": "products-best-en",
+      "category": "products",
+      "userMessage": "best products",
+      "expectedRoute": "mirror",
+      "route": "mirror",
+      "expectedLanguage": "en",
+      "latencyMs": 0.6,
+      "selectedSlice": "products",
+      "actions": [
+        "OPEN_PRODUCT"
+      ],
+      "answer": "Products ranked for this decision:\n1. Shared Product - 60 orders, 24 delivered, NDR 40%, break-even CPA 50 SAR, P&L 3000 SAR\n2. Second Product - 32 orders, 24 delivered, NDR 75%, break-even CPA 78.13 SAR, P&L 2500 SAR\nWhy: 60 orders, 24 delivered, NDR 40%, break-even CPA 50 SAR.\nNext move: Keep watching until shared decision rules are available.",
+      "failures": [],
+      "passed": true
+    },
+    {
+      "id": "products-worst-ndr-en",
+      "category": "products",
+      "userMessage": "worst NDR products",
+      "expectedRoute": "mirror",
+      "route": "mirror",
+      "expectedLanguage": "en",
+      "latencyMs": 0.4,
+      "selectedSlice": "products",
+      "actions": [
+        "OPEN_PRODUCT"
+      ],
+      "answer": "Products ranked for this decision:\n1. Shared Product - 60 orders, 24 delivered, NDR 40%, break-even CPA 50 SAR, P&L 3000 SAR\n2. Second Product - 32 orders, 24 delivered, NDR 75%, break-even CPA 78.13 SAR, P&L 2500 SAR\nWhy: 60 orders, 24 delivered, NDR 40%, break-even CPA 50 SAR.\nNext move: Keep watching until shared decision rules are available.",
+      "failures": [],
+      "passed": true
+    },
+    {
+      "id": "products-pause-en",
+      "category": "products",
+      "userMessage": "what product should I pause?",
+      "expectedRoute": "local",
+      "route": "local",
+      "expectedLanguage": "en",
+      "latencyMs": 0.5,
+      "selectedSlice": "products",
+      "actions": [
+        "OPEN_PRODUCT"
+      ],
+      "answer": "Shared Product is the current product answer: watch.\nWhy: 60 orders, 24 delivered, NDR 40%, break-even CPA 50 SAR.\nNext move: Keep watching until shared decision rules are available.",
+      "failures": [],
+      "passed": true
+    },
+    {
+      "id": "products-high-cpa-en",
+      "category": "products",
+      "userMessage": "highest CPA products",
+      "expectedRoute": "mirror",
+      "route": "mirror",
+      "expectedLanguage": "en",
+      "latencyMs": 0.4,
+      "selectedSlice": "products",
+      "actions": [
+        "OPEN_PRODUCT"
+      ],
+      "answer": "Products ranked for this decision:\n1. Shared Product - 60 orders, 24 delivered, NDR 40%, break-even CPA 50 SAR, P&L 3000 SAR\n2. Second Product - 32 orders, 24 delivered, NDR 75%, break-even CPA 78.13 SAR, P&L 2500 SAR\nWhy: 60 orders, 24 delivered, NDR 40%, break-even CPA 50 SAR.\nNext move: Keep watching until shared decision rules are available.",
+      "failures": [],
+      "passed": true
+    },
+    {
+      "id": "products-best-ar",
+      "category": "products",
+      "userMessage": "ما أفضل المنتجات؟",
+      "expectedRoute": "mirror",
+      "route": "mirror",
+      "expectedLanguage": "ar",
+      "latencyMs": 0.9,
+      "selectedSlice": "products",
+      "actions": [
+        "OPEN_PRODUCT"
+      ],
+      "answer": "المنتجات بالترتيب:\n1. Shared Product - 60 طلب، 24 طلب مسلم، NDR 40%، حد CPA للتعادل 50 SAR، صافي الربح والخسارة 3000 SAR\n2. Second Product - 32 طلب، 24 طلب مسلم، NDR 75%، حد CPA للتعادل 78.13 SAR، صافي الربح والخسارة 2500 SAR\nالدليل: 60 طلب، 24 طلب مسلم، NDR 40%، حد CPA للتعادل 50 SAR.\nالخطوة الجاية: عالج أول سبب خسارة قبل ما تزود الصرف.",
+      "failures": [],
+      "passed": true
+    },
+    {
+      "id": "products-pause-ar",
+      "category": "products",
+      "userMessage": "أي منتج أوقفه؟",
+      "expectedRoute": "local",
+      "route": "local",
+      "expectedLanguage": "ar",
+      "latencyMs": 0.7,
+      "selectedSlice": "products",
+      "actions": [
+        "OPEN_PRODUCT"
+      ],
+      "answer": "المنتج الأولى الآن: Shared Product.\nالدليل: 60 طلب، 24 طلب مسلم، NDR 40%، حد CPA للتعادل 50 SAR.\nالخطوة الجاية: عالج أول سبب خسارة قبل ما تزود الصرف.",
+      "failures": [],
+      "passed": true
+    },
+    {
+      "id": "cities-scale-en",
+      "category": "cities",
+      "userMessage": "best cities to scale",
+      "expectedRoute": "mirror",
+      "route": "mirror",
+      "expectedLanguage": "en",
+      "latencyMs": 0.9,
+      "selectedSlice": "cities",
+      "actions": [
+        "OPEN_CITY"
+      ],
+      "answer": "Best cities to scale:\n1. StrongMeaningful - 50 orders, 40 delivered, NDR 80%, Earned Profit After Tax 3200 SAR\n2. WeakMeaningful - 40 orders, 8 delivered, NDR 20%, Earned Profit After Tax 800 SAR\n3. TinyRaw - 2 orders, 0 delivered, NDR 0%, Earned Profit After Tax 10 SAR\nWhy: 50 orders, 40 delivered, NDR 80%, Earned Profit After Tax 3200 SAR.\nNext move: Test this city with a small budget cap and watch NDR.",
+      "failures": [],
+      "passed": true
+    },
+    {
+      "id": "cities-weak-en",
+      "category": "cities",
+      "userMessage": "weakest cities",
+      "expectedRoute": "mirror",
+      "route": "mirror",
+      "expectedLanguage": "en",
+      "latencyMs": 0.5,
+      "selectedSlice": "cities",
+      "actions": [
+        "OPEN_CITY"
+      ],
+      "answer": "Cities to fix first:\n1. TinyRaw - 2 orders, 0 delivered, NDR 0%, Earned Profit After Tax 10 SAR\n2. WeakMeaningful - 40 orders, 8 delivered, NDR 20%, Earned Profit After Tax 800 SAR\n3. StrongMeaningful - 50 orders, 40 delivered, NDR 80%, Earned Profit After Tax 3200 SAR\nWhy: 2 orders, 0 delivered, NDR 0%, Earned Profit After Tax 10 SAR.\nNext move: Fix delivery quality before adding spend.",
+      "failures": [],
+      "passed": true
+    },
+    {
+      "id": "cities-riyadh-why-en",
+      "category": "cities",
+      "userMessage": "why is delivery bad in Riyadh?",
+      "expectedRoute": "local-plus-gemini",
+      "route": "local-plus-gemini",
+      "expectedLanguage": "en",
+      "latencyMs": 0.5,
+      "selectedSlice": "cities",
+      "actions": [
+        "OPEN_CITY"
+      ],
+      "answer": "Best city to scale now is StrongMeaningful.\nWhy: 50 orders, 40 delivered, NDR 80%, Earned Profit After Tax 3200 SAR.\nNext move: Test this city with a small budget cap and watch NDR.",
+      "failures": [],
+      "passed": true
+    },
+    {
+      "id": "cities-scale-ar",
+      "category": "cities",
+      "userMessage": "ما أفضل المدن للتوسع؟",
+      "expectedRoute": "mirror",
+      "route": "mirror",
+      "expectedLanguage": "ar",
+      "latencyMs": 0.5,
+      "selectedSlice": "cities",
+      "actions": [
+        "OPEN_CITY"
+      ],
+      "answer": "أفضل المدن للتوسع:\n1. StrongMeaningful - 50 طلب، 40 طلب مسلم، NDR 80%، الربح المحقق بعد الضريبة 3200 SAR\n2. WeakMeaningful - 40 طلب، 8 طلب مسلم، NDR 20%، الربح المحقق بعد الضريبة 800 SAR\n3. TinyRaw - 2 طلب، 0 طلب مسلم، NDR 0%، الربح المحقق بعد الضريبة 10 SAR\nالدليل: 50 طلب، 40 طلب مسلم، NDR 80%، الربح المحقق بعد الضريبة 3200 SAR.\nالخطوة الجاية: اختبر بميزانية صغيرة وسقف واضح، ووقف لو NDR أو CPA اتحركوا ضدك.",
+      "failures": [],
+      "passed": true
+    },
+    {
+      "id": "cities-weak-ar",
+      "category": "cities",
+      "userMessage": "ما أضعف المدن؟",
+      "expectedRoute": "mirror",
+      "route": "mirror",
+      "expectedLanguage": "ar",
+      "latencyMs": 0.4,
+      "selectedSlice": "cities",
+      "actions": [
+        "OPEN_CITY"
+      ],
+      "answer": "المدن التي تحتاج إصلاحًا أولًا:\n1. TinyRaw - 2 طلب، 0 طلب مسلم، NDR 0%، الربح المحقق بعد الضريبة 10 SAR\n2. WeakMeaningful - 40 طلب، 8 طلب مسلم، NDR 20%، الربح المحقق بعد الضريبة 800 SAR\n3. StrongMeaningful - 50 طلب، 40 طلب مسلم، NDR 80%، الربح المحقق بعد الضريبة 3200 SAR\nالدليل: 2 طلب، 0 طلب مسلم، NDR 0%، الربح المحقق بعد الضريبة 10 SAR.\nالخطوة الجاية: عالج أول سبب خسارة قبل ما تزود الصرف.",
+      "failures": [],
+      "passed": true
+    },
+    {
+      "id": "cities-weak-ndr-ar",
+      "category": "cities",
+      "userMessage": "أضعف المدن في NDR",
+      "expectedRoute": "mirror",
+      "route": "mirror",
+      "expectedLanguage": "ar",
+      "latencyMs": 0.4,
+      "selectedSlice": "cities",
+      "actions": [
+        "OPEN_CITY"
+      ],
+      "answer": "المدن التي تحتاج إصلاحًا أولًا:\n1. TinyRaw - 2 طلب، 0 طلب مسلم، NDR 0%، الربح المحقق بعد الضريبة 10 SAR\n2. WeakMeaningful - 40 طلب، 8 طلب مسلم، NDR 20%، الربح المحقق بعد الضريبة 800 SAR\n3. StrongMeaningful - 50 طلب، 40 طلب مسلم، NDR 80%، الربح المحقق بعد الضريبة 3200 SAR\nالدليل: 2 طلب، 0 طلب مسلم، NDR 0%، الربح المحقق بعد الضريبة 10 SAR.\nالخطوة الجاية: عالج أول سبب خسارة قبل ما تزود الصرف.",
+      "failures": [],
+      "passed": true
+    },
+    {
+      "id": "cities-worst-ar",
+      "category": "cities",
+      "userMessage": "أسوأ المدن",
+      "expectedRoute": "mirror",
+      "route": "mirror",
+      "expectedLanguage": "ar",
+      "latencyMs": 1.1,
+      "selectedSlice": "cities",
+      "actions": [
+        "OPEN_CITY"
+      ],
+      "answer": "المدن التي تحتاج إصلاحًا أولًا:\n1. TinyRaw - 2 طلب، 0 طلب مسلم، NDR 0%، الربح المحقق بعد الضريبة 10 SAR\n2. WeakMeaningful - 40 طلب، 8 طلب مسلم، NDR 20%، الربح المحقق بعد الضريبة 800 SAR\n3. StrongMeaningful - 50 طلب، 40 طلب مسلم، NDR 80%، الربح المحقق بعد الضريبة 3200 SAR\nالدليل: 2 طلب، 0 طلب مسلم، NDR 0%، الربح المحقق بعد الضريبة 10 SAR.\nالخطوة الجاية: عالج أول سبب خسارة قبل ما تزود الصرف.",
+      "failures": [],
+      "passed": true
+    },
+    {
+      "id": "campaign-waste-en",
+      "category": "campaigns",
+      "userMessage": "which campaign wastes spend?",
+      "expectedRoute": "mirror",
+      "route": "mirror",
+      "expectedLanguage": "en",
+      "latencyMs": 0.5,
+      "selectedSlice": "campaigns",
+      "actions": [
+        "OPEN_PAGE"
+      ],
+      "answer": "Scale Winner is the campaign to review first: watch.\nWhy: 700 SAR spend, 50 Taager orders, CPA 14.\nNext move: Keep watching until shared decision rules are available.",
+      "failures": [],
+      "passed": true
+    },
+    {
+      "id": "campaign-reduce-en",
+      "category": "campaigns",
+      "userMessage": "what campaign should I reduce?",
+      "expectedRoute": "local-plus-gemini",
+      "route": "local-plus-gemini",
+      "expectedLanguage": "en",
+      "latencyMs": 0.5,
+      "selectedSlice": "campaigns",
+      "actions": [
+        "OPEN_PAGE"
+      ],
+      "answer": "Scale Winner is the campaign to review first: watch.\nWhy: 700 SAR spend, 50 Taager orders, CPA 14.\nNext move: Keep watching until shared decision rules are available.",
+      "failures": [],
+      "passed": true
+    },
+    {
+      "id": "campaign-creative-en",
+      "category": "campaigns",
+      "userMessage": "what creative should I test?",
+      "expectedRoute": "local-plus-gemini",
+      "route": "local-plus-gemini",
+      "expectedLanguage": "en",
+      "latencyMs": 0.5,
+      "selectedSlice": "campaigns",
+      "actions": [
+        "OPEN_PAGE"
+      ],
+      "answer": "Scale Winner is the campaign to review first: watch.\nWhy: 700 SAR spend, 50 Taager orders, CPA 14.\nNext move: Keep watching until shared decision rules are available.",
+      "failures": [],
+      "passed": true
+    },
+    {
+      "id": "campaign-reduce-ar",
+      "category": "campaigns",
+      "userMessage": "أي حملة أقلل صرفها؟",
+      "expectedRoute": "mirror",
+      "route": "mirror",
+      "expectedLanguage": "ar",
+      "latencyMs": 0.5,
+      "selectedSlice": "campaigns",
+      "actions": [
+        "OPEN_PAGE"
+      ],
+      "answer": "الحملة الأولى بالمراجعة: Scale Winner.\nالدليل: 700 SAR إنفاق، 50 طلب، تكلفة CPA 14 SAR.\nالخطوة الجاية: عالج أول سبب خسارة قبل ما تزود الصرف.",
+      "failures": [],
+      "passed": true
+    },
+    {
+      "id": "cpa-account-en",
+      "category": "cpa",
+      "userMessage": "what is my CPA?",
+      "expectedRoute": "local",
+      "route": "local",
+      "expectedLanguage": "en",
+      "latencyMs": 0.5,
+      "selectedSlice": "account",
+      "actions": [
+        "OPEN_PAGE"
+      ],
+      "answer": "Account CPA is currently 12.5 SAR.\nWhy: 92 orders, 2750 SAR spend, NDR 52%.\nNext move: Watch CPA together with NDR before adding spend.",
+      "failures": [],
+      "passed": true
+    },
+    {
+      "id": "cpa-break-even-en",
+      "category": "cpa",
+      "userMessage": "what is break-even CPA?",
+      "expectedRoute": "local",
+      "route": "local",
+      "expectedLanguage": "en",
+      "latencyMs": 0.4,
+      "selectedSlice": "account",
+      "actions": [
+        "OPEN_PAGE"
+      ],
+      "answer": "Account health is healthy.\nWhy: 92 orders, NDR 52%, CPA 12.5 SAR.\nNext move: Start with TinyRaw.",
+      "failures": [],
+      "passed": true
+    },
+    {
+      "id": "cpa-spend-en",
+      "category": "cpa",
+      "userMessage": "if I spend 500 SAR what happens?",
+      "expectedRoute": "local",
+      "route": "local",
+      "expectedLanguage": "en",
+      "latencyMs": 0.5,
+      "selectedSlice": "campaigns",
+      "actions": [
+        "OPEN_PAGE"
+      ],
+      "answer": "Scale Winner is the campaign to review first: watch.\nWhy: 700 SAR spend, 50 Taager orders, CPA 14.\nNext move: Keep watching until shared decision rules are available.",
+      "failures": [],
+      "passed": true
+    },
+    {
+      "id": "cpa-account-ar",
+      "category": "cpa",
+      "userMessage": "ما هي تكلفة CPA؟",
+      "expectedRoute": "local",
+      "route": "local",
+      "expectedLanguage": "ar",
+      "latencyMs": 0.6,
+      "selectedSlice": "account",
+      "actions": [
+        "OPEN_PAGE"
+      ],
+      "answer": "تكلفة CPA للحساب حاليًا 12.5 SAR.\nالدليل: 92 طلب، إنفاق 2750 SAR، NDR 52%.\nالخطوة الجاية: راقب CPA مع NDR قبل أي زيادة في الصرف.",
+      "failures": [],
+      "passed": true
+    },
+    {
+      "id": "profit-best-city-en",
+      "category": "profit",
+      "userMessage": "what is my best city by profit?",
+      "expectedRoute": "mirror",
+      "route": "mirror",
+      "expectedLanguage": "en",
+      "latencyMs": 0.4,
+      "selectedSlice": "cities",
+      "actions": [
+        "OPEN_CITY"
+      ],
+      "answer": "Best city to scale now is StrongMeaningful.\nWhy: 50 orders, 40 delivered, NDR 80%, Earned Profit After Tax 3200 SAR.\nNext move: Test this city with a small budget cap and watch NDR.",
+      "failures": [],
+      "passed": true
+    },
+    {
+      "id": "profit-why-weak-en",
+      "category": "profit",
+      "userMessage": "why is profit weak?",
+      "expectedRoute": "local-plus-gemini",
+      "route": "local-plus-gemini",
+      "expectedLanguage": "en",
+      "latencyMs": 0.5,
+      "selectedSlice": "account",
+      "actions": [
+        "OPEN_PAGE"
+      ],
+      "answer": "The account is not currently losing money, but profit is weak.\nWhy: NDR is 52% and net profit is 5050 SAR.\nNext move: Review TinyRaw first, and pause scaling until NDR and CPA improve.",
+      "failures": [],
+      "passed": true
+    },
+    {
+      "id": "profit-why-weak-ar",
+      "category": "profit",
+      "userMessage": "لماذا الربح ضعيف؟",
+      "expectedRoute": "local-plus-gemini",
+      "route": "local-plus-gemini",
+      "expectedLanguage": "ar",
+      "latencyMs": 0.5,
+      "selectedSlice": "account",
+      "actions": [
+        "OPEN_PAGE"
+      ],
+      "answer": "الحساب ليس خاسرًا حاليًا، لكن الربح ضعيف.\nالدليل: NDR 52% وصافي الربح 5050 SAR.\nالخطوة الجاية: راجع TinyRaw أولًا، وأوقف التوسع حتى يتحسن NDR و CPA.",
+      "failures": [],
+      "passed": true
+    },
+    {
+      "id": "ndr-account-en",
+      "category": "ndr",
+      "userMessage": "what is my NDR?",
+      "expectedRoute": "local",
+      "route": "local",
+      "expectedLanguage": "en",
+      "latencyMs": 0.4,
+      "selectedSlice": "account",
+      "actions": [
+        "OPEN_PAGE"
+      ],
+      "answer": "Account health is healthy.\nWhy: 92 orders, NDR 52%, CPA 12.5 SAR.\nNext move: Start with TinyRaw.",
+      "failures": [],
+      "passed": true
+    },
+    {
+      "id": "ndr-low-cities-en",
+      "category": "ndr",
+      "userMessage": "which cities have the lowest NDR?",
+      "expectedRoute": "mirror",
+      "route": "mirror",
+      "expectedLanguage": "en",
+      "latencyMs": 0.4,
+      "selectedSlice": "cities",
+      "actions": [
+        "OPEN_CITY"
+      ],
+      "answer": "Cities to fix first:\n1. TinyRaw - 2 orders, 0 delivered, NDR 0%, Earned Profit After Tax 10 SAR\n2. WeakMeaningful - 40 orders, 8 delivered, NDR 20%, Earned Profit After Tax 800 SAR\n3. StrongMeaningful - 50 orders, 40 delivered, NDR 80%, Earned Profit After Tax 3200 SAR\nWhy: 2 orders, 0 delivered, NDR 0%, Earned Profit After Tax 10 SAR.\nNext move: Fix delivery quality before adding spend.",
+      "failures": [],
+      "passed": true
+    },
+    {
+      "id": "ndr-improve-ar",
+      "category": "ndr",
+      "userMessage": "كيف أحسن NDR؟",
+      "expectedRoute": "local-plus-gemini",
+      "route": "local-plus-gemini",
+      "expectedLanguage": "ar",
+      "latencyMs": 0.5,
+      "selectedSlice": "account",
+      "actions": [
+        "OPEN_PAGE"
+      ],
+      "answer": "صحة الحساب جيدة.\nالدليل: 92 طلب، NDR 52%، تكلفة CPA 12.5 SAR.\nالخطوة الجاية: ابدأ بـ TinyRaw.",
+      "failures": [],
+      "passed": true
+    },
+    {
+      "id": "scale-next-en",
+      "category": "scaling",
+      "userMessage": "what should I scale?",
+      "expectedRoute": "local-plus-gemini",
+      "route": "local-plus-gemini",
+      "expectedLanguage": "en",
+      "latencyMs": 0.4,
+      "selectedSlice": "products",
+      "actions": [
+        "OPEN_PRODUCT"
+      ],
+      "answer": "Shared Product is the current product answer: watch.\nWhy: 60 orders, 24 delivered, NDR 40%, break-even CPA 50 SAR.\nNext move: Keep watching until shared decision rules are available.",
+      "failures": [],
+      "passed": true
+    },
+    {
+      "id": "scale-next-ar",
+      "category": "scaling",
+      "userMessage": "ما الذي أوسعه؟",
+      "expectedRoute": "local-plus-gemini",
+      "route": "local-plus-gemini",
+      "expectedLanguage": "ar",
+      "latencyMs": 0.5,
+      "selectedSlice": "account",
+      "actions": [
+        "OPEN_PAGE"
+      ],
+      "answer": "صحة الحساب جيدة.\nالدليل: 92 طلب، NDR 52%، تكلفة CPA 12.5 SAR.\nالخطوة الجاية: ابدأ بـ TinyRaw.",
+      "failures": [],
+      "passed": true
+    },
+    {
+      "id": "operator-next-en",
+      "category": "planning",
+      "userMessage": "what should I do next?",
+      "expectedRoute": "local",
+      "route": "local",
+      "expectedLanguage": "en",
+      "latencyMs": 0.4,
+      "selectedSlice": "plan",
+      "actions": [
+        "OPEN_CITY"
+      ],
+      "answer": "Priority now: TinyRaw.\nWhy: 2 orders, 0 delivered, NDR 0%, Earned Profit After Tax 10 SAR.\nNext move: Fix delivery quality before adding spend.",
+      "failures": [],
+      "passed": true
+    },
+    {
+      "id": "operator-next-ar",
+      "category": "planning",
+      "userMessage": "ماذا أفعل بعد ذلك؟",
+      "expectedRoute": "local",
+      "route": "local",
+      "expectedLanguage": "ar",
+      "latencyMs": 0.5,
+      "selectedSlice": "plan",
+      "actions": [
+        "OPEN_CITY"
+      ],
+      "answer": "الأولوية الآن: TinyRaw.\nالدليل: 2 طلب، 0 طلب مسلم، NDR 0%، الربح المحقق بعد الضريبة 10 SAR.\nالخطوة الجاية: عالج أول سبب خسارة قبل ما تزود الصرف.",
+      "failures": [],
+      "passed": true
+    },
+    {
+      "id": "plan-scale-en",
+      "category": "planning",
+      "userMessage": "build a scale plan",
+      "expectedRoute": "local-plus-gemini",
+      "route": "local-plus-gemini",
+      "expectedLanguage": "en",
+      "latencyMs": 0.4,
+      "selectedSlice": "plan",
+      "actions": [
+        "OPEN_CITY"
+      ],
+      "answer": "Quick plan: StrongMeaningful.\nWhy: 50 orders, 40 delivered, NDR 80%, Earned Profit After Tax 3200 SAR.\nSteps:\n1. Start with a small capped test for StrongMeaningful.\n2. Check NDR and CPA after each increase.\n3. Raise spend gradually only while results stay stable.\nStop rules: Stop scaling if NDR drops or CPA rises above break-even CPA.\nWatch: NDR 80%, CPA 12.5 SAR, 40 delivered orders, Earned Profit After Tax 3200 SAR.",
+      "failures": [],
+      "passed": true
+    },
+    {
+      "id": "plan-scale-ar",
+      "category": "planning",
+      "userMessage": "ابنِ خطة توسع",
+      "expectedRoute": "local-plus-gemini",
+      "route": "local-plus-gemini",
+      "expectedLanguage": "ar",
+      "latencyMs": 0.5,
+      "selectedSlice": "plan",
+      "actions": [
+        "OPEN_CITY"
+      ],
+      "answer": "الخطة المختصرة: StrongMeaningful.\nلماذا: 50 طلب، 40 طلب مسلم، NDR 80%، الربح المحقق بعد الضريبة 3200 SAR.\nالخطوات:\n1. ابدأ باختبار صغير وميزانية محدودة لـ StrongMeaningful.\n2. راقب NDR و CPA بعد كل زيادة.\n3. زد الصرف تدريجيًا فقط عند ثبات النتائج.\nحدود الإيقاف: أوقف التوسع إذا انخفض NDR أو تجاوز CPA حد التعادل.\nراقب: NDR 80%، CPA 12.5 SAR، 40 طلب مسلم، الربح المحقق بعد الضريبة 3200 SAR.",
+      "failures": [],
+      "passed": true
+    },
+    {
+      "id": "plan-fix-first-en",
+      "category": "planning",
+      "userMessage": "give me a fix-first plan",
+      "expectedRoute": "local-plus-gemini",
+      "route": "local-plus-gemini",
+      "expectedLanguage": "en",
+      "latencyMs": 1,
+      "selectedSlice": "plan",
+      "actions": [
+        "OPEN_CITY"
+      ],
+      "answer": "Quick plan: StrongMeaningful.\nWhy: 50 orders, 40 delivered, NDR 80%, Earned Profit After Tax 3200 SAR.\nSteps:\n1. Start with a small capped test for StrongMeaningful.\n2. Check NDR and CPA after each increase.\n3. Raise spend gradually only while results stay stable.\nStop rules: Stop scaling if NDR drops or CPA rises above break-even CPA.\nWatch: NDR 80%, CPA 12.5 SAR, 40 delivered orders, Earned Profit After Tax 3200 SAR.",
+      "failures": [],
+      "passed": true
+    },
+    {
+      "id": "forecast-month-en",
+      "category": "forecasting",
+      "userMessage": "forecast next month",
+      "expectedRoute": "local-plus-gemini",
+      "route": "local-plus-gemini",
+      "expectedLanguage": "en",
+      "latencyMs": 0.7,
+      "selectedSlice": "account",
+      "actions": [
+        "OPEN_PAGE"
+      ],
+      "answer": "Account health is healthy.\nWhy: 92 orders, NDR 52%, CPA 12.5 SAR.\nNext move: Start with TinyRaw.",
+      "failures": [],
+      "passed": true
+    },
+    {
+      "id": "forecast-spend-en",
+      "category": "forecasting",
+      "userMessage": "what happens if I double spend?",
+      "expectedRoute": "local-plus-gemini",
+      "route": "local-plus-gemini",
+      "expectedLanguage": "en",
+      "latencyMs": 0.5,
+      "selectedSlice": "campaigns",
+      "actions": [
+        "OPEN_PAGE"
+      ],
+      "answer": "Scale Winner is the campaign to review first: watch.\nWhy: 700 SAR spend, 50 Taager orders, CPA 14.\nNext move: Keep watching until shared decision rules are available.",
+      "failures": [],
+      "passed": true
+    },
+    {
+      "id": "forecast-month-ar",
+      "category": "forecasting",
+      "userMessage": "توقع الشهر القادم",
+      "expectedRoute": "local-plus-gemini",
+      "route": "local-plus-gemini",
+      "expectedLanguage": "ar",
+      "latencyMs": 0.5,
+      "selectedSlice": "account",
+      "actions": [
+        "OPEN_PAGE"
+      ],
+      "answer": "صحة الحساب جيدة.\nالدليل: 92 طلب، NDR 52%، تكلفة CPA 12.5 SAR.\nالخطوة الجاية: ابدأ بـ TinyRaw.",
+      "failures": [],
+      "passed": true
+    },
+    {
+      "id": "compare-cities-en",
+      "category": "comparisons",
+      "userMessage": "compare Riyadh vs Jeddah",
+      "expectedRoute": "local",
+      "route": "local",
+      "expectedLanguage": "en",
+      "latencyMs": 0.5,
+      "selectedSlice": "account",
+      "actions": [
+        "OPEN_PAGE"
+      ],
+      "answer": "Account health is healthy.\nWhy: 92 orders, NDR 52%, CPA 12.5 SAR.\nNext move: Start with TinyRaw.",
+      "failures": [],
+      "passed": true
+    },
+    {
+      "id": "compare-products-en",
+      "category": "comparisons",
+      "userMessage": "compare Product X vs Stable Winner",
+      "expectedRoute": "local",
+      "route": "local",
+      "expectedLanguage": "en",
+      "latencyMs": 0.5,
+      "selectedSlice": "products",
+      "actions": [
+        "OPEN_PRODUCT"
+      ],
+      "answer": "Shared Product is the current product answer: watch.\nWhy: 60 orders, 24 delivered, NDR 40%, break-even CPA 50 SAR.\nNext move: Keep watching until shared decision rules are available.",
+      "failures": [],
+      "passed": true
+    },
+    {
+      "id": "compare-cities-mixed",
+      "category": "mixed-language",
+      "userMessage": "compare الرياض vs Jeddah",
+      "expectedRoute": "local",
+      "route": "local",
+      "expectedLanguage": "ar",
+      "latencyMs": 0.5,
+      "selectedSlice": "account",
+      "actions": [
+        "OPEN_PAGE"
+      ],
+      "answer": "صحة الحساب جيدة.\nالدليل: 92 طلب، NDR 52%، تكلفة CPA 12.5 SAR.\nالخطوة الجاية: ابدأ بـ TinyRaw.",
+      "failures": [],
+      "passed": true
+    },
+    {
+      "id": "typo-city-en",
+      "category": "typos",
+      "userMessage": "bst cities to scle",
+      "expectedRoute": "mirror",
+      "route": "mirror",
+      "expectedLanguage": "en",
+      "latencyMs": 0.5,
+      "selectedSlice": "cities",
+      "actions": [
+        "OPEN_CITY"
+      ],
+      "answer": "Best cities to scale:\n1. StrongMeaningful - 50 orders, 40 delivered, NDR 80%, Earned Profit After Tax 3200 SAR\n2. WeakMeaningful - 40 orders, 8 delivered, NDR 20%, Earned Profit After Tax 800 SAR\n3. TinyRaw - 2 orders, 0 delivered, NDR 0%, Earned Profit After Tax 10 SAR\nWhy: 50 orders, 40 delivered, NDR 80%, Earned Profit After Tax 3200 SAR.\nNext move: Test this city with a small budget cap and watch NDR.",
+      "failures": [],
+      "passed": true
+    },
+    {
+      "id": "typo-cpa-mixed",
+      "category": "typos",
+      "userMessage": "wht is my CPA للحساب",
+      "expectedRoute": "local",
+      "route": "local",
+      "expectedLanguage": "ar",
+      "latencyMs": 0.6,
+      "selectedSlice": "account",
+      "actions": [
+        "OPEN_PAGE"
+      ],
+      "answer": "تكلفة CPA للحساب حاليًا 12.5 SAR.\nالدليل: 92 طلب، إنفاق 2750 SAR، NDR 52%.\nالخطوة الجاية: راقب CPA مع NDR قبل أي زيادة في الصرف.",
+      "failures": [],
+      "passed": true
+    },
+    {
+      "id": "mixed-scale-ar",
+      "category": "mixed-language",
+      "userMessage": "اعمل scale plan سريع",
+      "expectedRoute": "local-plus-gemini",
+      "route": "local-plus-gemini",
+      "expectedLanguage": "ar",
+      "latencyMs": 0.5,
+      "selectedSlice": "plan",
+      "actions": [
+        "OPEN_CITY"
+      ],
+      "answer": "الخطة المختصرة: StrongMeaningful.\nلماذا: 50 طلب، 40 طلب مسلم، NDR 80%، الربح المحقق بعد الضريبة 3200 SAR.\nالخطوات:\n1. ابدأ باختبار صغير وميزانية محدودة لـ StrongMeaningful.\n2. راقب NDR و CPA بعد كل زيادة.\n3. زد الصرف تدريجيًا فقط عند ثبات النتائج.\nحدود الإيقاف: أوقف التوسع إذا انخفض NDR أو تجاوز CPA حد التعادل.\nراقب: NDR 80%، CPA 12.5 SAR، 40 طلب مسلم، الربح المحقق بعد الضريبة 3200 SAR.",
+      "failures": [],
+      "passed": true
+    },
+    {
+      "id": "ambiguous-product-en",
+      "category": "ambiguity",
+      "userMessage": "what about this product?",
+      "expectedRoute": "followup",
+      "route": "followup",
+      "expectedLanguage": "en",
+      "latencyMs": 0.2,
+      "selectedSlice": "products",
+      "actions": [],
+      "answer": "I can help with the dashboard. Specify the product, city, metric, or decision you want to analyze.",
+      "failures": [],
+      "passed": true
+    },
+    {
+      "id": "ambiguous-next-en",
+      "category": "ambiguity",
+      "userMessage": "show me the next one",
+      "expectedRoute": "followup",
+      "route": "followup",
+      "expectedLanguage": "en",
+      "latencyMs": 0.1,
+      "selectedSlice": "account",
+      "actions": [],
+      "answer": "I can help with the dashboard. Specify the product, city, metric, or decision you want to analyze.",
+      "failures": [],
+      "passed": true
+    },
+    {
+      "id": "ambiguous-product-ar",
+      "category": "ambiguity",
+      "userMessage": "ماذا عن هذا المنتج؟",
+      "expectedRoute": "followup",
+      "route": "followup",
+      "expectedLanguage": "ar",
+      "latencyMs": 0.1,
+      "selectedSlice": "products",
+      "actions": [],
+      "answer": "أقدر أساعدك في بيانات الداشبورد. حدد المنتج أو المدينة أو المؤشر أو القرار الذي تريد تحليله.",
+      "failures": [],
+      "passed": true
+    },
+    {
+      "id": "followup-why-en",
+      "category": "follow-ups",
+      "userMessage": "why?",
+      "expectedRoute": "followup",
+      "route": "followup",
+      "expectedLanguage": "en",
+      "latencyMs": 0.1,
+      "selectedSlice": "account",
+      "actions": [],
+      "answer": "I can help with the dashboard. Specify the product, city, metric, or decision you want to analyze.",
+      "failures": [],
+      "passed": true
+    },
+    {
+      "id": "followup-steps-en",
+      "category": "follow-ups",
+      "userMessage": "do it step by step",
+      "expectedRoute": "followup",
+      "route": "followup",
+      "expectedLanguage": "en",
+      "latencyMs": 0.1,
+      "selectedSlice": "account",
+      "actions": [],
+      "answer": "I can help with the dashboard. Specify the product, city, metric, or decision you want to analyze.",
+      "failures": [],
+      "passed": true
+    },
+    {
+      "id": "followup-why-ar",
+      "category": "follow-ups",
+      "userMessage": "ليه؟",
+      "expectedRoute": "followup",
+      "route": "followup",
+      "expectedLanguage": "ar",
+      "latencyMs": 0.1,
+      "selectedSlice": "account",
+      "actions": [],
+      "answer": "أقدر أساعدك في بيانات الداشبورد. حدد المنتج أو المدينة أو المؤشر أو القرار الذي تريد تحليله.",
+      "failures": [],
+      "passed": true
+    },
+    {
+      "id": "out-scope-weather-en",
+      "category": "out-of-scope",
+      "userMessage": "what is the weather tomorrow?",
+      "expectedRoute": "followup",
+      "route": "followup",
+      "expectedLanguage": "en",
+      "latencyMs": 0.1,
+      "selectedSlice": "account",
+      "actions": [],
+      "answer": "I can help with the dashboard. Specify the product, city, metric, or decision you want to analyze.",
+      "failures": [],
+      "passed": true
+    },
+    {
+      "id": "out-scope-poem-ar",
+      "category": "out-of-scope",
+      "userMessage": "اكتب لي قصيدة",
+      "expectedRoute": "followup",
+      "route": "followup",
+      "expectedLanguage": "ar",
+      "latencyMs": 0.1,
+      "selectedSlice": "account",
+      "actions": [],
+      "answer": "أقدر أساعدك في بيانات الداشبورد. حدد المنتج أو المدينة أو المؤشر أو القرار الذي تريد تحليله.",
+      "failures": [],
+      "passed": true
+    }
+  ]
+}

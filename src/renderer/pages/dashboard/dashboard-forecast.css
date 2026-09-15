@@ -1,0 +1,177 @@
+
+#page-dashboard .s9-dashboard-pagination {
+  margin-top: 0;
+}
+
+#page-dashboard .s9-dashboard-pagination .dash-pagination-spacer,
+#page-dashboard .s9-dashboard-pagination .dash-pagination-info {
+  display: none;
+}
+#page-dashboard .s9-profit-cell.s9-profit-negative,
+#page-dashboard .s9-profit-value.s9-profit-negative {
+  color: #ef4444 !important;
+  -webkit-text-fill-color: #ef4444 !important;
+}
+[data-theme="light"] #page-dashboard .s9-profit-cell.s9-profit-positive,
+[data-theme="light"] #page-dashboard .s9-profit-value.s9-profit-positive {
+  color: #10b981 !important;
+  -webkit-text-fill-color: #10b981 !important;
+}
+[data-theme="dark"] #page-dashboard .s9-profit-cell.s9-profit-positive,
+[data-theme="dark"] #page-dashboard .s9-profit-value.s9-profit-positive,
+#page-dashboard .s9-profit-cell.s9-profit-positive,
+#page-dashboard .s9-profit-value.s9-profit-positive {
+  color: #00e676 !important;
+  -webkit-text-fill-color: #00e676 !important;
+}
+[data-theme="light"] #page-dashboard .s9-profit-cell.s9-profit-zero,
+[data-theme="light"] #page-dashboard .s9-profit-value.s9-profit-zero {
+  color: #6b7280 !important;
+  -webkit-text-fill-color: #6b7280 !important;
+}
+[data-theme="dark"] #page-dashboard .s9-profit-cell.s9-profit-zero,
+[data-theme="dark"] #page-dashboard .s9-profit-value.s9-profit-zero,
+#page-dashboard .s9-profit-cell.s9-profit-zero,
+#page-dashboard .s9-profit-value.s9-profit-zero {
+  color:var(--dash-text-muted) !important;
+  -webkit-text-fill-color:var(--dash-text-muted) !important;
+}
+
+[data-theme="light"] #page-dashboard .s9-root {
+  background: var(--dash-bg) !important;
+  color: var(--dash-text) !important;
+}
+
+[data-theme="light"] #page-dashboard .s9-table-container {
+  border-left-color: var(--dash-border-soft) !important;
+  background: var(--dash-bg) !important;
+}
+
+[data-theme="light"] #page-dashboard .s9-sim-container {
+  background: var(--dash-surface) !important;
+  border-color: var(--dash-border-soft) !important;
+  color: var(--dash-text) !important;
+}
+
+[data-theme="light"] #page-dashboard .s9-clear-sort,
+[data-theme="light"] #page-dashboard .s9-platform-tab,
+[data-theme="light"] #page-dashboard .s9-page-prev,
+[data-theme="light"] #page-dashboard .s9-page-next {
+  color: var(--dash-text-muted) !important;
+  border-color: var(--dash-border-soft) !important;
+}
+
+[data-theme="light"] #page-dashboard .s9-platform-tab:hover,
+[data-theme="light"] #page-dashboard .s9-platform-tab.is-active,
+[data-theme="light"] #page-dashboard .s9-sort-btn:hover,
+[data-theme="light"] #page-dashboard .s9-sort-btn.is-active {
+  color: #1d4ed8 !important;
+}
+
+[data-theme="light"] #page-dashboard .s9-spend-input {
+  background: var(--dash-input-bg) !important;
+  border-color: var(--dash-border) !important;
+  color: var(--dash-text) !important;
+  color-scheme: light !important;
+}
+
+[data-theme="light"] #page-dashboard #s9-combine-products,
+[data-theme="light"] #page-dashboard .s9-combine-products-btn {
+  background: rgba(124,58,237,0.08) !important;
+  border-color: rgba(124,58,237,0.28) !important;
+  color: #6d28d9 !important;
+  box-shadow: none !important;
+}
+
+[data-theme="light"] .dash-overlay-scope .s9-combo-dialog {
+  background: #ffffff !important;
+  border-color: var(--dash-border-soft) !important;
+  box-shadow: 0 24px 70px rgba(15,23,42,0.16) !important;
+  color: var(--dash-text) !important;
+}
+
+[data-theme="light"] .dash-overlay-scope .s9-combo-header,
+[data-theme="light"] .dash-overlay-scope .s9-combo-footer,
+[data-theme="light"] .dash-overlay-scope .s9-combo-panel > div:first-child {
+  border-color: var(--dash-border-soft) !important;
+}
+
+[data-theme="light"] .dash-overlay-scope .s9-combo-title,
+[data-theme="light"] .dash-overlay-scope .s9-combo-product-name,
+[data-theme="light"] .dash-overlay-scope .s9-combo-preview-value {
+  color: var(--dash-text) !important;
+}
+
+[data-theme="light"] .dash-overlay-scope .s9-combo-subtitle,
+[data-theme="light"] .dash-overlay-scope .s9-combo-note,
+[data-theme="light"] .dash-overlay-scope .s9-combo-placeholder,
+[data-theme="light"] .dash-overlay-scope .s9-combo-arrow,
+[data-theme="light"] .dash-overlay-scope .s9-combo-empty-preview,
+[data-theme="light"] .dash-overlay-scope .s9-combo-preview-label,
+[data-theme="light"] .dash-overlay-scope .s9-combo-option [style*="rgba(255,255,255,.42)"],
+[data-theme="light"] .dash-overlay-scope .s9-combo-trigger [style*="rgba(255,255,255,.42)"] {
+  color: var(--dash-text-faint) !important;
+}
+
+[data-theme="light"] .dash-overlay-scope .s9-combo-close,
+[data-theme="light"] .dash-overlay-scope .s9-combo-cancel {
+  background: #ffffff !important;
+  border-color: var(--dash-border-soft) !important;
+  color: var(--dash-text-muted) !important;
+}
+
+[data-theme="light"] .dash-overlay-scope .s9-combo-cancel {
+  background: transparent !important;
+}
+
+[data-theme="light"] .dash-overlay-scope .s9-combo-trigger,
+[data-theme="light"] .dash-overlay-scope .s9-combo-preview-card,
+[data-theme="light"] .dash-overlay-scope .s9-combo-empty-preview {
+  background: #f8fafc !important;
+  border-color: var(--dash-border-soft) !important;
+  color: var(--dash-text) !important;
+}
+
+[data-theme="light"] .dash-overlay-scope .s9-combo-panel {
+  background: #ffffff !important;
+  border-color: var(--dash-border-soft) !important;
+  box-shadow: 0 18px 42px rgba(15,23,42,0.14) !important;
+}
+
+[data-theme="light"] .dash-overlay-scope .s9-combo-search {
+  background: #ffffff !important;
+  border-color: var(--dash-border) !important;
+  color: var(--dash-text) !important;
+  color-scheme: light !important;
+}
+
+[data-theme="light"] .dash-overlay-scope .s9-combo-search::placeholder {
+  color: var(--dash-text-disabled) !important;
+}
+
+[data-theme="light"] .dash-overlay-scope .s9-combo-option {
+  color: var(--dash-text) !important;
+}
+
+[data-theme="light"] .dash-overlay-scope .s9-combo-option:hover {
+  background: rgba(59,130,246,0.08) !important;
+}
+
+[data-theme="light"] .dash-overlay-scope .s9-combo-confirm {
+  background: rgba(124,58,237,0.10) !important;
+  border-color: rgba(124,58,237,0.32) !important;
+  color: #6d28d9 !important;
+}
+
+/* Small laptop stabilization: 11-13 inch screens keep density readable without card collisions. */
+@media (max-width: 1399px) {
+
+  #page-dashboard .s9-table-container > div:first-child {
+    padding: 12px 14px !important;
+  }
+
+  #page-dashboard .s9-platform-tabs {
+    gap: 6px !important;
+    overflow-x: auto;
+    padding-bottom: 2px;
+  }}

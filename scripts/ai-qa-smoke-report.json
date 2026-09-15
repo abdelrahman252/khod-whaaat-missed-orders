@@ -1,0 +1,209 @@
+{
+  "mode": "smoke",
+  "generatedAt": "2026-06-14T23:54:14.567Z",
+  "total": 12,
+  "passed": 12,
+  "failed": 0,
+  "categories": {
+    "account-health": 3,
+    "products": 1,
+    "cities": 3,
+    "cpa": 1,
+    "profit": 1,
+    "planning": 3
+  },
+  "results": [
+    {
+      "id": "account-health-en",
+      "category": "account-health",
+      "userMessage": "How is my account doing?",
+      "expectedRoute": "local",
+      "route": "local",
+      "expectedLanguage": "en",
+      "latencyMs": 63,
+      "selectedSlice": "account",
+      "actions": [
+        "OPEN_PAGE"
+      ],
+      "answer": "Account health is healthy.\nWhy: 220 orders, NDR 52%, CPA 12.5 SAR, break-even CPA 31.2 SAR.\nNext move: Start with Jeddah.",
+      "failures": [],
+      "passed": true
+    },
+    {
+      "id": "account-loss-en",
+      "category": "account-health",
+      "userMessage": "Why am I losing?",
+      "expectedRoute": "local-plus-gemini",
+      "route": "local-plus-gemini",
+      "expectedLanguage": "en",
+      "latencyMs": 3.5,
+      "selectedSlice": "account",
+      "actions": [
+        "OPEN_PAGE"
+      ],
+      "answer": "The account is not currently losing money, but profit is weak.\nWhy: NDR is 52% and net profit is 5050 SAR.\nNext move: Review Jeddah first, and pause scaling until NDR and CPA improve.",
+      "failures": [],
+      "passed": true
+    },
+    {
+      "id": "account-loss-ar",
+      "category": "account-health",
+      "userMessage": "ليه بخسر؟",
+      "expectedRoute": "local-plus-gemini",
+      "route": "local-plus-gemini",
+      "expectedLanguage": "ar",
+      "latencyMs": 10,
+      "selectedSlice": "account",
+      "actions": [
+        "OPEN_PAGE"
+      ],
+      "answer": "الحساب ليس خاسرًا حاليًا، لكن الربح ضعيف.\nالدليل: NDR 52% وصافي الربح 5050 SAR.\nالخطوة الجاية: راجع Jeddah أولًا، وأوقف التوسع حتى يتحسن NDR و CPA.",
+      "failures": [],
+      "passed": true
+    },
+    {
+      "id": "products-best-en",
+      "category": "products",
+      "userMessage": "best products",
+      "expectedRoute": "mirror",
+      "route": "mirror",
+      "expectedLanguage": "en",
+      "latencyMs": 4.9,
+      "selectedSlice": "products",
+      "actions": [
+        "OPEN_PRODUCT"
+      ],
+      "answer": "Products ranked for this decision:\n1. Product X - 80 orders, 58 delivered, NDR 72.5%, CPA 12.5 SAR, break-even CPA 45 SAR\n2. Stable Winner - 55 orders, 36 delivered, NDR 65.5%, CPA 12.5 SAR, break-even CPA 43.67 SAR\n3. High CPA Product - 35 orders, 12 delivered, NDR 34.3%, CPA 12.5 SAR, break-even CPA 24.3 SAR\n4. Watch Product - 20 orders, 10 delivered, NDR 50%, CPA 12.5 SAR, break-even CPA 26.5 SAR\n5. Weak Product - 30 orders, 7 delivered, NDR 23.3%, CPA 12.5 SAR, break-even CPA 13.98 SAR\nWhy: 80 orders, 58 delivered, NDR 72.5%, CPA 12.5 SAR.\nNext move: Keep watching until shared decision rules are available.",
+      "failures": [],
+      "passed": true
+    },
+    {
+      "id": "cities-scale-en",
+      "category": "cities",
+      "userMessage": "best cities to scale",
+      "expectedRoute": "mirror",
+      "route": "mirror",
+      "expectedLanguage": "en",
+      "latencyMs": 6.3,
+      "selectedSlice": "cities",
+      "actions": [
+        "OPEN_CITY"
+      ],
+      "answer": "Best cities to scale:\n1. Riyadh - 70 orders, 48 delivered, NDR 68.6%, Earned Profit After Tax 3200 SAR\n2. Dammam - 40 orders, 27 delivered, NDR 67.5%, Earned Profit After Tax 1800 SAR\n3. Medina - 23 orders, 14 delivered, NDR 60.9%, Earned Profit After Tax 1200 SAR\n4. Jeddah - 55 orders, 20 delivered, NDR 36.4%, Earned Profit After Tax 900 SAR\n5. Mecca - 32 orders, 15 delivered, NDR 46.9%, Earned Profit After Tax 700 SAR\nWhy: 70 orders, 48 delivered, NDR 68.6%, Earned Profit After Tax 3200 SAR.\nNext move: Test this city with a small budget cap and watch NDR.",
+      "failures": [],
+      "passed": true
+    },
+    {
+      "id": "cities-scale-ar",
+      "category": "cities",
+      "userMessage": "ما أفضل المدن للتوسع؟",
+      "expectedRoute": "mirror",
+      "route": "mirror",
+      "expectedLanguage": "ar",
+      "latencyMs": 2.4,
+      "selectedSlice": "cities",
+      "actions": [
+        "OPEN_CITY"
+      ],
+      "answer": "أفضل المدن للتوسع:\n1. Riyadh - 70 طلب، 48 طلب مسلم، NDR 68.6%، الربح المحقق بعد الضريبة 3200 SAR\n2. Dammam - 40 طلب، 27 طلب مسلم، NDR 67.5%، الربح المحقق بعد الضريبة 1800 SAR\n3. Medina - 23 طلب، 14 طلب مسلم، NDR 60.9%، الربح المحقق بعد الضريبة 1200 SAR\n4. Jeddah - 55 طلب، 20 طلب مسلم، NDR 36.4%، الربح المحقق بعد الضريبة 900 SAR\n5. Mecca - 32 طلب، 15 طلب مسلم، NDR 46.9%، الربح المحقق بعد الضريبة 700 SAR\nالدليل: 70 طلب، 48 طلب مسلم، NDR 68.6%، الربح المحقق بعد الضريبة 3200 SAR.\nالخطوة الجاية: اختبر بميزانية صغيرة وسقف واضح، ووقف لو NDR أو CPA اتحركوا ضدك.",
+      "failures": [],
+      "passed": true
+    },
+    {
+      "id": "cities-weak-ar",
+      "category": "cities",
+      "userMessage": "ما أضعف المدن؟",
+      "expectedRoute": "mirror",
+      "route": "mirror",
+      "expectedLanguage": "ar",
+      "latencyMs": 1.1,
+      "selectedSlice": "cities",
+      "actions": [
+        "OPEN_CITY"
+      ],
+      "answer": "المدن التي تحتاج إصلاحًا أولًا:\n1. Jeddah - 55 طلب، 20 طلب مسلم، NDR 36.4%، الربح المحقق بعد الضريبة 900 SAR\n2. Mecca - 32 طلب، 15 طلب مسلم، NDR 46.9%، الربح المحقق بعد الضريبة 700 SAR\n3. Medina - 23 طلب، 14 طلب مسلم، NDR 60.9%، الربح المحقق بعد الضريبة 1200 SAR\n4. Dammam - 40 طلب، 27 طلب مسلم، NDR 67.5%، الربح المحقق بعد الضريبة 1800 SAR\n5. Riyadh - 70 طلب، 48 طلب مسلم، NDR 68.6%، الربح المحقق بعد الضريبة 3200 SAR\nالدليل: 55 طلب، 20 طلب مسلم، NDR 36.4%، الربح المحقق بعد الضريبة 900 SAR.\nالخطوة الجاية: عالج أول سبب خسارة قبل ما تزود الصرف.",
+      "failures": [],
+      "passed": true
+    },
+    {
+      "id": "cpa-account-en",
+      "category": "cpa",
+      "userMessage": "what is my CPA?",
+      "expectedRoute": "local",
+      "route": "local",
+      "expectedLanguage": "en",
+      "latencyMs": 3.4,
+      "selectedSlice": "account",
+      "actions": [
+        "OPEN_PAGE"
+      ],
+      "answer": "Account CPA is currently 12.5 SAR.\nWhy: 220 orders, 2750 SAR spend, break-even CPA 31.2 SAR, NDR 52%.\nNext move: Watch CPA together with NDR before adding spend.",
+      "failures": [],
+      "passed": true
+    },
+    {
+      "id": "profit-why-weak-en",
+      "category": "profit",
+      "userMessage": "why is profit weak?",
+      "expectedRoute": "local-plus-gemini",
+      "route": "local-plus-gemini",
+      "expectedLanguage": "en",
+      "latencyMs": 2.6,
+      "selectedSlice": "account",
+      "actions": [
+        "OPEN_PAGE"
+      ],
+      "answer": "The account is not currently losing money, but profit is weak.\nWhy: NDR is 52% and net profit is 5050 SAR.\nNext move: Review Jeddah first, and pause scaling until NDR and CPA improve.",
+      "failures": [],
+      "passed": true
+    },
+    {
+      "id": "operator-next-en",
+      "category": "planning",
+      "userMessage": "what should I do next?",
+      "expectedRoute": "local",
+      "route": "local",
+      "expectedLanguage": "en",
+      "latencyMs": 1.9,
+      "selectedSlice": "plan",
+      "actions": [
+        "OPEN_CITY"
+      ],
+      "answer": "Priority now: Jeddah.\nWhy: 55 orders, 20 delivered, NDR 36.4%, Earned Profit After Tax 900 SAR.\nNext move: Fix delivery quality before adding spend.",
+      "failures": [],
+      "passed": true
+    },
+    {
+      "id": "plan-scale-en",
+      "category": "planning",
+      "userMessage": "build a scale plan",
+      "expectedRoute": "local-plus-gemini",
+      "route": "local-plus-gemini",
+      "expectedLanguage": "en",
+      "latencyMs": 2.5,
+      "selectedSlice": "plan",
+      "actions": [
+        "OPEN_CITY"
+      ],
+      "answer": "Quick plan: Riyadh.\nWhy: 70 orders, 48 delivered, NDR 68.6%, Earned Profit After Tax 3200 SAR.\nSteps:\n1. Start with a small capped test for Riyadh.\n2. Check NDR and CPA after each increase.\n3. Raise spend gradually only while results stay stable.\nStop rules: Stop scaling if NDR drops or CPA rises above 31.2 SAR.\nWatch: NDR 68.6%, CPA 12.5 SAR, break-even CPA 31.2 SAR, 48 delivered orders.",
+      "failures": [],
+      "passed": true
+    },
+    {
+      "id": "plan-scale-ar",
+      "category": "planning",
+      "userMessage": "ابنِ خطة توسع",
+      "expectedRoute": "local-plus-gemini",
+      "route": "local-plus-gemini",
+      "expectedLanguage": "ar",
+      "latencyMs": 1.5,
+      "selectedSlice": "plan",
+      "actions": [
+        "OPEN_CITY"
+      ],
+      "answer": "الخطة المختصرة: Riyadh.\nلماذا: 70 طلب، 48 طلب مسلم، NDR 68.6%، الربح المحقق بعد الضريبة 3200 SAR.\nالخطوات:\n1. ابدأ باختبار صغير وميزانية محدودة لـ Riyadh.\n2. راقب NDR و CPA بعد كل زيادة.\n3. زد الصرف تدريجيًا فقط عند ثبات النتائج.\nحدود الإيقاف: أوقف التوسع إذا انخفض NDR أو تجاوز CPA 31.2 SAR.\nراقب: NDR 68.6%، CPA 12.5 SAR، حد CPA للتعادل 31.2 SAR، 48 طلب مسلم.",
+      "failures": [],
+      "passed": true
+    }
+  ]
+}

@@ -1,0 +1,149 @@
+<!doctype html><meta charset="utf-8"><title>AI QA full</title><style>body{font-family:Arial;margin:24px}table{border-collapse:collapse;width:100%}th,td{border:1px solid #ddd;padding:8px;vertical-align:top}.fail{background:#fee}.pass{background:#efe}pre{white-space:pre-wrap;max-width:520px}</style><h1>AI QA full</h1><p>56/56 passed</p><table><thead><tr><th>ID</th><th>Category</th><th>Prompt</th><th>Route</th><th>Latency</th><th>Failures</th><th>Answer</th></tr></thead><tbody><tr class="pass"><td>account-health-en</td><td>account-health</td><td>How is my account doing?</td><td>local</td><td>1.5 ms</td><td></td><td><pre>Account health is healthy.
+Why: 92 orders, NDR 52%, CPA 12.5 SAR.
+Next move: Start with TinyRaw.</pre></td></tr><tr class="pass"><td>account-loss-en</td><td>account-health</td><td>Why am I losing?</td><td>local-plus-gemini</td><td>0.6 ms</td><td></td><td><pre>The account is not currently losing money, but profit is weak.
+Why: NDR is 52% and net profit is 5050 SAR.
+Next move: Review TinyRaw first, and pause scaling until NDR and CPA improve.</pre></td></tr><tr class="pass"><td>account-change-en</td><td>account-health</td><td>What changed this month?</td><td>local</td><td>0.5 ms</td><td></td><td><pre>Account health is healthy.
+Why: 92 orders, NDR 52%, CPA 12.5 SAR.
+Next move: Start with TinyRaw.</pre></td></tr><tr class="pass"><td>account-health-ar</td><td>account-health</td><td>كيف أداء الحساب؟</td><td>local</td><td>1.4 ms</td><td></td><td><pre>صحة الحساب جيدة.
+الدليل: 92 طلب، NDR 52%، تكلفة CPA 12.5 SAR.
+الخطوة الجاية: ابدأ بـ TinyRaw.</pre></td></tr><tr class="pass"><td>account-loss-ar</td><td>account-health</td><td>ليه بخسر؟</td><td>local-plus-gemini</td><td>0.5 ms</td><td></td><td><pre>الحساب ليس خاسرًا حاليًا، لكن الربح ضعيف.
+الدليل: NDR 52% وصافي الربح 5050 SAR.
+الخطوة الجاية: راجع TinyRaw أولًا، وأوقف التوسع حتى يتحسن NDR و CPA.</pre></td></tr><tr class="pass"><td>products-best-en</td><td>products</td><td>best products</td><td>mirror</td><td>0.6 ms</td><td></td><td><pre>Products ranked for this decision:
+1. Shared Product - 60 orders, 24 delivered, NDR 40%, break-even CPA 50 SAR, P&amp;L 3000 SAR
+2. Second Product - 32 orders, 24 delivered, NDR 75%, break-even CPA 78.13 SAR, P&amp;L 2500 SAR
+Why: 60 orders, 24 delivered, NDR 40%, break-even CPA 50 SAR.
+Next move: Keep watching until shared decision rules are available.</pre></td></tr><tr class="pass"><td>products-worst-ndr-en</td><td>products</td><td>worst NDR products</td><td>mirror</td><td>0.4 ms</td><td></td><td><pre>Products ranked for this decision:
+1. Shared Product - 60 orders, 24 delivered, NDR 40%, break-even CPA 50 SAR, P&amp;L 3000 SAR
+2. Second Product - 32 orders, 24 delivered, NDR 75%, break-even CPA 78.13 SAR, P&amp;L 2500 SAR
+Why: 60 orders, 24 delivered, NDR 40%, break-even CPA 50 SAR.
+Next move: Keep watching until shared decision rules are available.</pre></td></tr><tr class="pass"><td>products-pause-en</td><td>products</td><td>what product should I pause?</td><td>local</td><td>0.5 ms</td><td></td><td><pre>Shared Product is the current product answer: watch.
+Why: 60 orders, 24 delivered, NDR 40%, break-even CPA 50 SAR.
+Next move: Keep watching until shared decision rules are available.</pre></td></tr><tr class="pass"><td>products-high-cpa-en</td><td>products</td><td>highest CPA products</td><td>mirror</td><td>0.4 ms</td><td></td><td><pre>Products ranked for this decision:
+1. Shared Product - 60 orders, 24 delivered, NDR 40%, break-even CPA 50 SAR, P&amp;L 3000 SAR
+2. Second Product - 32 orders, 24 delivered, NDR 75%, break-even CPA 78.13 SAR, P&amp;L 2500 SAR
+Why: 60 orders, 24 delivered, NDR 40%, break-even CPA 50 SAR.
+Next move: Keep watching until shared decision rules are available.</pre></td></tr><tr class="pass"><td>products-best-ar</td><td>products</td><td>ما أفضل المنتجات؟</td><td>mirror</td><td>0.9 ms</td><td></td><td><pre>المنتجات بالترتيب:
+1. Shared Product - 60 طلب، 24 طلب مسلم، NDR 40%، حد CPA للتعادل 50 SAR، صافي الربح والخسارة 3000 SAR
+2. Second Product - 32 طلب، 24 طلب مسلم، NDR 75%، حد CPA للتعادل 78.13 SAR، صافي الربح والخسارة 2500 SAR
+الدليل: 60 طلب، 24 طلب مسلم، NDR 40%، حد CPA للتعادل 50 SAR.
+الخطوة الجاية: عالج أول سبب خسارة قبل ما تزود الصرف.</pre></td></tr><tr class="pass"><td>products-pause-ar</td><td>products</td><td>أي منتج أوقفه؟</td><td>local</td><td>0.7 ms</td><td></td><td><pre>المنتج الأولى الآن: Shared Product.
+الدليل: 60 طلب، 24 طلب مسلم، NDR 40%، حد CPA للتعادل 50 SAR.
+الخطوة الجاية: عالج أول سبب خسارة قبل ما تزود الصرف.</pre></td></tr><tr class="pass"><td>cities-scale-en</td><td>cities</td><td>best cities to scale</td><td>mirror</td><td>0.9 ms</td><td></td><td><pre>Best cities to scale:
+1. StrongMeaningful - 50 orders, 40 delivered, NDR 80%, Earned Profit After Tax 3200 SAR
+2. WeakMeaningful - 40 orders, 8 delivered, NDR 20%, Earned Profit After Tax 800 SAR
+3. TinyRaw - 2 orders, 0 delivered, NDR 0%, Earned Profit After Tax 10 SAR
+Why: 50 orders, 40 delivered, NDR 80%, Earned Profit After Tax 3200 SAR.
+Next move: Test this city with a small budget cap and watch NDR.</pre></td></tr><tr class="pass"><td>cities-weak-en</td><td>cities</td><td>weakest cities</td><td>mirror</td><td>0.5 ms</td><td></td><td><pre>Cities to fix first:
+1. TinyRaw - 2 orders, 0 delivered, NDR 0%, Earned Profit After Tax 10 SAR
+2. WeakMeaningful - 40 orders, 8 delivered, NDR 20%, Earned Profit After Tax 800 SAR
+3. StrongMeaningful - 50 orders, 40 delivered, NDR 80%, Earned Profit After Tax 3200 SAR
+Why: 2 orders, 0 delivered, NDR 0%, Earned Profit After Tax 10 SAR.
+Next move: Fix delivery quality before adding spend.</pre></td></tr><tr class="pass"><td>cities-riyadh-why-en</td><td>cities</td><td>why is delivery bad in Riyadh?</td><td>local-plus-gemini</td><td>0.5 ms</td><td></td><td><pre>Best city to scale now is StrongMeaningful.
+Why: 50 orders, 40 delivered, NDR 80%, Earned Profit After Tax 3200 SAR.
+Next move: Test this city with a small budget cap and watch NDR.</pre></td></tr><tr class="pass"><td>cities-scale-ar</td><td>cities</td><td>ما أفضل المدن للتوسع؟</td><td>mirror</td><td>0.5 ms</td><td></td><td><pre>أفضل المدن للتوسع:
+1. StrongMeaningful - 50 طلب، 40 طلب مسلم، NDR 80%، الربح المحقق بعد الضريبة 3200 SAR
+2. WeakMeaningful - 40 طلب، 8 طلب مسلم، NDR 20%، الربح المحقق بعد الضريبة 800 SAR
+3. TinyRaw - 2 طلب، 0 طلب مسلم، NDR 0%، الربح المحقق بعد الضريبة 10 SAR
+الدليل: 50 طلب، 40 طلب مسلم، NDR 80%، الربح المحقق بعد الضريبة 3200 SAR.
+الخطوة الجاية: اختبر بميزانية صغيرة وسقف واضح، ووقف لو NDR أو CPA اتحركوا ضدك.</pre></td></tr><tr class="pass"><td>cities-weak-ar</td><td>cities</td><td>ما أضعف المدن؟</td><td>mirror</td><td>0.4 ms</td><td></td><td><pre>المدن التي تحتاج إصلاحًا أولًا:
+1. TinyRaw - 2 طلب، 0 طلب مسلم، NDR 0%، الربح المحقق بعد الضريبة 10 SAR
+2. WeakMeaningful - 40 طلب، 8 طلب مسلم، NDR 20%، الربح المحقق بعد الضريبة 800 SAR
+3. StrongMeaningful - 50 طلب، 40 طلب مسلم، NDR 80%، الربح المحقق بعد الضريبة 3200 SAR
+الدليل: 2 طلب، 0 طلب مسلم، NDR 0%، الربح المحقق بعد الضريبة 10 SAR.
+الخطوة الجاية: عالج أول سبب خسارة قبل ما تزود الصرف.</pre></td></tr><tr class="pass"><td>cities-weak-ndr-ar</td><td>cities</td><td>أضعف المدن في NDR</td><td>mirror</td><td>0.4 ms</td><td></td><td><pre>المدن التي تحتاج إصلاحًا أولًا:
+1. TinyRaw - 2 طلب، 0 طلب مسلم، NDR 0%، الربح المحقق بعد الضريبة 10 SAR
+2. WeakMeaningful - 40 طلب، 8 طلب مسلم، NDR 20%، الربح المحقق بعد الضريبة 800 SAR
+3. StrongMeaningful - 50 طلب، 40 طلب مسلم، NDR 80%، الربح المحقق بعد الضريبة 3200 SAR
+الدليل: 2 طلب، 0 طلب مسلم، NDR 0%، الربح المحقق بعد الضريبة 10 SAR.
+الخطوة الجاية: عالج أول سبب خسارة قبل ما تزود الصرف.</pre></td></tr><tr class="pass"><td>cities-worst-ar</td><td>cities</td><td>أسوأ المدن</td><td>mirror</td><td>1.1 ms</td><td></td><td><pre>المدن التي تحتاج إصلاحًا أولًا:
+1. TinyRaw - 2 طلب، 0 طلب مسلم، NDR 0%، الربح المحقق بعد الضريبة 10 SAR
+2. WeakMeaningful - 40 طلب، 8 طلب مسلم، NDR 20%، الربح المحقق بعد الضريبة 800 SAR
+3. StrongMeaningful - 50 طلب، 40 طلب مسلم، NDR 80%، الربح المحقق بعد الضريبة 3200 SAR
+الدليل: 2 طلب، 0 طلب مسلم، NDR 0%، الربح المحقق بعد الضريبة 10 SAR.
+الخطوة الجاية: عالج أول سبب خسارة قبل ما تزود الصرف.</pre></td></tr><tr class="pass"><td>campaign-waste-en</td><td>campaigns</td><td>which campaign wastes spend?</td><td>mirror</td><td>0.5 ms</td><td></td><td><pre>Scale Winner is the campaign to review first: watch.
+Why: 700 SAR spend, 50 Taager orders, CPA 14.
+Next move: Keep watching until shared decision rules are available.</pre></td></tr><tr class="pass"><td>campaign-reduce-en</td><td>campaigns</td><td>what campaign should I reduce?</td><td>local-plus-gemini</td><td>0.5 ms</td><td></td><td><pre>Scale Winner is the campaign to review first: watch.
+Why: 700 SAR spend, 50 Taager orders, CPA 14.
+Next move: Keep watching until shared decision rules are available.</pre></td></tr><tr class="pass"><td>campaign-creative-en</td><td>campaigns</td><td>what creative should I test?</td><td>local-plus-gemini</td><td>0.5 ms</td><td></td><td><pre>Scale Winner is the campaign to review first: watch.
+Why: 700 SAR spend, 50 Taager orders, CPA 14.
+Next move: Keep watching until shared decision rules are available.</pre></td></tr><tr class="pass"><td>campaign-reduce-ar</td><td>campaigns</td><td>أي حملة أقلل صرفها؟</td><td>mirror</td><td>0.5 ms</td><td></td><td><pre>الحملة الأولى بالمراجعة: Scale Winner.
+الدليل: 700 SAR إنفاق، 50 طلب، تكلفة CPA 14 SAR.
+الخطوة الجاية: عالج أول سبب خسارة قبل ما تزود الصرف.</pre></td></tr><tr class="pass"><td>cpa-account-en</td><td>cpa</td><td>what is my CPA?</td><td>local</td><td>0.5 ms</td><td></td><td><pre>Account CPA is currently 12.5 SAR.
+Why: 92 orders, 2750 SAR spend, NDR 52%.
+Next move: Watch CPA together with NDR before adding spend.</pre></td></tr><tr class="pass"><td>cpa-break-even-en</td><td>cpa</td><td>what is break-even CPA?</td><td>local</td><td>0.4 ms</td><td></td><td><pre>Account health is healthy.
+Why: 92 orders, NDR 52%, CPA 12.5 SAR.
+Next move: Start with TinyRaw.</pre></td></tr><tr class="pass"><td>cpa-spend-en</td><td>cpa</td><td>if I spend 500 SAR what happens?</td><td>local</td><td>0.5 ms</td><td></td><td><pre>Scale Winner is the campaign to review first: watch.
+Why: 700 SAR spend, 50 Taager orders, CPA 14.
+Next move: Keep watching until shared decision rules are available.</pre></td></tr><tr class="pass"><td>cpa-account-ar</td><td>cpa</td><td>ما هي تكلفة CPA؟</td><td>local</td><td>0.6 ms</td><td></td><td><pre>تكلفة CPA للحساب حاليًا 12.5 SAR.
+الدليل: 92 طلب، إنفاق 2750 SAR، NDR 52%.
+الخطوة الجاية: راقب CPA مع NDR قبل أي زيادة في الصرف.</pre></td></tr><tr class="pass"><td>profit-best-city-en</td><td>profit</td><td>what is my best city by profit?</td><td>mirror</td><td>0.4 ms</td><td></td><td><pre>Best city to scale now is StrongMeaningful.
+Why: 50 orders, 40 delivered, NDR 80%, Earned Profit After Tax 3200 SAR.
+Next move: Test this city with a small budget cap and watch NDR.</pre></td></tr><tr class="pass"><td>profit-why-weak-en</td><td>profit</td><td>why is profit weak?</td><td>local-plus-gemini</td><td>0.5 ms</td><td></td><td><pre>The account is not currently losing money, but profit is weak.
+Why: NDR is 52% and net profit is 5050 SAR.
+Next move: Review TinyRaw first, and pause scaling until NDR and CPA improve.</pre></td></tr><tr class="pass"><td>profit-why-weak-ar</td><td>profit</td><td>لماذا الربح ضعيف؟</td><td>local-plus-gemini</td><td>0.5 ms</td><td></td><td><pre>الحساب ليس خاسرًا حاليًا، لكن الربح ضعيف.
+الدليل: NDR 52% وصافي الربح 5050 SAR.
+الخطوة الجاية: راجع TinyRaw أولًا، وأوقف التوسع حتى يتحسن NDR و CPA.</pre></td></tr><tr class="pass"><td>ndr-account-en</td><td>ndr</td><td>what is my NDR?</td><td>local</td><td>0.4 ms</td><td></td><td><pre>Account health is healthy.
+Why: 92 orders, NDR 52%, CPA 12.5 SAR.
+Next move: Start with TinyRaw.</pre></td></tr><tr class="pass"><td>ndr-low-cities-en</td><td>ndr</td><td>which cities have the lowest NDR?</td><td>mirror</td><td>0.4 ms</td><td></td><td><pre>Cities to fix first:
+1. TinyRaw - 2 orders, 0 delivered, NDR 0%, Earned Profit After Tax 10 SAR
+2. WeakMeaningful - 40 orders, 8 delivered, NDR 20%, Earned Profit After Tax 800 SAR
+3. StrongMeaningful - 50 orders, 40 delivered, NDR 80%, Earned Profit After Tax 3200 SAR
+Why: 2 orders, 0 delivered, NDR 0%, Earned Profit After Tax 10 SAR.
+Next move: Fix delivery quality before adding spend.</pre></td></tr><tr class="pass"><td>ndr-improve-ar</td><td>ndr</td><td>كيف أحسن NDR؟</td><td>local-plus-gemini</td><td>0.5 ms</td><td></td><td><pre>صحة الحساب جيدة.
+الدليل: 92 طلب، NDR 52%، تكلفة CPA 12.5 SAR.
+الخطوة الجاية: ابدأ بـ TinyRaw.</pre></td></tr><tr class="pass"><td>scale-next-en</td><td>scaling</td><td>what should I scale?</td><td>local-plus-gemini</td><td>0.4 ms</td><td></td><td><pre>Shared Product is the current product answer: watch.
+Why: 60 orders, 24 delivered, NDR 40%, break-even CPA 50 SAR.
+Next move: Keep watching until shared decision rules are available.</pre></td></tr><tr class="pass"><td>scale-next-ar</td><td>scaling</td><td>ما الذي أوسعه؟</td><td>local-plus-gemini</td><td>0.5 ms</td><td></td><td><pre>صحة الحساب جيدة.
+الدليل: 92 طلب، NDR 52%، تكلفة CPA 12.5 SAR.
+الخطوة الجاية: ابدأ بـ TinyRaw.</pre></td></tr><tr class="pass"><td>operator-next-en</td><td>planning</td><td>what should I do next?</td><td>local</td><td>0.4 ms</td><td></td><td><pre>Priority now: TinyRaw.
+Why: 2 orders, 0 delivered, NDR 0%, Earned Profit After Tax 10 SAR.
+Next move: Fix delivery quality before adding spend.</pre></td></tr><tr class="pass"><td>operator-next-ar</td><td>planning</td><td>ماذا أفعل بعد ذلك؟</td><td>local</td><td>0.5 ms</td><td></td><td><pre>الأولوية الآن: TinyRaw.
+الدليل: 2 طلب، 0 طلب مسلم، NDR 0%، الربح المحقق بعد الضريبة 10 SAR.
+الخطوة الجاية: عالج أول سبب خسارة قبل ما تزود الصرف.</pre></td></tr><tr class="pass"><td>plan-scale-en</td><td>planning</td><td>build a scale plan</td><td>local-plus-gemini</td><td>0.4 ms</td><td></td><td><pre>Quick plan: StrongMeaningful.
+Why: 50 orders, 40 delivered, NDR 80%, Earned Profit After Tax 3200 SAR.
+Steps:
+1. Start with a small capped test for StrongMeaningful.
+2. Check NDR and CPA after each increase.
+3. Raise spend gradually only while results stay stable.
+Stop rules: Stop scaling if NDR drops or CPA rises above break-even CPA.
+Watch: NDR 80%, CPA 12.5 SAR, 40 delivered orders, Earned Profit After Tax 3200 SAR.</pre></td></tr><tr class="pass"><td>plan-scale-ar</td><td>planning</td><td>ابنِ خطة توسع</td><td>local-plus-gemini</td><td>0.5 ms</td><td></td><td><pre>الخطة المختصرة: StrongMeaningful.
+لماذا: 50 طلب، 40 طلب مسلم، NDR 80%، الربح المحقق بعد الضريبة 3200 SAR.
+الخطوات:
+1. ابدأ باختبار صغير وميزانية محدودة لـ StrongMeaningful.
+2. راقب NDR و CPA بعد كل زيادة.
+3. زد الصرف تدريجيًا فقط عند ثبات النتائج.
+حدود الإيقاف: أوقف التوسع إذا انخفض NDR أو تجاوز CPA حد التعادل.
+راقب: NDR 80%، CPA 12.5 SAR، 40 طلب مسلم، الربح المحقق بعد الضريبة 3200 SAR.</pre></td></tr><tr class="pass"><td>plan-fix-first-en</td><td>planning</td><td>give me a fix-first plan</td><td>local-plus-gemini</td><td>1 ms</td><td></td><td><pre>Quick plan: StrongMeaningful.
+Why: 50 orders, 40 delivered, NDR 80%, Earned Profit After Tax 3200 SAR.
+Steps:
+1. Start with a small capped test for StrongMeaningful.
+2. Check NDR and CPA after each increase.
+3. Raise spend gradually only while results stay stable.
+Stop rules: Stop scaling if NDR drops or CPA rises above break-even CPA.
+Watch: NDR 80%, CPA 12.5 SAR, 40 delivered orders, Earned Profit After Tax 3200 SAR.</pre></td></tr><tr class="pass"><td>forecast-month-en</td><td>forecasting</td><td>forecast next month</td><td>local-plus-gemini</td><td>0.7 ms</td><td></td><td><pre>Account health is healthy.
+Why: 92 orders, NDR 52%, CPA 12.5 SAR.
+Next move: Start with TinyRaw.</pre></td></tr><tr class="pass"><td>forecast-spend-en</td><td>forecasting</td><td>what happens if I double spend?</td><td>local-plus-gemini</td><td>0.5 ms</td><td></td><td><pre>Scale Winner is the campaign to review first: watch.
+Why: 700 SAR spend, 50 Taager orders, CPA 14.
+Next move: Keep watching until shared decision rules are available.</pre></td></tr><tr class="pass"><td>forecast-month-ar</td><td>forecasting</td><td>توقع الشهر القادم</td><td>local-plus-gemini</td><td>0.5 ms</td><td></td><td><pre>صحة الحساب جيدة.
+الدليل: 92 طلب، NDR 52%، تكلفة CPA 12.5 SAR.
+الخطوة الجاية: ابدأ بـ TinyRaw.</pre></td></tr><tr class="pass"><td>compare-cities-en</td><td>comparisons</td><td>compare Riyadh vs Jeddah</td><td>local</td><td>0.5 ms</td><td></td><td><pre>Account health is healthy.
+Why: 92 orders, NDR 52%, CPA 12.5 SAR.
+Next move: Start with TinyRaw.</pre></td></tr><tr class="pass"><td>compare-products-en</td><td>comparisons</td><td>compare Product X vs Stable Winner</td><td>local</td><td>0.5 ms</td><td></td><td><pre>Shared Product is the current product answer: watch.
+Why: 60 orders, 24 delivered, NDR 40%, break-even CPA 50 SAR.
+Next move: Keep watching until shared decision rules are available.</pre></td></tr><tr class="pass"><td>compare-cities-mixed</td><td>mixed-language</td><td>compare الرياض vs Jeddah</td><td>local</td><td>0.5 ms</td><td></td><td><pre>صحة الحساب جيدة.
+الدليل: 92 طلب، NDR 52%، تكلفة CPA 12.5 SAR.
+الخطوة الجاية: ابدأ بـ TinyRaw.</pre></td></tr><tr class="pass"><td>typo-city-en</td><td>typos</td><td>bst cities to scle</td><td>mirror</td><td>0.5 ms</td><td></td><td><pre>Best cities to scale:
+1. StrongMeaningful - 50 orders, 40 delivered, NDR 80%, Earned Profit After Tax 3200 SAR
+2. WeakMeaningful - 40 orders, 8 delivered, NDR 20%, Earned Profit After Tax 800 SAR
+3. TinyRaw - 2 orders, 0 delivered, NDR 0%, Earned Profit After Tax 10 SAR
+Why: 50 orders, 40 delivered, NDR 80%, Earned Profit After Tax 3200 SAR.
+Next move: Test this city with a small budget cap and watch NDR.</pre></td></tr><tr class="pass"><td>typo-cpa-mixed</td><td>typos</td><td>wht is my CPA للحساب</td><td>local</td><td>0.6 ms</td><td></td><td><pre>تكلفة CPA للحساب حاليًا 12.5 SAR.
+الدليل: 92 طلب، إنفاق 2750 SAR، NDR 52%.
+الخطوة الجاية: راقب CPA مع NDR قبل أي زيادة في الصرف.</pre></td></tr><tr class="pass"><td>mixed-scale-ar</td><td>mixed-language</td><td>اعمل scale plan سريع</td><td>local-plus-gemini</td><td>0.5 ms</td><td></td><td><pre>الخطة المختصرة: StrongMeaningful.
+لماذا: 50 طلب، 40 طلب مسلم، NDR 80%، الربح المحقق بعد الضريبة 3200 SAR.
+الخطوات:
+1. ابدأ باختبار صغير وميزانية محدودة لـ StrongMeaningful.
+2. راقب NDR و CPA بعد كل زيادة.
+3. زد الصرف تدريجيًا فقط عند ثبات النتائج.
+حدود الإيقاف: أوقف التوسع إذا انخفض NDR أو تجاوز CPA حد التعادل.
+راقب: NDR 80%، CPA 12.5 SAR، 40 طلب مسلم، الربح المحقق بعد الضريبة 3200 SAR.</pre></td></tr><tr class="pass"><td>ambiguous-product-en</td><td>ambiguity</td><td>what about this product?</td><td>followup</td><td>0.2 ms</td><td></td><td><pre>I can help with the dashboard. Specify the product, city, metric, or decision you want to analyze.</pre></td></tr><tr class="pass"><td>ambiguous-next-en</td><td>ambiguity</td><td>show me the next one</td><td>followup</td><td>0.1 ms</td><td></td><td><pre>I can help with the dashboard. Specify the product, city, metric, or decision you want to analyze.</pre></td></tr><tr class="pass"><td>ambiguous-product-ar</td><td>ambiguity</td><td>ماذا عن هذا المنتج؟</td><td>followup</td><td>0.1 ms</td><td></td><td><pre>أقدر أساعدك في بيانات الداشبورد. حدد المنتج أو المدينة أو المؤشر أو القرار الذي تريد تحليله.</pre></td></tr><tr class="pass"><td>followup-why-en</td><td>follow-ups</td><td>why?</td><td>followup</td><td>0.1 ms</td><td></td><td><pre>I can help with the dashboard. Specify the product, city, metric, or decision you want to analyze.</pre></td></tr><tr class="pass"><td>followup-steps-en</td><td>follow-ups</td><td>do it step by step</td><td>followup</td><td>0.1 ms</td><td></td><td><pre>I can help with the dashboard. Specify the product, city, metric, or decision you want to analyze.</pre></td></tr><tr class="pass"><td>followup-why-ar</td><td>follow-ups</td><td>ليه؟</td><td>followup</td><td>0.1 ms</td><td></td><td><pre>أقدر أساعدك في بيانات الداشبورد. حدد المنتج أو المدينة أو المؤشر أو القرار الذي تريد تحليله.</pre></td></tr><tr class="pass"><td>out-scope-weather-en</td><td>out-of-scope</td><td>what is the weather tomorrow?</td><td>followup</td><td>0.1 ms</td><td></td><td><pre>I can help with the dashboard. Specify the product, city, metric, or decision you want to analyze.</pre></td></tr><tr class="pass"><td>out-scope-poem-ar</td><td>out-of-scope</td><td>اكتب لي قصيدة</td><td>followup</td><td>0.1 ms</td><td></td><td><pre>أقدر أساعدك في بيانات الداشبورد. حدد المنتج أو المدينة أو المؤشر أو القرار الذي تريد تحليله.</pre></td></tr></tbody></table>

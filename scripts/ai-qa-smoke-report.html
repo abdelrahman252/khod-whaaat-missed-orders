@@ -1,0 +1,55 @@
+<!doctype html><meta charset="utf-8"><title>AI QA smoke</title><style>body{font-family:Arial;margin:24px}table{border-collapse:collapse;width:100%}th,td{border:1px solid #ddd;padding:8px;vertical-align:top}.fail{background:#fee}.pass{background:#efe}pre{white-space:pre-wrap;max-width:520px}</style><h1>AI QA smoke</h1><p>12/12 passed</p><table><thead><tr><th>ID</th><th>Category</th><th>Prompt</th><th>Route</th><th>Latency</th><th>Failures</th><th>Answer</th></tr></thead><tbody><tr class="pass"><td>account-health-en</td><td>account-health</td><td>How is my account doing?</td><td>local</td><td>63 ms</td><td></td><td><pre>Account health is healthy.
+Why: 220 orders, NDR 52%, CPA 12.5 SAR, break-even CPA 31.2 SAR.
+Next move: Start with Jeddah.</pre></td></tr><tr class="pass"><td>account-loss-en</td><td>account-health</td><td>Why am I losing?</td><td>local-plus-gemini</td><td>3.5 ms</td><td></td><td><pre>The account is not currently losing money, but profit is weak.
+Why: NDR is 52% and net profit is 5050 SAR.
+Next move: Review Jeddah first, and pause scaling until NDR and CPA improve.</pre></td></tr><tr class="pass"><td>account-loss-ar</td><td>account-health</td><td>ليه بخسر؟</td><td>local-plus-gemini</td><td>10 ms</td><td></td><td><pre>الحساب ليس خاسرًا حاليًا، لكن الربح ضعيف.
+الدليل: NDR 52% وصافي الربح 5050 SAR.
+الخطوة الجاية: راجع Jeddah أولًا، وأوقف التوسع حتى يتحسن NDR و CPA.</pre></td></tr><tr class="pass"><td>products-best-en</td><td>products</td><td>best products</td><td>mirror</td><td>4.9 ms</td><td></td><td><pre>Products ranked for this decision:
+1. Product X - 80 orders, 58 delivered, NDR 72.5%, CPA 12.5 SAR, break-even CPA 45 SAR
+2. Stable Winner - 55 orders, 36 delivered, NDR 65.5%, CPA 12.5 SAR, break-even CPA 43.67 SAR
+3. High CPA Product - 35 orders, 12 delivered, NDR 34.3%, CPA 12.5 SAR, break-even CPA 24.3 SAR
+4. Watch Product - 20 orders, 10 delivered, NDR 50%, CPA 12.5 SAR, break-even CPA 26.5 SAR
+5. Weak Product - 30 orders, 7 delivered, NDR 23.3%, CPA 12.5 SAR, break-even CPA 13.98 SAR
+Why: 80 orders, 58 delivered, NDR 72.5%, CPA 12.5 SAR.
+Next move: Keep watching until shared decision rules are available.</pre></td></tr><tr class="pass"><td>cities-scale-en</td><td>cities</td><td>best cities to scale</td><td>mirror</td><td>6.3 ms</td><td></td><td><pre>Best cities to scale:
+1. Riyadh - 70 orders, 48 delivered, NDR 68.6%, Earned Profit After Tax 3200 SAR
+2. Dammam - 40 orders, 27 delivered, NDR 67.5%, Earned Profit After Tax 1800 SAR
+3. Medina - 23 orders, 14 delivered, NDR 60.9%, Earned Profit After Tax 1200 SAR
+4. Jeddah - 55 orders, 20 delivered, NDR 36.4%, Earned Profit After Tax 900 SAR
+5. Mecca - 32 orders, 15 delivered, NDR 46.9%, Earned Profit After Tax 700 SAR
+Why: 70 orders, 48 delivered, NDR 68.6%, Earned Profit After Tax 3200 SAR.
+Next move: Test this city with a small budget cap and watch NDR.</pre></td></tr><tr class="pass"><td>cities-scale-ar</td><td>cities</td><td>ما أفضل المدن للتوسع؟</td><td>mirror</td><td>2.4 ms</td><td></td><td><pre>أفضل المدن للتوسع:
+1. Riyadh - 70 طلب، 48 طلب مسلم، NDR 68.6%، الربح المحقق بعد الضريبة 3200 SAR
+2. Dammam - 40 طلب، 27 طلب مسلم، NDR 67.5%، الربح المحقق بعد الضريبة 1800 SAR
+3. Medina - 23 طلب، 14 طلب مسلم، NDR 60.9%، الربح المحقق بعد الضريبة 1200 SAR
+4. Jeddah - 55 طلب، 20 طلب مسلم، NDR 36.4%، الربح المحقق بعد الضريبة 900 SAR
+5. Mecca - 32 طلب، 15 طلب مسلم، NDR 46.9%، الربح المحقق بعد الضريبة 700 SAR
+الدليل: 70 طلب، 48 طلب مسلم، NDR 68.6%، الربح المحقق بعد الضريبة 3200 SAR.
+الخطوة الجاية: اختبر بميزانية صغيرة وسقف واضح، ووقف لو NDR أو CPA اتحركوا ضدك.</pre></td></tr><tr class="pass"><td>cities-weak-ar</td><td>cities</td><td>ما أضعف المدن؟</td><td>mirror</td><td>1.1 ms</td><td></td><td><pre>المدن التي تحتاج إصلاحًا أولًا:
+1. Jeddah - 55 طلب، 20 طلب مسلم، NDR 36.4%، الربح المحقق بعد الضريبة 900 SAR
+2. Mecca - 32 طلب، 15 طلب مسلم، NDR 46.9%، الربح المحقق بعد الضريبة 700 SAR
+3. Medina - 23 طلب، 14 طلب مسلم، NDR 60.9%، الربح المحقق بعد الضريبة 1200 SAR
+4. Dammam - 40 طلب، 27 طلب مسلم، NDR 67.5%، الربح المحقق بعد الضريبة 1800 SAR
+5. Riyadh - 70 طلب، 48 طلب مسلم، NDR 68.6%، الربح المحقق بعد الضريبة 3200 SAR
+الدليل: 55 طلب، 20 طلب مسلم، NDR 36.4%، الربح المحقق بعد الضريبة 900 SAR.
+الخطوة الجاية: عالج أول سبب خسارة قبل ما تزود الصرف.</pre></td></tr><tr class="pass"><td>cpa-account-en</td><td>cpa</td><td>what is my CPA?</td><td>local</td><td>3.4 ms</td><td></td><td><pre>Account CPA is currently 12.5 SAR.
+Why: 220 orders, 2750 SAR spend, break-even CPA 31.2 SAR, NDR 52%.
+Next move: Watch CPA together with NDR before adding spend.</pre></td></tr><tr class="pass"><td>profit-why-weak-en</td><td>profit</td><td>why is profit weak?</td><td>local-plus-gemini</td><td>2.6 ms</td><td></td><td><pre>The account is not currently losing money, but profit is weak.
+Why: NDR is 52% and net profit is 5050 SAR.
+Next move: Review Jeddah first, and pause scaling until NDR and CPA improve.</pre></td></tr><tr class="pass"><td>operator-next-en</td><td>planning</td><td>what should I do next?</td><td>local</td><td>1.9 ms</td><td></td><td><pre>Priority now: Jeddah.
+Why: 55 orders, 20 delivered, NDR 36.4%, Earned Profit After Tax 900 SAR.
+Next move: Fix delivery quality before adding spend.</pre></td></tr><tr class="pass"><td>plan-scale-en</td><td>planning</td><td>build a scale plan</td><td>local-plus-gemini</td><td>2.5 ms</td><td></td><td><pre>Quick plan: Riyadh.
+Why: 70 orders, 48 delivered, NDR 68.6%, Earned Profit After Tax 3200 SAR.
+Steps:
+1. Start with a small capped test for Riyadh.
+2. Check NDR and CPA after each increase.
+3. Raise spend gradually only while results stay stable.
+Stop rules: Stop scaling if NDR drops or CPA rises above 31.2 SAR.
+Watch: NDR 68.6%, CPA 12.5 SAR, break-even CPA 31.2 SAR, 48 delivered orders.</pre></td></tr><tr class="pass"><td>plan-scale-ar</td><td>planning</td><td>ابنِ خطة توسع</td><td>local-plus-gemini</td><td>1.5 ms</td><td></td><td><pre>الخطة المختصرة: Riyadh.
+لماذا: 70 طلب، 48 طلب مسلم، NDR 68.6%، الربح المحقق بعد الضريبة 3200 SAR.
+الخطوات:
+1. ابدأ باختبار صغير وميزانية محدودة لـ Riyadh.
+2. راقب NDR و CPA بعد كل زيادة.
+3. زد الصرف تدريجيًا فقط عند ثبات النتائج.
+حدود الإيقاف: أوقف التوسع إذا انخفض NDR أو تجاوز CPA 31.2 SAR.
+راقب: NDR 68.6%، CPA 12.5 SAR، حد CPA للتعادل 31.2 SAR، 48 طلب مسلم.</pre></td></tr></tbody></table>
