@@ -192,7 +192,11 @@ app.commandLine.appendSwitch("renderer-process-limit", "1");
 app.commandLine.appendSwitch("js-flags", "--max-old-space-size=256");
 
 autoUpdater.autoDownload = false;
-autoUpdater.autoInstallOnAppQuit = true;
+// The installer is launched explicitly after the tray/window process is torn
+// down. Leaving this enabled lets electron-updater start a second install path
+// through app.quit(), which races the tray process and makes NSIS report that
+// KHOD WHAAT cannot be closed.
+autoUpdater.autoInstallOnAppQuit = false;
 try {
   autoUpdater.verifyUpdateCodeSignature = false;
 } catch (_) {}
@@ -2587,25 +2591,29 @@ ipcMain.handle("install-update", () => {
   // The file name matches the artifactName pattern from package.json.
   // We search for it rather than hardcode the version.
   function findDownloadedInstaller() {
-    const tmpDir = os.tmpdir();
-    try {
-      const files = fs.readdirSync(tmpDir);
-      // Match the package.json artifactName, e.g. "Khod.Whaat.Orders.Setup.1.0.15.exe"
-      const match = files
-        .filter(f => /^Khod\.Whaat\.Orders\.Setup\..+\.exe$/i.test(f))
-        .sort() // take the highest version if multiple
-        .pop();
-      if (match) return path.join(tmpDir, match);
-    } catch (_) {}
-
-    // Fallback: ask electron-updater for the cached path via its internal
-    // _downloadedUpdateHelper (works for electron-updater v6.x)
+    // Prefer electron-updater's own cache entry. This is the authoritative
+    // downloaded file and avoids selecting an older installer left in %TEMP%.
     try {
       const helper = autoUpdater._downloadedUpdateHelper;
       if (helper && helper.downloadedFileInfo && helper.downloadedFileInfo.path) {
         return helper.downloadedFileInfo.path;
       }
     } catch (_) {}
+
+    // Windows fallback for updater versions that do not expose the helper path.
+    if (process.platform === "win32") {
+      const tmpDir = os.tmpdir();
+      try {
+        const files = fs.readdirSync(tmpDir);
+        // Match the package.json artifactName, e.g.
+        // "Khod.Whaat.Orders.Setup.1.0.15.exe".
+        const match = files
+          .filter(f => /^Khod\.Whaat\.Orders\.Setup\.\d+\.\d+\.\d+\.exe$/i.test(f))
+          .sort()
+          .pop();
+        if (match) return path.join(tmpDir, match);
+      } catch (_) {}
+    }
 
     return null;
   }
@@ -2643,6 +2651,9 @@ ipcMain.handle("install-update", () => {
 
   const toKill = botChildren.length ? botChildren : (currentBotChild ? [currentBotChild] : []);
   for (const child of toKill) { try { child.kill("SIGKILL"); } catch (_) {} }
+  currentBotChild = null;
+  botChildren = [];
+  botRunning = false;
 
   try {
     if (tray && !tray.isDestroyed()) {
