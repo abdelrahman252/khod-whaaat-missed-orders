@@ -423,49 +423,52 @@ window.renderSetup = function (onComplete, initialStep) {
           gap: 12px;
         }
         .sv3-setting-title { font-size: 12px; font-weight: 800; color: var(--text); margin-bottom: 0; }
-        .sv3-setting-title-row {
+        .sv3-setting-title-line {
           display: flex;
-          align-items: flex-start;
+          align-items: center;
           gap: 7px;
           min-width: 0;
         }
-        .sv3-help-tip {
+        .sv3-setting-title-line .sv3-setting-title { margin-bottom: 0; }
+        .sv3-setting-help {
           position: relative;
+          display: inline-flex;
+          flex-shrink: 0;
+        }
+        .sv3-setting-help-btn {
+          width: 18px;
+          height: 18px;
+          padding: 0;
+          border: 1px solid rgba(167,139,250,.48);
+          border-radius: 50%;
+          background: rgba(124,106,247,.14);
+          color: #c5bfff;
+          font: 700 12px/1 system-ui, sans-serif;
+          cursor: help;
           display: inline-flex;
           align-items: center;
           justify-content: center;
-          width: 17px;
-          height: 17px;
-          padding: 0;
-          flex: 0 0 17px;
-          border: 1px solid rgba(148,163,184,.48);
-          border-radius: 50%;
-          background: rgba(15,23,42,.5);
-          color: var(--text2);
-          font-family: inherit;
-          font-size: 11px;
-          font-weight: 800;
-          line-height: 1;
-          cursor: help;
+          transition: background .18s, border-color .18s, color .18s;
         }
-        .sv3-help-tip:hover,
-        .sv3-help-tip:focus-visible {
-          border-color: rgba(167,139,250,.78);
-          color: var(--text);
+        .sv3-setting-help-btn:hover,
+        .sv3-setting-help-btn:focus-visible {
           outline: none;
+          color: #fff;
+          background: rgba(124,106,247,.38);
+          border-color: rgba(197,191,255,.9);
         }
-        .sv3-help-tip-text {
+        .sv3-setting-tooltip {
           position: absolute;
           z-index: 20;
           top: calc(100% + 9px);
-          left: 50%;
-          width: 230px;
+          inset-inline-start: 50%;
+          width: min(270px, calc(100vw - 40px));
           padding: 9px 11px;
-          border: 1px solid rgba(148,163,184,.28);
+          border: 1px solid rgba(167,139,250,.32);
           border-radius: 8px;
-          background: var(--bg2);
-          box-shadow: 0 10px 28px rgba(0,0,0,.34);
-          color: var(--text2);
+          background: #111827;
+          box-shadow: 0 12px 28px rgba(0,0,0,.35);
+          color: #d7deea;
           font-size: 11px;
           font-weight: 500;
           line-height: 1.45;
@@ -475,10 +478,10 @@ window.renderSetup = function (onComplete, initialStep) {
           visibility: hidden;
           pointer-events: none;
           transform: translateX(-50%) translateY(-3px);
-          transition: opacity .16s ease, transform .16s ease, visibility .16s ease;
+          transition: opacity .16s, visibility .16s, transform .16s;
         }
-        .sv3-help-tip:hover .sv3-help-tip-text,
-        .sv3-help-tip:focus-visible .sv3-help-tip-text {
+        .sv3-setting-help:hover .sv3-setting-tooltip,
+        .sv3-setting-help:focus-within .sv3-setting-tooltip {
           opacity: 1;
           visibility: visible;
           transform: translateX(-50%) translateY(0);
@@ -2627,8 +2630,8 @@ window.renderSetup = function (onComplete, initialStep) {
           margin: 14px 0 16px;
           padding: 12px;
           display: grid;
-          grid-template-columns: repeat(3, minmax(0, 1fr));
-          gap: 12px;
+          grid-template-columns: repeat(4, minmax(0, 1fr));
+          gap: 10px;
           border-radius: 12px;
           background: rgba(10,16,27,.22);
           border: 1px solid rgba(125,148,186,.12);
@@ -3438,12 +3441,12 @@ window.renderSetup = function (onComplete, initialStep) {
                 <div class="sv3-setting-copy">
                   <div class="sv3-setting-icon">🪟</div>
                   <div>
-                    <div class="sv3-setting-title-row">
+                    <div class="sv3-setting-title-line">
                       <div class="sv3-setting-title">${t("welcome.launch_min")}</div>
-                      <button type="button" class="sv3-help-tip" aria-label="${t("welcome.launch_min_desc")}">
-                        ?
-                        <span class="sv3-help-tip-text" role="tooltip">${t("welcome.launch_min_desc")}</span>
-                      </button>
+                      <span class="sv3-setting-help">
+                        <button type="button" class="sv3-setting-help-btn" aria-label="${t("welcome.launch_min")}" aria-describedby="sv3-launchmin-tooltip">?</button>
+                        <span id="sv3-launchmin-tooltip" class="sv3-setting-tooltip" role="tooltip">${t("welcome.launch_min_desc")}</span>
+                      </span>
                     </div>
                   </div>
                 </div>
@@ -3461,12 +3464,12 @@ window.renderSetup = function (onComplete, initialStep) {
                 <div class="sv3-setting-copy">
                   <div class="sv3-setting-icon">🔄</div>
                   <div>
-                    <div class="sv3-setting-title-row">
+                    <div class="sv3-setting-title-line">
                       <div class="sv3-setting-title">${t("welcome.autorun")}</div>
-                      <button type="button" class="sv3-help-tip" aria-label="${t("welcome.autorun_desc")}">
-                        ?
-                        <span class="sv3-help-tip-text" role="tooltip">${t("welcome.autorun_desc")}</span>
-                      </button>
+                      <span class="sv3-setting-help">
+                        <button type="button" class="sv3-setting-help-btn" aria-label="${t("welcome.autorun")}" aria-describedby="sv3-autorun-tooltip">?</button>
+                        <span id="sv3-autorun-tooltip" class="sv3-setting-tooltip" role="tooltip">${t("welcome.autorun_desc")}</span>
+                      </span>
                     </div>
                   </div>
                 </div>
@@ -3491,9 +3494,12 @@ window.renderSetup = function (onComplete, initialStep) {
               <div class="sv3-setting-row">
                 <div class="sv3-setting-copy">
                   <div class="sv3-setting-icon">🤖</div>
-                  <div>
+                  <div class="sv3-setting-title-line">
                     <div class="sv3-setting-title">${esc(setupText("welcome.autoconfirm_title", "Auto-Confirm"))}</div>
-                    <div style="font-size:10px;color:var(--text2)">${esc(setupText("welcome.autoconfirm_desc", "When off, review and edit orders before submitting."))}</div>
+                    <span class="sv3-setting-help">
+                      <button type="button" class="sv3-setting-help-btn" aria-label="${esc(setupText("welcome.autoconfirm_title", "Auto-Confirm"))}" aria-describedby="sv3-autoconfirm-tooltip">?</button>
+                      <span id="sv3-autoconfirm-tooltip" class="sv3-setting-tooltip" role="tooltip">${esc(setupText("welcome.autoconfirm_desc", "When off, review and edit orders before submitting."))}</span>
+                    </span>
                   </div>
                 </div>
                 <div class="sv3-setting-control">
@@ -3506,9 +3512,12 @@ window.renderSetup = function (onComplete, initialStep) {
               <div class="sv3-setting-row">
                 <div class="sv3-setting-copy">
                   <div class="sv3-setting-icon">🔁</div>
-                  <div>
+                  <div class="sv3-setting-title-line">
                     <div class="sv3-setting-title">${esc(setupText("welcome.affiliate_recovery_title", "Affiliate Recovery"))}</div>
-                    <div style="font-size:10px;color:var(--text2)">${esc(setupText("welcome.affiliate_recovery_desc", "Resend real orders and convert missed orders to affiliates."))}</div>
+                    <span class="sv3-setting-help">
+                      <button type="button" class="sv3-setting-help-btn" aria-label="${esc(setupText("welcome.affiliate_recovery_title", "Affiliate Recovery"))}" aria-describedby="sv3-affiliate-recovery-tooltip">?</button>
+                      <span id="sv3-affiliate-recovery-tooltip" class="sv3-setting-tooltip" role="tooltip">${esc(setupText("welcome.affiliate_recovery_desc", "Resend real orders and convert missed orders to affiliates."))}</span>
+                    </span>
                   </div>
                 </div>
                 <div class="sv3-setting-control">
