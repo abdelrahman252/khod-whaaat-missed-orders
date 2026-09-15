@@ -269,30 +269,59 @@ window.renderResults = function (data, dateFrom, dateTo, onRunAgain, onHome) {
       product_not_in_catalog: t("results.reason_product_not_in_catalog"),
       invalid_customer_data: "Customer data looks fake or invalid",
       duplicate_easyorders_uuid_conflicting_phone: "Phone has multiple plausible corrections",
+      missing_sku_in_group: "Missing SKU",
+      no_trusted_product_reference: "No trusted product reference",
+      normal_flow_prepared_quantity_is_suspicious: "Suspicious prepared quantity",
+      quantity_above_safe_limit: "Quantity above safe limit",
+      ambiguous_sku_price_tier: "Ambiguous SKU price tier",
+      subtotal_not_in_sku_tiers: "Subtotal not in trusted SKU tiers",
+      missing_sku_tier_profile: "Missing SKU tier profile",
+      missing_easyorders_subtotal: "Missing EasyOrders subtotal",
+      sku_tier_profile_too_weak: "SKU tier profile too weak",
+      utm_product_sku_conflict: "Product SKU conflicts with UTM SKU",
+      quantity_inference_requires_manual_review: "Quantity needs manual review",
+      quantity_tier_price_not_verified: "Quantity tier price not verified",
     };
+    const reasonTextFor = row => {
+      const reasonKey = row && row.uncertain && row.reason === "phone_parse_failed" && row.phoneCorrection === "trailing_zero_rescue"
+        ? "phone_uncertain_zero_appended"
+        : String(row && row.reason || "");
+      return reasonLabels[reasonKey] || reasonKey || "—";
+    };
+    const messageFor = row => String(row && (row.actionMessage || row.message || row.skuTierDecision?.message) || "");
+    const phoneFor = row => row && (row.normalizedPhone || row.normPhone || row.phone || row.rawPhone) || "—";
+    const titleAttr = value => escReview(value || "");
+    const outcomeFor = row => row && row.uploadedWithWarning
+      ? t("results.warning_uploaded")
+      : (isManualReviewRow(row) ? "Manual Review" : t("results.warning_skipped"));
+    const hasManualReview = reviewRows.some(isManualReviewRow);
     const paged = buildPagedItems(reviewRows, (row, i, attrs) => {
-      const reasonKey = row.uncertain && row.reason === "phone_parse_failed" ? "phone_uncertain_zero_appended" : row.reason;
       const editable = isManualReviewRow(row);
       const field = (name, value, extra = "") => editable
-        ? `<input data-res-review-account="${reviewId}" data-res-review-index="${i}" data-res-review-field="${name}" value="${escReview(value)}" ${extra} style="width:130px;background:rgba(255,255,255,.05);border:1px solid #f97316;color:var(--text);padding:5px;border-radius:4px">`
+        ? `<input data-res-review-account="${reviewId}" data-res-review-index="${i}" data-res-review-field="${name}" value="${escReview(value)}" ${extra} style="box-sizing:border-box;width:100%;min-width:96px;background:rgba(255,255,255,.035);border:1px solid var(--border);color:var(--text);padding:6px 8px;border-radius:6px;font:inherit">`
         : escReview(value || "—");
       const destination = row.destination === "affiliate-recovery" || row.recoverySource === "affiliate-recovery" ? "affiliate-recovery" : "cart";
+      const reasonText = reasonTextFor(row);
+      const message = messageFor(row);
+      const phone = phoneFor(row);
+      const product = row.productName || row.product || row.sku || "";
+      const address = row.address || row.notes || "";
       return `<tr ${attrs} data-res-review-row="${reviewId}" style="${editable ? "background:rgba(255,255,255,0.018);border-inline-start:3px solid #f97316" : ""}">
-        <td style="color:var(--text2)">${editable ? `<input type="checkbox" data-res-review-select data-res-review-account="${reviewId}" data-res-review-index="${i}" data-res-review-destination="${destination}">` : i + 1}</td>
-        <td style="font-weight:700;color:${editable ? "#f97316" : "var(--danger)"}">${editable ? "Manual Review" : (row.uploadedWithWarning ? t("results.warning_uploaded") : t("results.warning_skipped"))}</td>
+        <td title="${titleAttr(editable ? "Select this row for review" : outcomeFor(row))}" style="color:${editable ? "#f97316" : "var(--danger)"}">${editable ? `<input type="checkbox" data-res-review-select data-res-review-account="${reviewId}" data-res-review-index="${i}" data-res-review-destination="${destination}" style="width:19px;height:19px;transform:scale(1.12);accent-color:#f97316;cursor:pointer">` : outcomeFor(row)}</td>
+        <td title="${titleAttr(row.source || "—")}">${escReview(row.source || "—")}</td>
         <td>${field("name", row.name || "")}</td>
-        <td>${field("phone", row.normalizedPhone || row.rawPhone || "", "inputmode=\"tel\"")}</td>
-        <td>${editable ? field("sku", row.sku || "", "placeholder=\"SKU\"") : escReview(row.sku || "—")}</td>
-        <td>${field("productName", row.productName || "")}</td>
+        <td title="${titleAttr(phone)}" style="direction:ltr;font-family:monospace">${field("phone", phone, "inputmode=\"tel\"")}</td>
+        <td title="${titleAttr(row.sku || "")}">${editable ? field("sku", row.sku || "", "placeholder=\"SKU\"") : escReview(row.sku || "—")}</td>
+        <td title="${titleAttr(product)}">${editable ? `<span data-res-review-static-field="productName" style="display:block;min-width:150px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;color:var(--text);font-weight:650">${escReview(product || "—")}</span>` : escReview(product || "—")}</td>
         <td>${editable ? field("qty", row.qty || 1, "type=\"number\" min=\"1\"") : escReview(row.qty || "—")}</td>
-        <td>${editable ? field("unitPrice", row.unitPrice || row.price || "", "type=\"number\" min=\"0\" step=\"0.01\"") : escReview(row.unitPrice || row.price || "—")}</td>
-        <td>${field("city", row.city || "")}</td>
-        <td style="font-size:11px">${escReview(reasonLabels[reasonKey] || reasonKey || "—")}</td>
-        <td style="text-align:center;color:${editable ? "#f97316" : "var(--warning)"}">${editable ? "⚠️" : "—"}</td>
+        <td>${field("city", row.city || row.region || "")}</td>
+        <td title="${titleAttr(address)}">${editable ? field("address", address) : escReview(address || "—")}</td>
+        <td title="${titleAttr(reasonText)}" style="font-size:11px;color:${editable ? "#f97316" : "var(--warning)"}">${escReview(reasonText)}</td>
+        <td title="${titleAttr(message)}" style="font-size:11px">${escReview(message || "—")}</td>
+        <td title="${titleAttr(row.uncertain ? "Phone was automatically corrected; verify if needed" : "")}" style="text-align:center;color:${row.uncertain ? "var(--warning)" : "var(--text2)"}">${row.uncertain ? "⚠️" : "—"}</td>
       </tr>`;
     }, "skipped");
     const manualCount = reviewRows.filter(isManualReviewRow).length;
-    const hasManualReview = manualCount > 0;
     const hasAffiliateRecoveryRows = reviewRows.some((row) => row && row.destination === "affiliate-recovery");
     return `
       <div class="dash-section" style="border-color:${hasManualReview ? "#f97316" : "var(--warning)"};margin-top:12px">
@@ -303,18 +332,22 @@ window.renderResults = function (data, dateFrom, dateTo, onRunAgain, onHome) {
           <div style="font-size:11px;color:var(--text2)">${hasManualReview ? `${manualCount} row(s) need correction` : t("results.skipped_followup")}</div>
         </div>
         <div class="dash-section-body no-pad" style="overflow-x:auto">
-          <table class="orders-preview-table" style="font-size:12px">
+          <table class="orders-preview-table khod-skipped-orders-table" style="font-size:12px;min-width:1480px">
+            <colgroup>
+              <col style="width:126px"><col style="width:72px"><col style="width:170px"><col style="width:145px"><col style="width:145px"><col style="width:220px"><col style="width:72px"><col style="width:150px"><col style="width:230px"><col style="width:230px"><col style="width:300px"><col style="width:42px">
+            </colgroup>
             <thead><tr>
-              <th>#</th>
-              <th>${t("results.warning_status_col")}</th>
+              <th>${hasManualReview ? "Select" : t("results.warning_status_col")}</th>
+              <th>Source</th>
               <th>${t("results.customer_name_col")}</th>
-              <th>${t("results.raw_phone_col")}</th>
+              <th>${t("results.raw_phone_col") || "Phone"}</th>
               <th>SKU</th>
               <th>${t("results.product_col")}</th>
               <th>Qty</th>
-              <th>Price</th>
               <th>${t("results.city_col") || "City"}</th>
+              <th>Address</th>
               <th>${t("results.reason_col")}</th>
+              <th>Message</th>
               <th>⚠️</th>
             </tr></thead>
             <tbody>${paged.itemsHtml}</tbody>

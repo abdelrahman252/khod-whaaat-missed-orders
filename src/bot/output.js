@@ -178,6 +178,20 @@ function buildSkippedExcel(skippedOrders) {
     phone_parse_failed: "Invalid phone number",
     phone_uncertain_zero_appended: "Phone missing digit - trailing 0 added",
     product_not_in_catalog: "Product not found in catalog",
+    invalid_customer_data: "Customer data looks fake or invalid",
+    duplicate_easyorders_uuid_conflicting_phone: "Same EasyOrders order has conflicting phone candidates",
+    missing_sku_in_group: "Missing SKU",
+    no_trusted_product_reference: "No trusted product reference",
+    normal_flow_prepared_quantity_is_suspicious: "Suspicious prepared quantity",
+    quantity_above_safe_limit: "Quantity above safe limit",
+    ambiguous_sku_price_tier: "Ambiguous SKU price tier",
+    subtotal_not_in_sku_tiers: "Subtotal not in trusted SKU tiers",
+    missing_sku_tier_profile: "Missing SKU tier profile",
+    missing_easyorders_subtotal: "Missing EasyOrders subtotal",
+    sku_tier_profile_too_weak: "SKU tier profile too weak",
+    utm_product_sku_conflict: "Product SKU conflicts with UTM SKU",
+    quantity_inference_requires_manual_review: "Quantity needs manual review",
+    quantity_tier_price_not_verified: "Quantity tier price not verified",
   };
 
   const headers = [
@@ -195,7 +209,7 @@ function buildSkippedExcel(skippedOrders) {
   ];
 
   const rows = skippedOrders.map((o) => {
-    const reasonKey = o.uncertain && o.reason === "phone_parse_failed"
+    const reasonKey = o.uncertain && o.reason === "phone_parse_failed" && o.phoneCorrection === "trailing_zero_rescue"
       ? "phone_uncertain_zero_appended"
       : o.reason;
     return [
