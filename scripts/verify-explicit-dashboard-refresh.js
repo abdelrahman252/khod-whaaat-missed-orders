@@ -116,6 +116,14 @@ check("shared EasyOrders flow enforces English before English-only controls and 
   shared.includes("const result = await findExportLink(page, keyword, ignoredHrefs);") &&
   shared.includes("const requiredNotificationRefreshes = 2") &&
   shared.includes("poll <= requiredNotificationRefreshes") &&
+  shared.includes("clickExportDialogSubmit(page, dialog, keyword)") &&
+  shared.includes("EASY_ORDERS_EXPORT_SUBMIT_UNAVAILABLE") &&
+  shared.includes('dialog.locator(\'input[type="text"]\')') &&
+  shared.includes("readOptionalExportToast") &&
+  shared.includes("isVisible({ timeout: 1200 })") &&
+  shared.includes("refreshNotificationsForPoll") &&
+  shared.includes("timeout: 8000") &&
+  !shared.includes('dialog.locator(".MuiDialogActions-root button").click()') &&
   shared.includes("easyorders.notifications") &&
   khodRunner.includes("await easyOrdersFlow.login(page);"));
 check("shared EasyOrders login waits for first-run 2FA before identity verification",

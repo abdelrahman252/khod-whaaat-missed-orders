@@ -761,6 +761,58 @@ function createEasyOrdersExportFlow(options = {}) {
     await page.click(`.react-datepicker__day--${dayClass}:not(.react-datepicker__day--outside-month)`);
   }
 
+  async function clickExportDialogSubmit(page, dialog, keyword) {
+    const semantic = dialog.locator("button").filter({
+      hasText: /export|generate|create|download|تصدير|إنشاء|تحميل/i,
+    }).last();
+    const fallback = dialog.locator('button[type="submit"], .MuiDialogActions-root button').last();
+    const submit = (await semantic.count().catch(() => 0)) > 0 ? semantic : fallback;
+    let lastError = null;
+    for (let attempt = 1; attempt <= 3; attempt++) {
+      try {
+        await submit.waitFor({ state: "visible", timeout: 2500 });
+        await submit.scrollIntoViewIfNeeded({ timeout: 1000 }).catch(() => {});
+        if (!(await submit.isEnabled().catch(() => true))) {
+          await page.waitForTimeout(250);
+          continue;
+        }
+        await submit.click({ timeout: 2500 });
+        return;
+      } catch (error) {
+        lastError = error;
+        const clicked = await submit.evaluate((element) => {
+          if (!element || element.disabled || element.getAttribute("aria-disabled") === "true") return false;
+          element.scrollIntoView({ block: "center", inline: "nearest" });
+          element.click();
+          return true;
+        }).catch(() => false);
+        if (clicked) return;
+        await page.waitForTimeout(150);
+      }
+    }
+    throw new Error(`EASY_ORDERS_EXPORT_SUBMIT_UNAVAILABLE: ${keyword}: ${lastError && lastError.message || "dialog submit button was not actionable"}`);
+  }
+
+  async function readOptionalExportToast(page) {
+    const toastLocator = page.locator('[role="alert"], .MuiSnackbarContent-root, .Toastify__toast').first();
+    if (!(await toastLocator.isVisible({ timeout: 1200 }).catch(() => false))) return "";
+    return toastLocator.innerText({ timeout: 1200 }).catch(() => "");
+  }
+
+  async function refreshNotificationsForPoll(page, poll) {
+    try {
+      await reloadWithNetworkRetries(page, "EasyOrders notifications", {
+        attempts: 1,
+        timeout: 8000,
+        waitMs: 500,
+      });
+      return true;
+    } catch (error) {
+      log(`EasyOrders notifications refresh ${poll} skipped after bounded wait: ${error.message || error}`);
+      return false;
+    }
+  }
+
   async function collectExistingExportLinks(page, keyword) {
     return page.evaluate(({ keyword }) => {
       const normalize = (value) => String(value || "")
@@ -916,11 +968,7 @@ function createEasyOrdersExportFlow(options = {}) {
       // avoid reloading on every subsequent DOM poll.
       const needsRefresh = poll <= requiredNotificationRefreshes || (Date.now() - lastRefreshAt) >= exportNotificationRefreshMs;
       if (needsRefresh) {
-        await reloadWithNetworkRetries(page, "EasyOrders notifications", {
-          attempts: 2,
-          timeout: 30000,
-          waitMs: 1500,
-        });
+        await refreshNotificationsForPoll(page, poll);
         lastRefreshAt = Date.now();
       }
       await page.waitForTimeout(exportNotificationPollMs);
@@ -1006,18 +1054,24 @@ function createEasyOrdersExportFlow(options = {}) {
       await exportButton.click();
       const dialog = page.locator('div[role="dialog"]').first();
       await dialog.waitFor({ state: "visible", timeout: 8000 });
-      const dateInputs = dialog.locator(".react-datepicker-wrapper input");
-      await dateInputs.first().click();
+      // EasyOrders now renders the datepicker inputs directly inside the
+      // dialog; the old `.react-datepicker-wrapper input` wrapper is gone.
+      const dateInputs = dialog.locator('input[type="text"]');
+      if ((await dateInputs.count().catch(() => 0)) < 1) {
+        throw new Error("EASY_ORDERS_EXPORT_DATE_INPUT_UNAVAILABLE: no text date input found in export dialog");
+      }
+      await dateInputs.first().click({ timeout: 5000 });
       stage("easyorders.export.date", "started", `Selecting export start date ${formatDataDay(exportFromDate)}`);
       await pickDate(page, exportFromDate);
-      // The new EasyOrders dialog may not render an h2. Keep this only as a
-      // best-effort calendar dismissal; the default Playwright timeout here
-      // otherwise burns ~30 seconds before the export button is clicked.
-      await dialog.locator("h2").click({ timeout: 1000 }).catch(() => {});
-      await dialog.locator(".MuiDialogActions-root button").click();
+      // The new EasyOrders dialog may keep the calendar mounted while its
+      // action row is re-rendering. Escape closes the calendar without waiting
+      // on a brittle heading selector, then the submit helper uses a bounded
+      // semantic click instead of Playwright's 30-second default action wait.
+      await page.keyboard.press("Escape").catch(() => {});
+      await clickExportDialogSubmit(page, dialog, keyword);
       await dialog.waitFor({ state: "hidden", timeout: 8000 }).catch(() => {});
       await page.waitForTimeout(1000);
-      const toast = await page.locator('[role="alert"], .MuiSnackbarContent-root, .Toastify__toast').innerText().catch(() => "");
+      const toast = await readOptionalExportToast(page);
       const rateLimited = /5 minutes|5 دقائق|every|abuse/i.test(String(toast || ""));
       if (toast) log(`EasyOrders export toast: ${String(toast).replace(/\s+/g, " ").trim()}`);
       stage(
