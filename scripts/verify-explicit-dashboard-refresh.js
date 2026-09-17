@@ -100,19 +100,22 @@ check("main dashboard-fetch payload passes KHOD WHAAT credentials without Taager
   main.includes("khod_email: khodEmail") &&
   !((main.match(/ipcMain\.handle\(\"run-dashboard-fetch\"[\s\S]*?\/\/ /) || [""])[0]).includes("Taager credentials missing for") &&
   !((main.match(/ipcMain\.handle\(\"run-dashboard-fetch\"[\s\S]*?\/\/ /) || [""])[0]).includes("Taager " + "merchant ID missing"));
-check("shared EasyOrders flow verifies exact store identity and retries exports",
+check("shared EasyOrders flow verifies exact store identity and bounds export attempts",
   shared.includes("EASY_ORDERS_STORE_MISMATCH") &&
   shared.includes("EASY_ORDERS_STORE_UNVERIFIED") &&
   shared.includes("selectExpectedStore") &&
-  shared.includes("for (let attempt = 1; attempt <= 5; attempt++)") &&
+  shared.includes("const exportAttempts = Math.max(1, Number(options.exportAttempts || 1));") &&
   shared.includes("for (let attempt = 1; attempt <= 3; attempt++)") &&
-  shared.includes('emit({ type: "cooldown"'));
+  shared.includes("EASY_ORDERS_NOTIFICATION_TIMEOUT") &&
+  shared.includes("EASY_ORDERS_EXPORT_RATE_LIMITED"));
 check("shared EasyOrders flow enforces English before English-only controls and notification matching",
   shared.includes("EASY_ORDERS_ENGLISH_REQUIRED") &&
   shared.includes("async function readLanguageState(page)") &&
   shared.includes("await ensureEnglish(page, { force: true });") &&
-  shared.includes("async function waitForExportLink(page, keyword, attempt)") &&
-  shared.includes("const result = await findExportLink(page, keyword);") &&
+  shared.includes("async function waitForExportLink(page, keyword, attempt, ignoredHrefs = [])") &&
+  shared.includes("const result = await findExportLink(page, keyword, ignoredHrefs);") &&
+  shared.includes("const requiredNotificationRefreshes = 2") &&
+  shared.includes("poll <= requiredNotificationRefreshes") &&
   shared.includes("easyorders.notifications") &&
   khodRunner.includes("await easyOrdersFlow.login(page);"));
 check("shared EasyOrders login waits for first-run 2FA before identity verification",

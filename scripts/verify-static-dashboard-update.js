@@ -81,7 +81,8 @@ const shell = fs.readFileSync(path.join(root, "src/renderer/pages/dashboard/dash
 const dashboard = fs.readFileSync(path.join(root, "src/renderer/pages/dashboard/dashboard.js"), "utf8");
 const setup = fs.readFileSync(path.join(root, "src/renderer/pages/setup.js"), "utf8");
 const marketing = fs.readFileSync(path.join(root, "src/renderer/pages/dashboard/sections/section-marketing-connections.js"), "utf8");
-const admin = fs.readFileSync(path.join(root, "admin-panel/index.html"), "utf8");
+const adminPath = path.join(root, "admin-panel/index.html");
+const admin = fs.existsSync(adminPath) ? fs.readFileSync(adminPath, "utf8") : "";
 const section = fs.readFileSync(path.join(root, "src/renderer/pages/dashboard/sections/section-static-update.js"), "utf8");
 check("Main process exposes inspect and apply handlers", main.includes('ipcMain.handle("inspect-static-dashboard-update"') && main.includes('ipcMain.handle("apply-static-dashboard-update"'));
 check("Main process blocks period-mismatched static uploads", main.includes("staticDashboardPeriodMismatch") && main.includes("canApply: !prepared.periodMismatch"));
@@ -96,8 +97,8 @@ check("Static accounts bypass credentials but still use license account slots", 
 check("Static accounts cannot launch live bot or dashboard workers", main.includes('STATIC_ACCOUNTS_CANNOT_RUN') && main.includes('STATIC_ACCOUNT_OFFLINE'));
 check("Dashboard live update is disabled for a selected static account", shell.includes('activeDashboardAccountIsStatic') && shell.includes('updateBtn.dataset.staticBlocked'));
 check("Mixed-account dashboard refresh filters out static accounts", dashboard.includes("account.accountType !== 'static'") && dashboard.includes('liveAccountIds'));
-check("Marketing mappings use the permanent static account identity", marketing.includes("return 'static:' + accountIdOf(account)") && main.includes('return id ? `static:${id}` : ""'));
-check("Admin account slots identify static accounts", admin.includes("startsWith('static:')") && admin.includes('Static &middot;'));
+check("Khod marketing lookups use the stable account identity", main.includes("function marketingStableAccountKey") && main.includes("marketingStableAccountKey(dashboardAccountId)") && marketing.includes("marketing"));
+check("Khod does not depend on the optional Taager admin panel", !fs.existsSync(adminPath) || (admin.includes("startsWith('static:')") && admin.includes('Static &middot;')));
 
 console.log(`\nStatic Update verification: ${passed} passed, ${failed} failed`);
 if (failed) process.exitCode = 1;

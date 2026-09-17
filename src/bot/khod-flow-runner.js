@@ -250,6 +250,8 @@ function isNetworkNavigationError(error) {
   const message = String(error && error.message || error || "");
   return message.includes("ERR_CONNECTION") ||
     message.includes("net::") ||
+    message.toLowerCase().includes("interrupted by another navigation") ||
+    message.toLowerCase().includes("navigation is interrupted") ||
     message.toLowerCase().includes("timeout");
 }
 
@@ -267,8 +269,14 @@ async function gotoWithNetworkRetries(page, url, label, options = {}) {
       if (!isNetworkNavigationError(error) || attempt >= attempts) {
         throw error;
       }
+      const interrupted = /interrupted by another navigation|navigation is interrupted/i.test(String(error && error.message || error));
       log(`⚠️ ${label} navigation timeout/network error (${attempt}/${attempts}): ${error.message} — retrying in ${Math.round(waitMs / 1000)}s...`);
-      await page.waitForTimeout(waitMs);
+      if (interrupted) {
+        await page.waitForLoadState("domcontentloaded", { timeout: 10000 }).catch(() => {});
+        await page.waitForTimeout(350).catch(() => {});
+      } else {
+        await page.waitForTimeout(waitMs);
+      }
     }
   }
 }
@@ -287,8 +295,14 @@ async function reloadWithNetworkRetries(page, label, options = {}) {
       if (!isNetworkNavigationError(error) || attempt >= attempts) {
         throw error;
       }
+      const interrupted = /interrupted by another navigation|navigation is interrupted/i.test(String(error && error.message || error));
       log(`⚠️ ${label} reload timeout/network error (${attempt}/${attempts}): ${error.message} — retrying in ${Math.round(waitMs / 1000)}s...`);
-      await page.waitForTimeout(waitMs);
+      if (interrupted) {
+        await page.waitForLoadState("domcontentloaded", { timeout: 10000 }).catch(() => {});
+        await page.waitForTimeout(350).catch(() => {});
+      } else {
+        await page.waitForTimeout(waitMs);
+      }
     }
   }
 }

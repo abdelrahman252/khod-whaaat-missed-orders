@@ -491,6 +491,7 @@ async function exportKhodOrders(context, page, from, to) {
       exportDateFrom: toDateKey(exportDateFrom),
       exportDateTo: toDateKey(exportDateTo),
     });
+    log(`Dashboard result sent to main process: rows=${processed.rows.length}`);
   } catch (error) {
     const fatalMessage = isBrowserClosedError(error) ? dashboardAccountClosedMessage() : (error.message || String(error));
     log(`FATAL: ${fatalMessage}`);

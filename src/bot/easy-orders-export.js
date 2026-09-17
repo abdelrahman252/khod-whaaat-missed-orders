@@ -164,6 +164,9 @@ function createEasyOrdersExportFlow(options = {}) {
   const exportNotificationPolls = Math.max(1, Number(options.exportNotificationPolls || 12));
   const exportNotificationPollMs = Math.max(250, Number(options.exportNotificationPollMs || 1200));
   const exportNotificationRefreshMs = Math.max(1200, Number(options.exportNotificationRefreshMs || 4000));
+  // EasyOrders can update notifications in two React passes. Always perform
+  // both proven refreshes, but do not add long arbitrary sleeps between them.
+  const requiredNotificationRefreshes = 2;
   const exportNotificationMaxWaitMs = Math.max(
     15000,
     Number(options.exportNotificationMaxWaitMs || 45000)
@@ -324,8 +327,14 @@ function createEasyOrdersExportFlow(options = {}) {
         return;
       } catch (error) {
         if (!isNetworkNavigationError(error) || attempt >= attempts) throw error;
+        const interrupted = /interrupted by another navigation|navigation is interrupted/i.test(String(error && error.message || error));
         log(`Network issue while loading ${label} (${attempt}/${attempts}): ${error.message}`);
-        await page.waitForTimeout(waitMs);
+        if (interrupted) {
+          await page.waitForLoadState("domcontentloaded", { timeout: 10000 }).catch(() => {});
+          await page.waitForTimeout(350).catch(() => {});
+        } else {
+          await page.waitForTimeout(waitMs);
+        }
       }
     }
   }
@@ -340,8 +349,14 @@ function createEasyOrdersExportFlow(options = {}) {
         return;
       } catch (error) {
         if (!isNetworkNavigationError(error) || attempt >= attempts) throw error;
+        const interrupted = /interrupted by another navigation|navigation is interrupted/i.test(String(error && error.message || error));
         log(`Network issue while reloading ${label} (${attempt}/${attempts}): ${error.message}`);
-        await page.waitForTimeout(waitMs);
+        if (interrupted) {
+          await page.waitForLoadState("domcontentloaded", { timeout: 10000 }).catch(() => {});
+          await page.waitForTimeout(350).catch(() => {});
+        } else {
+          await page.waitForTimeout(waitMs);
+        }
       }
     }
   }
@@ -886,6 +901,7 @@ function createEasyOrdersExportFlow(options = {}) {
   async function waitForExportLink(page, keyword, attempt, ignoredHrefs = []) {
     let lastSummary = null;
     let lastRefreshAt = 0;
+    let firstMatchingResult = null;
     const startedAt = Date.now();
     for (let poll = 1; poll <= exportNotificationPolls; poll++) {
       if (Date.now() - startedAt >= exportNotificationMaxWaitMs) break;
@@ -898,7 +914,7 @@ function createEasyOrdersExportFlow(options = {}) {
       // EasyOrders can finish the export between the first and second
       // notifications-page load. Keep that proven two-load fallback, then
       // avoid reloading on every subsequent DOM poll.
-      const needsRefresh = poll === 1 || poll === 2 || (Date.now() - lastRefreshAt) >= exportNotificationRefreshMs;
+      const needsRefresh = poll <= requiredNotificationRefreshes || (Date.now() - lastRefreshAt) >= exportNotificationRefreshMs;
       if (needsRefresh) {
         await reloadWithNetworkRetries(page, "EasyOrders notifications", {
           attempts: 2,
@@ -923,13 +939,30 @@ function createEasyOrdersExportFlow(options = {}) {
       } else if (lastSummary && Array.isArray(lastSummary.firstRows) && lastSummary.firstRows.length) {
         log(`EasyOrders notification visible rows: ${lastSummary.firstRows.join(" | ")}`);
       }
+      if (result && result.href && poll < requiredNotificationRefreshes) {
+        firstMatchingResult = result;
+        continue;
+      }
       if (result && result.href) {
+        log(`EasyOrders selected ${keyword} notification after refresh ${poll}: ${result.href}`);
         stage("easyorders.notifications", "ok", "Export notification link found", {
           attempt,
           poll,
           notificationText: result.text || "",
+          refreshes: poll,
         });
         return { href: result.href, summary: lastSummary };
+      }
+      if (poll >= requiredNotificationRefreshes && firstMatchingResult) {
+        log(`EasyOrders selected ${keyword} notification from refresh 1 fallback after refresh ${poll}: ${firstMatchingResult.href}`);
+        stage("easyorders.notifications", "ok", "Export notification link found", {
+          attempt,
+          poll,
+          notificationText: firstMatchingResult.text || "",
+          refreshes: poll,
+          fallback: true,
+        });
+        return { href: firstMatchingResult.href, summary: lastSummary };
       }
     }
     log(`EasyOrders notification wait ended for ${keyword} after ${Date.now() - startedAt}ms without a matching card.`);

@@ -4067,6 +4067,7 @@ ipcMain.handle("run-dashboard-fetch", async (_, { accountId, dateFrom, dateTo } 
         }
       } else if (msg.type === "dashboard-result") {
         let rows = normalizeDashboardProfitRows(msg.rows || []);
+        let snapshotSaveError = "";
         try {
           const rangeFrom = msg.dateFrom || dateFrom || "";
           const rangeTo = msg.dateTo || dateTo || "";
@@ -4117,11 +4118,13 @@ ipcMain.handle("run-dashboard-fetch", async (_, { accountId, dateFrom, dateTo } 
           }
           if (persisted.enriched > 0) console.log(`[Analytics] Enriched ${persisted.enriched} stored orders from dashboard fetch`);
         } catch (e) {
+          snapshotSaveError = e.message || String(e);
           console.error("[Dashboard] Failed to save snapshot:", e.message);
           monitoring.captureException(e, { operation: "dashboard.fetch.saveSnapshot", extra: { accountId: dashboardAccountId } });
         }
         safeResolve({
-          success: true,
+          success: !snapshotSaveError,
+          ...(snapshotSaveError ? { error: `DASHBOARD_SNAPSHOT_SAVE_FAILED: ${snapshotSaveError}` } : {}),
           rows: rows.length,
           snapshotMonth: msg.snapshotMonth,
           parseDiagnostics: msg.parseDiagnostics || null,

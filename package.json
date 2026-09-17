@@ -1,6 +1,6 @@
 {
   "name": "khod-whaat-orders",
-  "version": "1.0.69",
+  "version": "1.0.70",
   "description": "KHOD WHAAT Orders Automation Bot",
   "repository": {
     "type": "git",
@@ -45,9 +45,10 @@
     "verify:explicit-dashboard-refresh": "node scripts/verify-explicit-dashboard-refresh.js",
     "verify:dashboard-fetch-khod": "node scripts/verify-dashboard-fetch-khod-identity.js",
     "verify:recovery": "node scripts/verify-recovery-bulk-orders.js",
+    "verify:affiliate-recovery": "node scripts/verify-affiliate-recovery.js",
     "report:missed-quality": "node scripts/report-missed-order-quality.js",
     "verify:campaign-decisions": "node scripts/verify-campaign-decisions.js",
-    "verify:dashboard:easyorders": "node scripts/verify-dashboard-easyorders-enrichment.js",
+    "verify:dashboard:khod-sheet": "node scripts/verify-dashboard-easyorders-enrichment.js",
     "verify:performance": "node scripts/verify-performance-architecture.js",
     "verify:marketing-optimization": "node scripts/verify-marketing-optimization.js",
     "verify:actual-financials": "node scripts/verify-actual-mode-financials.js",

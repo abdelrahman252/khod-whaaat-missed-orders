@@ -4161,6 +4161,9 @@ async function _saveAnalyticsFromResult(data, selectedAccountIds) {
         taagerSnapshot:    r.data?.taagerSnapshot || r.data?.khodSnapshot || null,
         taagerDashboardSnapshot: r.data?.taagerDashboardSnapshot || null,
       });
+      if (!saveRes || saveRes.ok === false) {
+        throw new Error(`Analytics persistence failed for ${identity.accountLabel}: ${saveRes?.error || "unknown error"}`);
+      }
       if (saveRes && saveRes.dashboardRowsSaved > 0 && window.invalidateDashboardCache) window.invalidateDashboardCache();
     }
     window.dispatchEvent(new CustomEvent("khod-analytics-runs-updated"));
@@ -4189,16 +4192,22 @@ async function _saveAnalyticsFromResult(data, selectedAccountIds) {
     taagerSnapshot:    data.taagerSnapshot || data.khodSnapshot || null,
     taagerDashboardSnapshot: data.taagerDashboardSnapshot || null,
   });
+  if (!saveRes || saveRes.ok === false) {
+    throw new Error(`Analytics persistence failed for ${identity.accountLabel}: ${saveRes?.error || "unknown error"}`);
+  }
   if (saveRes && saveRes.dashboardRowsSaved > 0 && window.invalidateDashboardCache) window.invalidateDashboardCache();
   window.dispatchEvent(new CustomEvent("khod-analytics-runs-updated"));
 }
 
-function goToResults(data, dateFrom, dateTo, selectedAccountIds) {
-  // Fire-and-forget: save run data for Analytics/Operations pages
-  _saveAnalyticsFromResult(data, selectedAccountIds).catch(e => {
-    console.warn("[Analytics] save failed silently:", e);
+async function goToResults(data, dateFrom, dateTo, selectedAccountIds) {
+  // Persist before showing the completed result so Analytics/Operations do not
+  // race the save and render an empty history.
+  try {
+    await _saveAnalyticsFromResult(data, selectedAccountIds);
+  } catch (e) {
+    console.warn("[Analytics] save failed:", e);
     if (window.KhodMonitoring) window.KhodMonitoring.captureException(e, { operation: "analytics.saveFromResult" });
-  });
+  }
   const onRunAgain = () => {
     const review = window._pendingManualReviewRun || null;
     window._pendingManualReviewRun = null;
