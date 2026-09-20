@@ -117,6 +117,7 @@ check("shared EasyOrders flow enforces English before English-only controls and 
   shared.includes("const requiredNotificationRefreshes = 2") &&
   shared.includes("poll <= requiredNotificationRefreshes") &&
   shared.includes("clickExportDialogSubmit(page, dialog, keyword)") &&
+  shared.includes('dialog.locator(".MuiDialogActions-root button")') &&
   shared.includes("EASY_ORDERS_EXPORT_SUBMIT_UNAVAILABLE") &&
   shared.includes("clickExportButton(page, exportButton, keyword)") &&
   shared.includes("EASY_ORDERS_EXPORT_BUTTON_UNAVAILABLE") &&
