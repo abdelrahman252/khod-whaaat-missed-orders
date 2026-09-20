@@ -118,6 +118,9 @@ check("shared EasyOrders flow enforces English before English-only controls and 
   shared.includes("poll <= requiredNotificationRefreshes") &&
   shared.includes("clickExportDialogSubmit(page, dialog, keyword)") &&
   shared.includes("EASY_ORDERS_EXPORT_SUBMIT_UNAVAILABLE") &&
+  shared.includes("clickExportButton(page, exportButton, keyword)") &&
+  shared.includes("EASY_ORDERS_EXPORT_BUTTON_UNAVAILABLE") &&
+  shared.includes("EASY_ORDERS_EXPORT_DIALOG_NOT_OPEN") &&
   shared.includes('dialog.locator(\'input[type="text"]\')') &&
   shared.includes("readOptionalExportToast") &&
   shared.includes("isVisible({ timeout: 1200 })") &&
