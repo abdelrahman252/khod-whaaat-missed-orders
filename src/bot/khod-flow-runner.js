@@ -776,9 +776,13 @@ async function downloadToBuffer(page, url) {
   const MAX_DL_ATTEMPTS = 3;
   for (let attempt = 1; attempt <= MAX_DL_ATTEMPTS; attempt++) {
     try {
+      if (typeof fetch === "function") {
+        const response = await fetch(url, { redirect: "follow" });
+        if (!response.ok) throw new Error(`EASY_ORDERS_DOWNLOAD_HTTP_${response.status}: ${url}`);
+        return Buffer.from(await response.arrayBuffer());
+      }
       const response = await page.context().request.get(url, { timeout: 60000 });
-      const body     = await response.body();
-      return Buffer.from(body);
+      return Buffer.from(await response.body());
     } catch (e) {
       const isNetwork = e.message.includes("ETIMEDOUT") || e.message.includes("ERR_CONNECTION") || e.message.includes("net::") || e.message.includes("timeout");
       if (isNetwork && attempt < MAX_DL_ATTEMPTS) {

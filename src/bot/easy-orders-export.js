@@ -1144,8 +1144,19 @@ function createEasyOrdersExportFlow(options = {}) {
     for (let attempt = 1; attempt <= 3; attempt++) {
       try {
         stage("easyorders.download", "started", `Downloading EasyOrders export (${attempt}/3)`);
-        const response = await page.context().request.get(url, { timeout: 60000 });
-        const buffer = Buffer.from(await response.body());
+        let buffer;
+        if (typeof fetch === "function") {
+          const controller = new AbortController();
+          const timer = setTimeout(() => controller.abort(), 60000);
+          try {
+            const response = await fetch(url, { redirect: "follow", signal: controller.signal });
+            if (!response.ok) throw new Error(`EASY_ORDERS_DOWNLOAD_HTTP_${response.status}: ${url}`);
+            buffer = Buffer.from(await response.arrayBuffer());
+          } finally { clearTimeout(timer); }
+        } else {
+          const response = await page.context().request.get(url, { timeout: 60000 });
+          buffer = Buffer.from(await response.body());
+        }
         stage("easyorders.download", "ok", `Downloaded ${buffer.length} bytes`, { bytes: buffer.length });
         return buffer;
       } catch (error) {
