@@ -661,7 +661,7 @@ function renderSharedSidebar(activeNav) {
       '<div class="sv3-sb-logo">' +
         '<div class="sv3-sb-logo-icon">⚡</div>' +
         '<div>' +
-          '<div class="sv3-sb-logo-text">Taager Bot</div>' +
+          '<div class="sv3-sb-logo-text">KHOD WHAAT</div>' +
           '<div class="sv3-sb-logo-sub">' + (t('setup.sub_title') || 'Setup') + '</div>' +
         '</div>' +
       '</div>' +

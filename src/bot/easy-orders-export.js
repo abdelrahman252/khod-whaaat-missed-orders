@@ -762,11 +762,11 @@ function createEasyOrdersExportFlow(options = {}) {
   }
 
   async function clickExportDialogSubmit(page, dialog, keyword) {
-    const actionButtons = dialog.locator(".MuiDialogActions-root button");
+    const actionButtons = dialog.locator(".MuiDialogActions-root button:visible");
     const semantic = actionButtons.filter({
       hasText: /export|generate|create|download|تصدير|إنشاء|تحميل/i,
     }).last();
-    const fallback = dialog.locator('button[type="submit"], .MuiDialogActions-root button').last();
+    const fallback = actionButtons.last();
     const submit = (await semantic.count().catch(() => 0)) > 0 ? semantic : fallback;
     let lastError = null;
     for (let attempt = 1; attempt <= 3; attempt++) {
@@ -1077,10 +1077,10 @@ function createEasyOrdersExportFlow(options = {}) {
       }
       await ensureEnglish(page);
       stage("easyorders.export.dialog", "started", `Opening export dialog for ${keyword}`);
-      const exportButton = page.locator('button.MuiButton-outlined:has-text("Export"), main button:has-text("Export"), button:has-text("Export")').first();
+      const exportButton = page.locator('button.MuiButton-outlined:visible').filter({ hasText: /^\s*Export\s*$/i }).first();
       await exportButton.waitFor({ state: "visible", timeout: 15000 });
       await clickExportButton(page, exportButton, keyword);
-      const dialog = page.locator('div[role="dialog"]').first();
+      const dialog = page.locator('div[role="dialog"]:visible').first();
       try {
         await dialog.waitFor({ state: "visible", timeout: 8000 });
       } catch (error) {
@@ -1099,7 +1099,9 @@ function createEasyOrdersExportFlow(options = {}) {
       // action row is re-rendering. Escape closes the calendar without waiting
       // on a brittle heading selector, then the submit helper uses a bounded
       // semantic click instead of Playwright's 30-second default action wait.
-      await page.keyboard.press("Escape").catch(() => {});
+      // Escape can dismiss the whole MUI dialog; clicking its title only
+      // dismisses a lingering datepicker without cancelling the export.
+      await dialog.locator('h2, .MuiDialogTitle-root').first().click({ timeout: 2000 }).catch(() => {});
       await clickExportDialogSubmit(page, dialog, keyword);
       await dialog.waitFor({ state: "hidden", timeout: 8000 }).catch(() => {});
       await page.waitForTimeout(1000);

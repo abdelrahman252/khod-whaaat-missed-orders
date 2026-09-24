@@ -10,7 +10,7 @@ const { normalizeProductName, productNamesMatch } = require("./parser");
 
 const EASY_BASE = "https://app.easy-orders.net/#";
 const ROWS_PER_PAGE = 100;
-const DEFAULT_STEP_DELAY_MS = 900;
+const DEFAULT_STEP_DELAY_MS = 300;
 const ACTION_CONFIRMATION_TIMEOUT_MS = 3500;
 const QUANTITY_MANUAL_REVIEW_REASONS = ["normal_flow_prepared_quantity_is_suspicious", "quantity_tier_price_not_verified"];
 const EASY_ORDERS_LIST_ENTRY_SELECTORS = {

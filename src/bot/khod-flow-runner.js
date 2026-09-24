@@ -579,7 +579,7 @@ async function triggerEasyOrdersExport(page, exportFromDate, keyword) {
     // The Export button is MuiButton-outlined (Create Order is MuiButton-contained, an <a> tag).
     // This is the most specific stable selector we can use without relying on dynamic class hashes.
     log(`🖱️ Clicking page-level Export button to open dialog...`);
-    const pageExportBtn = page.locator('button.MuiButton-outlined:has-text("Export")').first();
+    const pageExportBtn = page.locator('button.MuiButton-outlined:visible').filter({ hasText: /^\s*Export\s*$/i }).first();
     await pageExportBtn.waitFor({ state: "visible", timeout: 10000 });
     const pageExportText = await pageExportBtn.innerText().catch(() => "?");
     log(`   Found page Export button — text: "${pageExportText.replace(/\s+/g, " ").trim()}" — clicking`);
@@ -592,7 +592,7 @@ async function triggerEasyOrdersExport(page, exportFromDate, keyword) {
     // MUST use state:"visible" — "attached" (the default) passes even for hidden dialogs
     // that React keeps in the DOM from a previous render cycle.
     log(`⏳ Waiting for export dialog to become visible...`);
-    const dialog = page.locator('div[role="dialog"]').first();
+    const dialog = page.locator('div[role="dialog"]:visible').first();
     try {
       await dialog.waitFor({ state: "visible", timeout: 8000 });
     } catch {
@@ -644,7 +644,7 @@ async function triggerEasyOrdersExport(page, exportFromDate, keyword) {
     }
 
     // ── 4. Click the Export button inside the dialog ──
-    const dialogExportBtn = dialog.locator('.MuiDialogActions-root button');
+    const dialogExportBtn = dialog.locator('.MuiDialogActions-root button:visible').filter({ hasText: /^\s*Export\s*$/i }).last();
     await dialogExportBtn.waitFor({ state: "visible", timeout: 5000 });
     const dialogExportText = await dialogExportBtn.innerText().catch(() => "?");
     log(`🖱️ Dialog action button found — text: "${dialogExportText.replace(/\s+/g, " ").trim()}" — clicking...`);
@@ -2362,8 +2362,8 @@ async function phaseAffiliateRecovery(page, orders, fromDate, toDate, catalog = 
   // Phase 4 leaves the shared page on KHOD WHAAT.  Recovery runs against
   // EasyOrders, so return to its authenticated orders route before looking
   // for the language switcher or any recovery controls.
+  await page.waitForLoadState("domcontentloaded", { timeout: 10000 }).catch(() => {});
   await gotoWithNetworkRetries(page, "https://app.easy-orders.net/#/orders", "EasyOrders affiliate recovery start");
-  await page.waitForTimeout(2000);
   await easyOrdersFlow.ensureEnglish(page, { force: true });
   const ui = createEasyOrdersUiRecovery({
     log,
