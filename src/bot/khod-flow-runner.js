@@ -2359,6 +2359,8 @@ async function phaseAffiliateRecovery(page, orders, fromDate, toDate, catalog = 
   }));
   const realPrepared = prepared.filter((order) => order.source === "real");
   const missedPrepared = prepared.filter((order) => order.source === "missed");
+  const liveRecoveryResults = new Map();
+  const successfulRecoveryStatuses = new Set(["sent", "sent_unverified", "converted"]);
   // Phase 4 leaves the shared page on KHOD WHAAT.  Recovery runs against
   // EasyOrders, so return to its authenticated orders route before looking
   // for the language switcher or any recovery controls.
@@ -2378,6 +2380,27 @@ async function phaseAffiliateRecovery(page, orders, fromDate, toDate, catalog = 
     },
     onAttemptResult: (row) => {
       log(`EasyOrders affiliate recovery result: ${row.actionStatus || "unknown"} ${row.name || row.normPhone || "order"}`);
+      const resultKey = row.originalIndex != null && Number.isInteger(Number(row.originalIndex))
+        ? String(Number(row.originalIndex))
+        : `${row.recoverySource || row.source || "real"}|${row.easyOrderUuid || row.detailUrl || row.normPhone || row.name || liveRecoveryResults.size}`;
+      liveRecoveryResults.set(resultKey, row);
+      const completed = liveRecoveryResults.size;
+      const successfulCount = [...liveRecoveryResults.values()]
+        .filter((result) => successfulRecoveryStatuses.has(String(result.actionStatus || ""))).length;
+      process.send && process.send({
+        type: "order-progress",
+        mode: "affiliate-recovery",
+        current: Math.min(completed, orders.length),
+        total: orders.length,
+        success: successfulCount,
+        failed: Math.max(0, completed - successfulCount),
+        lastOrder: {
+          name: row.name || "",
+          product: row.productName || (row.items || [])[0]?.productName || "",
+          phone: row.phone || row.normPhone || "",
+          error: successfulRecoveryStatuses.has(String(row.actionStatus || "")) ? "" : row.actionMessage || row.reason || "",
+        },
+      });
     },
   });
 
@@ -2394,9 +2417,8 @@ async function phaseAffiliateRecovery(page, orders, fromDate, toDate, catalog = 
     ...(missedResult.attempted || []),
     ...(missedResult.skippedManual || []),
   ];
-  const successStatuses = new Set(["sent", "sent_unverified", "converted"]);
-  const successful = allResults.filter((row) => successStatuses.has(String(row.actionStatus || "")));
-  const failures = allResults.filter((row) => !successStatuses.has(String(row.actionStatus || "")));
+  const successful = allResults.filter((row) => successfulRecoveryStatuses.has(String(row.actionStatus || "")));
+  const failures = allResults.filter((row) => !successfulRecoveryStatuses.has(String(row.actionStatus || "")));
   const failedOrders = failures.map((row) => ({
     row: Number(row.originalIndex) + 1,
     name: row.name || "",
@@ -2432,23 +2454,22 @@ async function phaseAffiliateRecovery(page, orders, fromDate, toDate, catalog = 
     manualReviewRows,
     successfulIndexes: successful.map((row) => Number(row.originalIndex)).filter(Number.isInteger),
   };
-  for (let i = 0; i < orders.length; i++) {
-    const current = allResults.find((row) => Number(row.originalIndex) === i);
-    process.send && process.send({
-      type: "order-progress",
-      mode: "affiliate-recovery",
-      current: i + 1,
-      total: orders.length,
-      success: results.success,
-      failed: results.failed,
-      lastOrder: {
-        name: orders[i]?.name || "",
-        product: orders[i]?.productName || "",
-        phone: phone.formatPhone(orders[i]?.normPhone, country) || orders[i]?.phone || "",
-        error: current && !successStatuses.has(String(current.actionStatus || "")) ? current.actionMessage || current.reason || "" : "",
-      },
-    });
-  }
+  // Reconcile the visible progress once all real and missed recovery passes
+  // finish, including rows that were skipped before an attempt callback.
+  process.send && process.send({
+    type: "order-progress",
+    mode: "affiliate-recovery",
+    current: orders.length,
+    total: orders.length,
+    success: results.success,
+    failed: Math.max(0, orders.length - results.success),
+    lastOrder: allResults.length ? {
+      name: allResults[allResults.length - 1].name || "",
+      product: allResults[allResults.length - 1].productName || "",
+      phone: allResults[allResults.length - 1].phone || allResults[allResults.length - 1].normPhone || "",
+      error: successfulRecoveryStatuses.has(String(allResults[allResults.length - 1].actionStatus || "")) ? "" : allResults[allResults.length - 1].actionMessage || allResults[allResults.length - 1].reason || "",
+    } : {},
+  });
   return results;
 }
 
